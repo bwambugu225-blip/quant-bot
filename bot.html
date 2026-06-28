@@ -256,6 +256,7 @@ body{padding:6px 8px 60px;max-width:600px;margin:0 auto}
     </div>
     <div style="display:flex;gap:4px;margin-top:6px;align-items:center;">
       <button onclick="resetDemo()" class="btn" style="font-size:8px;padding:4px 8px;width:auto;color:var(--warn);border-color:var(--warn);">Reset Balance</button>
+      <button onclick="resetSession()" class="btn" style="font-size:8px;padding:4px 8px;width:auto;color:var(--blue);border-color:var(--blue);">Reset Session</button>
     </div>
   </div>
 
@@ -1011,6 +1012,15 @@ function resetDigitPnL(){
   BotState.currentStake = BotState.baseStake;
   log('[DIGIT] PnL reset','i');
   updateDigitsUI();
+}
+function resetSession(){
+  G.WINS=0; G.LOSSES=0; G.TRADES=0; G.PNL=0; G.CONS_LOSS=0;
+  G.DAILY={ pnl:0, trades:0, hourTrades:[], date:'' };
+  G.TRADE_HISTORY=[]; G.TRADE_OUTCOMES=[];
+  document.getElementById('recentTrades').textContent = 'No trades yet';
+  resetDigitPnL();
+  updateDash();
+  log('[SYSTEM] Session reset','i');
 }
 
 function toggleDigitEngine(){
