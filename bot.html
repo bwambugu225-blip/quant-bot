@@ -151,12 +151,10 @@ body{padding:6px 8px 60px;max-width:600px;margin:0 auto}
 .dg-anal-stat .l{color:var(--muted)}.dg-anal-stat .v{font-weight:600}
 .dg-bar-fill{height:100%;transition:width .2s;border-radius:2px}
 /* ---- DG CIRCLE ---- */
-.dg-circle{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:default;padding:2px 0;position:relative}
-.dg-circle .c{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;border:2px solid var(--line);background:var(--surface-2);transition:border-color .15s,background .15s}
-.dg-circle .pct{font-size:7px;color:var(--muted)}
-.dg-circle.hot .c{border-color:var(--red);color:var(--red);background:var(--red-dim)}
-.dg-circle.cold .c{border-color:var(--blue);color:var(--blue);background:var(--blue-dim)}
-.dg-circle.now .c{border-color:var(--green);color:var(--green);background:var(--green-dim)}
+.dg-circle{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:2px 0;position:relative}
+.dg-circle .c svg{display:block}
+.dg-circle .pct{font-size:7px;color:var(--muted);margin-top:1px}
+.dg-circle .now-marker{font-size:6px;color:var(--green);line-height:1;margin-top:-1px;height:8px}
 /* ---- CONTRACT OPT ---- */
 .contract-opt{transition:border-color .15s,background .15s;border:1px solid var(--line);border-radius:var(--radius-sm);padding:5px 3px;cursor:pointer}
 .contract-opt:hover{border-color:var(--muted)}
@@ -255,6 +253,11 @@ body{padding:6px 8px 60px;max-width:600px;margin:0 auto}
       <div class="kpi"><div id="dashWinRate" class="v">0%</div><div class="l">Win</div></div>
       <div class="kpi"><div id="dashTrades" class="v">0</div><div class="l">Trades</div></div>
       <div class="kpi"><div id="dashActive" class="v">0</div><div class="l">Active</div></div>
+    </div>
+    <div style="display:flex;gap:4px;margin-top:6px;align-items:center;">
+      <input type="number" id="topupAmount" class="inp" value="10000" min="1" step="1000" style="flex:1;font-size:10px;padding:4px 6px;" placeholder="Amount">
+      <button onclick="topupDemo()" class="btn" style="font-size:8px;padding:4px 8px;width:auto;color:var(--blue);border-color:var(--blue);">Top Up</button>
+      <button onclick="resetDemo()" class="btn" style="font-size:8px;padding:4px 8px;width:auto;color:var(--warn);border-color:var(--warn);">Reset</button>
     </div>
   </div>
 
@@ -360,7 +363,10 @@ body{padding:6px 8px 60px;max-width:600px;margin:0 auto}
     <details style="margin-bottom:4px;" open>
       <summary style="font-size:9px;font-weight:600;cursor:pointer;color:var(--text);padding:4px 0;letter-spacing:.4px;text-transform:uppercase;">Analysis</summary>
       <div style="margin-bottom:4px;">
-        <div class="l" style="margin-bottom:2px;">Digit Distribution <span id="dgDistRange" style="color:var(--dim);font-weight:400;">—</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+          <div class="l">Digit Distribution <span id="dgDistRange" style="color:var(--dim);font-weight:400;">—</span></div>
+          <span id="dgMarketName" style="font-size:9px;color:var(--green);font-weight:600;"></span>
+        </div>
         <div id="dgDigitCircles" style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;"></div>
         <div style="display:flex;gap:6px;margin-top:2px;font-size:8px;">
           <span style="color:var(--green);font-weight:700;">Hottest</span><span id="dgHottest" style="color:var(--green);">—</span>
@@ -418,6 +424,28 @@ body{padding:6px 8px 60px;max-width:600px;margin:0 auto}
         <div style="display:flex;align-items:center;justify-content:flex-end;">
           <button onclick="resetDigitPnL()" style="background:none;border:1px solid var(--line);color:var(--muted);font-size:9px;cursor:pointer;padding:4px 10px;border-radius:6px;">Reset PnL</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MICRO MODE ===== -->
+  <div id="microSection" style="display:none;">
+    <div class="card" style="margin-bottom:4px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <h3 style="margin:0;">Micro Engine</h3>
+        <div id="microStatus"><span class="blink-dot gray"></span>STOP</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px;">
+        <div class="field"><label>Stake ($)</label><input class="inp" id="microStake" type="number" value="1" min="0.5" step="0.5" style="font-size:10px;padding:4px 6px;"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;">
+          <button id="microStartBtn" class="btn btn-primary" onclick="startMicro()" style="font-size:8px;padding:4px;">▶ RUN</button>
+          <button id="microStopBtn" class="btn btn-danger" onclick="stopMicro()" disabled style="font-size:8px;padding:4px;">■ STOP</button>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;font-size:9px;">
+        <div><span style="color:var(--muted);">Signal</span><div id="microSignal" style="font-weight:700;font-size:11px;">—</div></div>
+        <div><span style="color:var(--muted);">Ticks</span><div id="microTickCount" style="font-weight:700;font-size:11px;">0</div></div>
+        <div><span style="color:var(--muted);">Active</span><div id="microActive" style="font-weight:700;font-size:11px;">0</div></div>
       </div>
     </div>
   </div>
@@ -965,6 +993,7 @@ function onDigitContractResolved(won, profit){
     }
   }
   BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
+  setInterval(updateMicroUI, 2000);
   BotState.targetProfit = parseFloat(document.getElementById('dgTakeProfit')?.value || 10);
   BotState.stopLoss = parseFloat(document.getElementById('dgStopLoss')?.value || 5);
   if(BotState.totalProfitLoss >= BotState.targetProfit || BotState.totalProfitLoss <= -BotState.stopLoss){
@@ -995,6 +1024,7 @@ function toggleDigitEngine(){
   } else {
     BotState.isTrading = true;
     BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
+  setInterval(updateMicroUI, 2000);
     BotState.targetProfit = parseFloat(document.getElementById('dgTakeProfit')?.value || 10);
     BotState.stopLoss = parseFloat(document.getElementById('dgStopLoss')?.value || 5);
     BotState.currentStake = BotState.baseStake;
@@ -1070,7 +1100,7 @@ function evaluateMicroTick(sym, price){
   }
 }
 function placeMicroContract(sym, ct, ticks){
-  const stake = parseFloat(document.getElementById('tStake')?.value || 1);
+  const stake = parseFloat(document.getElementById('microStake')?.value || 1);
   if(!G.WS || G.WS.readyState!==WebSocket.OPEN){ BotState.contractActive=false; return; }
   G.TRADE_LOCK = true;
   const dur = ticks || 2;
@@ -1372,6 +1402,9 @@ function handleMsg(data, source='trade'){
     case 'buy':        handleBuy(data); break;
     case 'proposal':   handleProp(data); break;
     case 'proposal_open_contract': handleContract(data.proposal_open_contract); break;
+    case 'topup_virtual':
+      if(data.topup_virtual?.balance !== undefined){ G.BALANCE = data.topup_virtual.balance; updateDash(); log('[TOPUP] Balance: $'+G.BALANCE.toFixed(2),'s'); }
+      break;
     case 'error':
       if(data.error?.message && data.error.message!=='Please log in.') log(`[API] ${data.error.message}`,'e');
       break;
@@ -1801,6 +1834,62 @@ function startRF(){
   startBot();
 }
 function stopRF(){ stopBot(); }
+function startMicro(){
+  switchMode('MICRO');
+  G.RUNNING=true;
+  G.CONS_LOSS=0; G.CONS_LOSS_COOLDOWN=0;
+  G.PROCESSED_CONTRACTS = new Set();
+  G.CONTRACT_TICK_COUNTERS={};
+  G.SELL_SENT=null;
+  if(G.FORCE_RELEASE_TIMEOUT){ clearTimeout(G.FORCE_RELEASE_TIMEOUT); G.FORCE_RELEASE_TIMEOUT=null; }
+  G.SESSION_START_SENT = false;
+  document.getElementById('microStartBtn').disabled=true;
+  document.getElementById('microStopBtn').disabled=false;
+  const s = document.getElementById('microStatus');
+  if(s) s.innerHTML = '<span class="blink-dot green"></span>RUNNING';
+  log('[MICRO] Started','s');
+}
+function stopMicro(){
+  G.RUNNING=false;
+  G.ACTIVE_CONTRACTS.clear();
+  G.TRADE_LOCK=false;
+  G.CONTRACT_TICK_COUNTERS={};
+  G.SELL_SENT=null;
+  if(G.FORCE_RELEASE_TIMEOUT){ clearTimeout(G.FORCE_RELEASE_TIMEOUT); G.FORCE_RELEASE_TIMEOUT=null; }
+  if(G.TRADE_LOCK_TIMEOUT){ clearTimeout(G.TRADE_LOCK_TIMEOUT); G.TRADE_LOCK_TIMEOUT=null; }
+  document.getElementById('microStartBtn').disabled=false;
+  document.getElementById('microStopBtn').disabled=true;
+  const s = document.getElementById('microStatus');
+  if(s) s.innerHTML = '<span class="blink-dot gray"></span>STOP';
+  if(G.PENDING_TIMEOUT){ clearTimeout(G.PENDING_TIMEOUT); G.PENDING_TIMEOUT=null; }
+  G.TRADE_LOCK=false;
+  G.ACTIVE_CONTRACTS.clear();
+  log('[MICRO] Stopped','w');
+  saveState();
+}
+function updateMicroUI(){
+  const sig = document.getElementById('microSignal');
+  if(G.LAST_SIGNAL && sig){
+    sig.textContent = G.LAST_SIGNAL.action+' '+G.LAST_SIGNAL.conf+'%';
+    sig.style.color = G.LAST_SIGNAL.action==='RISE'?'var(--green)':'var(--red)';
+  } else if(sig) { sig.textContent='—'; sig.style.color=''; }
+  const tc = document.getElementById('microTickCount');
+  if(tc) tc.textContent = String(BotState.priceQueue.length);
+  const ac = document.getElementById('microActive');
+  if(ac) ac.textContent = String(G.ACTIVE_CONTRACTS.size);
+}
+function topupDemo(){
+  const amt = parseFloat(document.getElementById('topupAmount')?.value || 10000);
+  if(!G.AUTH || !G.WS || G.WS.readyState!==WebSocket.OPEN){ log('[TOPUP] Authorize first','e'); return; }
+  G.WS.send(JSON.stringify({ topup_virtual:1, amount:amt, req_id:genId() }));
+  log('[TOPUP] Requested $'+amt.toFixed(2),'i');
+}
+function resetDemo(){
+  const amt = parseFloat(document.getElementById('topupAmount')?.value || 10000);
+  if(!G.AUTH || !G.WS || G.WS.readyState!==WebSocket.OPEN){ log('[TOPUP] Authorize first','e'); return; }
+  G.WS.send(JSON.stringify({ topup_virtual:1, amount:amt, req_id:genId() }));
+  log('[TOPUP] Reset to $'+amt.toFixed(2),'i');
+}
 function authorizeToken(){
   const token = document.getElementById('apiToken')?.value || G.TOKEN;
   if(!token){ log('[AUTH] Enter token','e'); return; }
@@ -1992,6 +2081,7 @@ function switchMode(mode){
   document.getElementById('dgSection').style.display = mode==='DIGITS' ? 'block' : 'none';
   document.getElementById('rfSection').style.display = mode==='RISEFALL' ? 'block' : 'none';
   document.getElementById('rfStratDetails').style.display = mode==='RISEFALL' ? 'block' : 'none';
+  document.getElementById('microSection').style.display = mode==='MICRO' ? 'block' : 'none';
   document.getElementById('hdrTitle').innerHTML = mode==='DIGITS'
     ? 'Digits Bot <span style="color:var(--blue);font-size:10px;font-weight:600;margin-left:4px;">1t</span>'
     : mode==='RISEFALL'
@@ -2073,13 +2163,30 @@ function updateDigitsUI(){
   if(circles){
     const now = q.length ? q[q.length-1] : -1;
     circles.innerHTML = hfreq.map((f,i)=>{
-      const pct = (f/hTotal*100).toFixed(1);
-      const cls = i===maxD ? 'hot' : i===minD ? 'cold' : '';
-      const nowCls = i===now ? ' now' : '';
-      return `<div class="dg-circle${cls ? ' '+cls : ''}${nowCls}"><div class="c">${i}</div><span class="pct">${pct}%</span></div>`;
+      const pct = (f/hTotal*100);
+      const pctStr = pct.toFixed(1);
+      const isMax = i===maxD;
+      const isMin = i===minD;
+      const isNow = i===now;
+      const ringColor = isMax ? 'var(--green)' : isMin ? 'var(--red)' : 'var(--muted)';
+      const txtColor = isMax ? 'var(--green)' : isMin ? 'var(--red)' : 'var(--muted)';
+      const dash = pct === 0 ? '0.1 99.9' : pct.toFixed(1) + ' ' + (100-pct).toFixed(1);
+      return '<div class="dg-circle">'
+        + '<div class="c">'
+        + '<svg viewBox="0 0 36 36" style="width:30px;height:30px;transform:rotate(-90deg);overflow:visible;">'
+        + '<circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--surface-2)" stroke-width="3.5"/>'
+        + '<circle cx="18" cy="18" r="15.5" fill="none" stroke="'+ringColor+'" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="'+dash+'"/>'
+        + '<text x="18" y="20" text-anchor="middle" font-size="10" font-weight="700" fill="'+txtColor+'" transform="rotate(90,18,18)">'+i+'</text>'
+        + '</svg>'
+        + '</div>'
+        + '<span class="pct">'+pctStr+'%</span>'
+        + (isNow ? '<span class="now-marker">&#9660;</span>' : '<span class="now-marker"></span>')
+        + '</div>';
     }).join('');
   }
   setText('dgDistRange', `Last ${histLen} ticks`);
+  const dgMarket = get('dgMarketName');
+  if(dgMarket){ const s = G.CURRENT_MARKET; const info = SYMBOLS.find(x=>x.sym===s); dgMarket.textContent = info?info.name+' ('+s+')':s; }
   setText('dgHottest', maxD>=0 ? `${maxD} (${(maxF/hTotal*100).toFixed(1)}%)` : '—');
   setText('dgColdest', minD>=0 ? `${minD} (${(minF/hTotal*100).toFixed(1)}%)` : '—');
   setText('dgNowDigit', q.length ? String(q[q.length-1]) : '—');
@@ -2281,7 +2388,7 @@ function saveState(){
     localStorage.setItem('deriv_telegram_chat_id', G.TELEGRAM_CHAT_ID);
     localStorage.setItem('deriv_strategy_active', JSON.stringify(G.STRATEGY_ACTIVE));
     localStorage.setItem('deriv_trade_history', JSON.stringify(G.TRADE_HISTORY.slice(-200)));
-    const stake = document.getElementById('rfStake')?.value || document.getElementById('tStake')?.value;
+    const stake = document.getElementById('rfStake')?.value || document.getElementById('microStake')?.value || document.getElementById('tStake')?.value;
     if(stake) localStorage.setItem('deriv_stake', stake);
     const bs = BotState;
     localStorage.setItem('deriv_botstate', JSON.stringify({
@@ -2299,6 +2406,7 @@ function restoreState(){
     if(sk){
       const elT = document.getElementById('tStake'); if(elT) elT.value = sk;
       const elR = document.getElementById('rfStake'); if(elR) elR.value = sk;
+      const elM = document.getElementById('microStake'); if(elM) elM.value = sk;
     }
     const a = localStorage.getItem('deriv_account_type');
     if(a === 'real' || a === 'demo'){ G.ACCOUNT_TYPE = a;
@@ -2368,6 +2476,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Init trade mode
   switchMode(G.TRADE_MODE);
   BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
+  setInterval(updateMicroUI, 2000);
   BotState.targetProfit = parseFloat(document.getElementById('dgTakeProfit')?.value || 10);
   BotState.stopLoss = parseFloat(document.getElementById('dgStopLoss')?.value || 5);
   BotState.currentStake = BotState.baseStake;
