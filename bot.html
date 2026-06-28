@@ -196,6 +196,8 @@ body{padding:6px 8px 60px;max-width:600px;margin:0 auto}
 .dg-freq-bar .pct{font-size:7px;color:var(--muted);line-height:1}
 .dg-freq-bar .lbl{font-size:8px;font-weight:600;line-height:1}
 .bottom-nav{position:fixed;bottom:0;left:0;right:0;background:rgba(13,17,23,.96);backdrop-filter:blur(12px);border-top:1px solid var(--line);display:flex;justify-content:space-around;z-index:100}
+.mode-btn{font-size:7px;padding:3px 5px;width:auto;border:1px solid;background:transparent;cursor:pointer;font-weight:600;font-family:var(--font);border-radius:var(--radius-sm);transition:background .15s}
+.mode-btn.active{background:var(--surface-2);color:var(--text)!important}
 .nav-item{display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer;padding:3px 10px 6px;transition:.1s;color:var(--dim);position:relative}
 .nav-item.active{color:var(--text)}
 .nav-item.active::after{content:'';position:absolute;top:0;left:50%;transform:translateX(-50%);width:12px;height:2px;background:var(--green)}
@@ -229,14 +231,14 @@ body{padding:6px 8px 60px;max-width:600px;margin:0 auto}
       <span id="engineStatus" style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.2px;">OFFLINE</span>
     </div>
     <div class="hdr-title" id="hdrTitle">Reversal Bot <span style="color:var(--green);font-size:9px;font-weight:700;margin-left:3px;">v2</span></div>
-    <div style="display:flex;align-items:center;gap:4px;">
-      <span id="modeLabel" style="font-size:8px;color:var(--blue);font-weight:700;text-transform:uppercase;letter-spacing:.4px;">Digits</span>
-      <label class="switch"><input type="checkbox" id="modeToggle" onchange="toggleTradeMode()"><span class="slider"></span></label>
-      <span style="font-size:8px;color:var(--green);font-weight:600;text-transform:uppercase;letter-spacing:.4px;">R/F</span>
-      <span id="microLabel" style="cursor:pointer;font-size:8px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;" onclick="toggleMicroMode()">u1t</span>
-      <span style="font-size:9px;color:var(--muted);">DEMO</span>
-      <label class="switch"><input type="checkbox" id="accToggle" onchange="toggleAccount()"><span class="slider"></span></label>
-      <span style="font-size:9px;color:var(--muted);">REAL</span>
+    <div style="display:flex;align-items:center;gap:3px;">
+      <button id="btnModeDigits" class="mode-btn" onclick="switchMode('DIGITS')" style="color:var(--blue);border-color:var(--blue);">DGT</button>
+      <button id="btnModeRF" class="mode-btn" onclick="switchMode('RISEFALL')" style="color:var(--green);border-color:var(--green);">R/F</button>
+      <button id="btnModeMicro" class="mode-btn" onclick="switchMode('MICRO')" style="color:var(--warn);border-color:var(--warn);">μ</button>
+      <span style="width:1px;height:12px;background:var(--line);margin:0 3px;"></span>
+      <span id="accLabel" style="font-size:8px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.3px;">DEMO</span>
+      <label class="switch" style="width:26px;height:14px;"><input type="checkbox" id="accToggle" onchange="toggleAccount()"><span class="slider" style="height:12px;"></span></label>
+      <span style="font-size:8px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.3px;">REAL</span>
     </div>
   </div>
 
@@ -258,19 +260,14 @@ body{padding:6px 8px 60px;max-width:600px;margin:0 auto}
 
   <!-- ===== CONFIGURATION ===== -->
   <div class="card" id="authCard">
-    <h3>Configuration</h3>
-    <div style="display:grid;grid-template-columns:1fr;gap:4px;margin-bottom:4px;">
-      <input type="password" id="apiToken" placeholder="API token" class="inp" style="margin-bottom:0;" autocomplete="off">
+    <div style="display:flex;gap:4px;align-items:center;">
+      <input type="password" id="apiToken" placeholder="API token" class="inp" style="flex:1;margin:0;font-size:10px;" autocomplete="off">
+      <button onclick="authorizeToken()" class="btn btn-primary" style="font-size:9px;padding:5px 10px;width:auto;">AUTH</button>
     </div>
-    <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:4px;margin-bottom:4px;">
-      <div class="field"><label>Stake ($)</label><input type="number" id="tStake" value="1.00" step="0.01" class="inp"></div>
-      <button onclick="authorizeToken()" class="btn btn-primary" style="font-size:9px;">AUTH</button>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
-        <button id="ctrlStart" onclick="startBot()" class="btn btn-success" disabled>▶</button>
-        <button id="ctrlStop" onclick="stopBot()" class="btn btn-danger" disabled>■</button>
-      </div>
+    <div id="authMsg" style="font-size:9px;color:var(--muted);text-align:center;margin:4px 0;">Enter token and authorize</div>
+    <div style="display:none;">
+      <input type="number" id="tStake" value="1.00" step="0.01">
     </div>
-    <div id="authMsg" style="font-size:9px;color:var(--muted);text-align:center;margin-bottom:4px;">Enter token and authorize</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
       <input type="text" id="tgToken" placeholder="Telegram bot token" class="inp" style="font-size:9px;padding:3px 5px;" value="" onchange="G.TELEGRAM_BOT_TOKEN=this.value;saveState()">
       <input type="text" id="tgChatId" placeholder="Telegram chat ID" class="inp" style="font-size:9px;padding:3px 5px;" value="" onchange="G.TELEGRAM_CHAT_ID=this.value;saveState()">
@@ -971,8 +968,9 @@ function onDigitContractResolved(won, profit){
   BotState.targetProfit = parseFloat(document.getElementById('dgTakeProfit')?.value || 10);
   BotState.stopLoss = parseFloat(document.getElementById('dgStopLoss')?.value || 5);
   if(BotState.totalProfitLoss >= BotState.targetProfit || BotState.totalProfitLoss <= -BotState.stopLoss){
-    toggleDigitEngine();
-    log(`[DIGIT] ${BotState.totalProfitLoss >= BotState.targetProfit ? 'TP' : 'SL'} hit → engine stopped`,'w');
+    log(`[DIGIT] ${BotState.totalProfitLoss >= BotState.targetProfit ? 'TP' : 'SL'} hit — resetting PnL, continuing`,'w');
+    resetDigitPnL();
+    return;
   }
   updateDigitsUI();
 }
@@ -1234,13 +1232,13 @@ function connectOTP(url){
     G.ACTIVE_CONTRACTS.clear();
     document.getElementById('connDot').className='dot g';
     document.getElementById('engineStatus').textContent='ONLINE';
-    document.getElementById('ctrlStart').disabled = !!G.RUNNING;
-    document.getElementById('ctrlStop').disabled  = !G.RUNNING;
+    document.getElementById('rfStartBtn').disabled = !!G.RUNNING;
+    document.getElementById('rfStopBtn').disabled  = !G.RUNNING;
     log('[WS] Connected','s');
     sendTelegramAlert(`🔌 *Connected*\n${G.ACCOUNT_TYPE.toUpperCase()} account \\| Balance: $${G.BALANCE.toFixed(2)}`);
     startHeartbeat();
     setTimeout(subscribeAll,200);
-    if(G.RECONN_ACTIVE && !G.RUNNING) startBot();
+    log('[AUTO] Reconnected — manual start required','i');
   };
   ws.onmessage = (e)=>{ try{ handleMsg(JSON.parse(e.data)); }catch(ex){ log(`Parse: ${ex.message}`,'e'); } };
   ws.onerror = ()=>{ G.CONNECTED=false; document.getElementById('connDot').className='dot r'; };
@@ -1603,15 +1601,7 @@ function execTrade(signal, asset){
   G.TRADE_LOCK_TIMEOUT = setTimeout(()=>{
     if(G.ACTIVE_CONTRACTS.size===0){ G.TRADE_LOCK=false; log('[LOCK] released (no fill)','w'); }
   }, 15000);
-  const base = parseFloat(document.getElementById('tStake')?.value||1);
-  let stake = base;
-  if(G.MARTINGALE.enabled && G.CONS_LOSS>0){
-    const m = parseFloat(document.getElementById('rmMartingaleMult')?.value||2);
-    stake = base*Math.pow(m, G.CONS_LOSS);
-  }
-  // Confidence-weighted stake: bigger bets on stronger signals
-  const confWt = signal.conf >= 90 ? 1.5 : signal.conf >= 80 ? 1.0 : 0.75;
-  stake = +(stake * confWt).toFixed(2);
+  const stake = parseFloat(document.getElementById('rfStake')?.value||parseFloat(document.getElementById('tStake')?.value||1));
   const durSecs = G.TRADE_DURATION_SECONDS || 45;
   if(!G.WS || G.WS.readyState!==WebSocket.OPEN){ G.TRADE_LOCK=false; return; }
   const ct = signal.action==='RISE'?'CALL':'PUT';
@@ -1779,8 +1769,6 @@ function startBot(){
   G.SELL_SENT=null;
   if(G.FORCE_RELEASE_TIMEOUT){ clearTimeout(G.FORCE_RELEASE_TIMEOUT); G.FORCE_RELEASE_TIMEOUT=null; }
   G.SESSION_START_SENT = false;
-  document.getElementById('ctrlStart').disabled=true;
-  document.getElementById('ctrlStop').disabled=false;
   document.getElementById('rfStartBtn').disabled=true;
   document.getElementById('rfStopBtn').disabled=false;
   const s = document.getElementById('rfStatus');
@@ -1796,8 +1784,6 @@ function stopBot(){
   G.SELL_SENT=null;
   if(G.FORCE_RELEASE_TIMEOUT){ clearTimeout(G.FORCE_RELEASE_TIMEOUT); G.FORCE_RELEASE_TIMEOUT=null; }
   if(G.TRADE_LOCK_TIMEOUT){ clearTimeout(G.TRADE_LOCK_TIMEOUT); G.TRADE_LOCK_TIMEOUT=null; }
-  document.getElementById('ctrlStart').disabled=false;
-  document.getElementById('ctrlStop').disabled=true;
   document.getElementById('rfStartBtn').disabled=false;
   document.getElementById('rfStopBtn').disabled=true;
   const s = document.getElementById('rfStatus');
@@ -1811,10 +1797,7 @@ function stopBot(){
   saveState();
 }
 function startRF(){
-  if(G.TRADE_MODE!=='RISEFALL'){
-    document.getElementById('modeToggle').checked = true;
-    toggleTradeMode();
-  }
+  if(G.TRADE_MODE!=='RISEFALL') switchMode('RISEFALL');
   startBot();
 }
 function stopRF(){ stopBot(); }
@@ -1827,6 +1810,8 @@ function toggleAccount(){
   G.ACCOUNT_TYPE = document.getElementById('accToggle').checked?'real':'demo';
   document.getElementById('accBadge').textContent = G.ACCOUNT_TYPE.toUpperCase();
   document.getElementById('accBadge').className = `acc-badge ${G.ACCOUNT_TYPE}`;
+  const al = document.getElementById('accLabel');
+  if(al) al.textContent = G.ACCOUNT_TYPE.toUpperCase();
   if(G.AUTH){ if(G.WS) try{ G.WS.close(); }catch(e){} authorizeWithToken(G.TOKEN); }
 }
 
@@ -1997,27 +1982,24 @@ function updateModeUI(){
 // ============================================================
 // UI
 // ============================================================
-function toggleTradeMode(){
-  G.TRADE_MODE = document.getElementById('modeToggle').checked ? 'RISEFALL' : 'DIGITS';
-  document.getElementById('microLabel').style.color = 'var(--muted)';
-  document.getElementById('microLabel').style.fontWeight = '600';
-  document.getElementById('modeLabel').textContent = G.TRADE_MODE==='DIGITS'?'Digits':'R/F';
-  document.getElementById('modeLabel').style.color = G.TRADE_MODE==='DIGITS'?'var(--blue)':'var(--green)';
-  document.getElementById('hdrTitle').innerHTML = G.TRADE_MODE==='DIGITS'
+function switchMode(mode){
+  G.TRADE_MODE = mode;
+  const btns = ['btnModeDigits','btnModeRF','btnModeMicro'];
+  btns.forEach(id=>{ const el=document.getElementById(id); if(el) el.classList.remove('active'); });
+  const activeBtn = mode==='DIGITS' ? 'btnModeDigits' : mode==='RISEFALL' ? 'btnModeRF' : 'btnModeMicro';
+  const el = document.getElementById(activeBtn);
+  if(el) el.classList.add('active');
+  document.getElementById('dgSection').style.display = mode==='DIGITS' ? 'block' : 'none';
+  document.getElementById('rfSection').style.display = mode==='RISEFALL' ? 'block' : 'none';
+  document.getElementById('rfStratDetails').style.display = mode==='RISEFALL' ? 'block' : 'none';
+  document.getElementById('hdrTitle').innerHTML = mode==='DIGITS'
     ? 'Digits Bot <span style="color:var(--blue);font-size:10px;font-weight:600;margin-left:4px;">1t</span>'
-    : 'Reversal Bot <span style="color:var(--green);font-size:10px;font-weight:600;margin-left:4px;">15s</span>';
-  log(`[MODE] Switched to ${G.TRADE_MODE}`,'i');
+    : mode==='RISEFALL'
+    ? 'Reversal Bot <span style="color:var(--green);font-size:10px;font-weight:600;margin-left:4px;">15s</span>'
+    : 'Micro Bot <span style="color:var(--warn);font-size:10px;font-weight:600;margin-left:4px;">1-2t</span>';
+  log('[MODE] Switched to '+mode,'i');
 }
-function toggleMicroMode(){
-  if(G.TRADE_MODE === 'MICRO'){ G.TRADE_MODE = 'RISEFALL'; toggleTradeMode(); return; }
-  G.TRADE_MODE = 'MICRO';
-  document.getElementById('microLabel').style.color = 'var(--yellow)';
-  document.getElementById('microLabel').style.fontWeight = '700';
-  document.getElementById('modeLabel').textContent = 'MICRO';
-  document.getElementById('modeLabel').style.color = 'var(--yellow)';
-  document.getElementById('hdrTitle').innerHTML = 'Micro Bot <span style="color:var(--yellow);font-size:10px;font-weight:600;margin-left:4px;">1-2t</span>';
-  log('[MODE] Switched to MICRO (1-2 tick RISE/FALL)','i');
-}
+function toggleMicroMode(){ switchMode('MICRO'); }
 function updateDigitsUI(){
   const q = BotState.tickQueue;
   // Tick visualizer
@@ -2299,7 +2281,7 @@ function saveState(){
     localStorage.setItem('deriv_telegram_chat_id', G.TELEGRAM_CHAT_ID);
     localStorage.setItem('deriv_strategy_active', JSON.stringify(G.STRATEGY_ACTIVE));
     localStorage.setItem('deriv_trade_history', JSON.stringify(G.TRADE_HISTORY.slice(-200)));
-    const stake = document.getElementById('tStake')?.value;
+    const stake = document.getElementById('rfStake')?.value || document.getElementById('tStake')?.value;
     if(stake) localStorage.setItem('deriv_stake', stake);
     const bs = BotState;
     localStorage.setItem('deriv_botstate', JSON.stringify({
@@ -2314,13 +2296,18 @@ function restoreState(){
     const t = localStorage.getItem('deriv_token');
     if(t){ G.TOKEN = t; document.getElementById('apiToken').value = t; }
     const sk = localStorage.getItem('deriv_stake');
-    if(sk){ const el = document.getElementById('tStake'); if(el) el.value = sk; }
+    if(sk){
+      const elT = document.getElementById('tStake'); if(elT) elT.value = sk;
+      const elR = document.getElementById('rfStake'); if(elR) elR.value = sk;
+    }
     const a = localStorage.getItem('deriv_account_type');
     if(a === 'real' || a === 'demo'){ G.ACCOUNT_TYPE = a;
       const toggle = document.getElementById('accToggle');
       if(toggle) toggle.checked = a === 'real';
       const badge = document.getElementById('accBadge');
       if(badge){ badge.textContent = a.toUpperCase(); badge.className = `acc-badge ${a}`; }
+      const al = document.getElementById('accLabel');
+      if(al) al.textContent = a.toUpperCase();
     }
     const tt = localStorage.getItem('deriv_telegram_token');
     if(tt) G.TELEGRAM_BOT_TOKEN = tt;
@@ -2379,8 +2366,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Auto-authorize if saved token exists
   if(G.TOKEN) setTimeout(() => authorizeWithToken(G.TOKEN), 500);
   // Init trade mode
-  document.getElementById('modeToggle').checked = G.TRADE_MODE==='RISEFALL';
-  toggleTradeMode();
+  switchMode(G.TRADE_MODE);
   BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
   BotState.targetProfit = parseFloat(document.getElementById('dgTakeProfit')?.value || 10);
   BotState.stopLoss = parseFloat(document.getElementById('dgStopLoss')?.value || 5);
