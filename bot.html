@@ -1878,18 +1878,37 @@ function updateMicroUI(){
   const ac = document.getElementById('microActive');
   if(ac) ac.textContent = String(G.ACTIVE_CONTRACTS.size);
 }
-function topupDemo(){
-  const amt = parseFloat(document.getElementById('topupAmount')?.value || 10000);
-  if(!G.AUTH || !G.WS || G.WS.readyState!==WebSocket.OPEN){ log('[TOPUP] Authorize first','e'); return; }
-  G.WS.send(JSON.stringify({ topup_virtual:1, amount:amt, req_id:genId() }));
-  log('[TOPUP] Requested $'+amt.toFixed(2),'i');
+function topupViaLegacyWS(amt){
+  // OTP WS doesn't support topup_virtual — use a temporary legacy WS instead
+  log('[TOPUP] Depositing $'+amt.toFixed(2)+'...','i');
+  const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id='+G.APP_ID);
+  let authed = false;
+  ws.onopen = ()=>{ ws.send(JSON.stringify({ authorize:G.TOKEN })); };
+  ws.onmessage = (e)=>{
+    try {
+      const d = JSON.parse(e.data);
+      if(d.msg_type==='authorize' && !d.error){
+        authed = true;
+        ws.send(JSON.stringify({ topup_virtual:1, amount:amt }));
+      } else if(d.msg_type==='topup_virtual'){
+        if(d.topup_virtual?.balance !== undefined){
+          G.BALANCE = d.topup_virtual.balance;
+          updateDash();
+          log('[TOPUP] Balance: $'+G.BALANCE.toFixed(2),'s');
+        } else {
+          log('[TOPUP] Failed: '+(d.error?.message||JSON.stringify(d)),'e');
+        }
+        ws.close();
+      } else if(d.error && !authed){
+        log('[TOPUP] Auth error: '+d.error.message,'e');
+        ws.close();
+      }
+    } catch(ex){ log('[TOPUP] Parse error','e'); }
+  };
+  ws.onerror = ()=>{ log('[TOPUP] Connection failed','e'); };
 }
-function resetDemo(){
-  const amt = parseFloat(document.getElementById('topupAmount')?.value || 10000);
-  if(!G.AUTH || !G.WS || G.WS.readyState!==WebSocket.OPEN){ log('[TOPUP] Authorize first','e'); return; }
-  G.WS.send(JSON.stringify({ topup_virtual:1, amount:amt, req_id:genId() }));
-  log('[TOPUP] Reset to $'+amt.toFixed(2),'i');
-}
+function topupDemo(){ topupViaLegacyWS(parseFloat(document.getElementById('topupAmount')?.value || 10000)); }
+function resetDemo(){ topupViaLegacyWS(parseFloat(document.getElementById('topupAmount')?.value || 10000)); }
 function authorizeToken(){
   const token = document.getElementById('apiToken')?.value || G.TOKEN;
   if(!token){ log('[AUTH] Enter token','e'); return; }
