@@ -304,6 +304,24 @@ body{padding:6px 8px 60px;max-width:600px;margin:0 auto}
         <div><span style="color:var(--muted);">Loss</span><div id="dDLoss" style="color:var(--red);font-weight:700;">$0</div></div>
       </div>
     </div>
+
+    <!-- ===== MARKET SELECTION ===== -->
+    <div class="card" style="margin-bottom:4px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <h3 style="margin:0">Market Selection</h3>
+        <div id="modeIndicator"><span class="dot y"></span>Auto mode</div>
+      </div>
+      <div style="display:flex;gap:3px;margin-bottom:4px;">
+        <button id="modeAutoBtn" class="btn btn-success" onclick="setSelectionMode('auto')" style="font-size:8px;padding:4px;flex:1;">AUTO</button>
+        <button id="modeManualBtn" class="btn" onclick="setSelectionMode('manual')" style="font-size:8px;padding:4px;flex:1;">MANUAL</button>
+      </div>
+      <div id="modeTargetMarket" style="font-size:9px;color:var(--muted);margin-bottom:4px;text-align:center;">—</div>
+      <div id="watchlistBody" style="max-height:180px;overflow-y:auto;"></div>
+      <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:8px;color:var(--muted);">
+        <span id="watchConsensus" class="signal-pill none">NONE</span>
+        <span id="watchTopMarket" style="color:var(--dim);">—</span>
+      </div>
+    </div>
   </div>
 
   <!-- ===== ENGINE SECTION: DIGITS ===== -->
@@ -445,7 +463,7 @@ const G = {
   WINS:0, LOSSES:0, CONS_LOSS:0, PNL:0, TRADES:0,
   MARKET:{ candles:{}, prices:{}, tickSubs:{}, tickBuf:{}, candleOpenAt:{}, lastCloseAt:{}, subOk:{} },
   CURRENT_MARKET:'R_50',
-  MARKET_SELECTION_MODE:'manual',
+  MARKET_SELECTION_MODE:'auto',
   SELECTED_MARKET:'R_50',
   DAILY:{ pnl:0, trades:0, hourTrades:[], date:'' },
   CONS_LOSS_COOLDOWN:0,
@@ -459,16 +477,16 @@ const G = {
   // revPenalty: penalty for fighting trend (lighter on high vol)
   // bestStrat: the single highest-WR signal for this market
   MARKET_STATS:{
-    '1HZ100V':{ avgRangePct:0.0882, rangeP25:0.0634, rangeP50:0.0828, rangeP75:0.1086, upPct:52.1, vol:'high', minConf:67, revPenalty:5, bestStrat:'REV+BB, RSI_DIV, HAM' },
-    '1HZ75V': { avgRangePct:0.0664, rangeP25:0.0461, rangeP50:0.0620, rangeP75:0.0804, upPct:50.0, vol:'high', minConf:67, revPenalty:8, bestStrat:'CEX, MACDX, CCI_REV' },
-    '1HZ50V': { avgRangePct:0.0438, rangeP25:0.0315, rangeP50:0.0409, rangeP75:0.0529, upPct:47.8, vol:'mid',  minConf:70, revPenalty:10, bestStrat:'RB, HAM, EXH' },
-    '1HZ25V': { avgRangePct:0.0216, rangeP25:0.0160, rangeP50:0.0202, rangeP75:0.0258, upPct:48.5, vol:'mid',  minConf:70, revPenalty:12, bestStrat:'SRE, MACDX, BB_UP' },
-    '1HZ10V': { avgRangePct:0.0088, rangeP25:0.0063, rangeP50:0.0084, rangeP75:0.0107, upPct:48.8, vol:'low',  minConf:75, revPenalty:15, bestStrat:'MACDX, BB_BOUNCE, FKT' },
-    'R_100':  { avgRangePct:0.0770, rangeP25:0.0540, rangeP50:0.0732, rangeP75:0.0964, upPct:49.1, vol:'high', minConf:67, revPenalty:5, bestStrat:'CEX, EXH, SRE, BB_UP' },
-    'R_75':   { avgRangePct:0.0570, rangeP25:0.0406, rangeP50:0.0526, rangeP75:0.0690, upPct:51.0, vol:'high', minConf:67, revPenalty:8, bestStrat:'HAM, SRE, FKT, BB_BOUNCE' },
-    'R_50':   { avgRangePct:0.0384, rangeP25:0.0263, rangeP50:0.0357, rangeP75:0.0482, upPct:50.0, vol:'mid',  minConf:70, revPenalty:10, bestStrat:'FKT, ENG, BB_WALK' },
-    'R_25':   { avgRangePct:0.0195, rangeP25:0.0139, rangeP50:0.0182, rangeP75:0.0238, upPct:48.9, vol:'mid',  minConf:70, revPenalty:12, bestStrat:'HAM, FKT, ENG, RB' },
-    'R_10':   { avgRangePct:0.0076, rangeP25:0.0052, rangeP50:0.0070, rangeP75:0.0093, upPct:50.5, vol:'low',  minConf:75, revPenalty:15, bestStrat:'CEX, RSI_GREEN, RB, RSI_DIV' },
+    '1HZ100V':{ avgRangePct:0.0882, rangeP25:0.0634, rangeP50:0.0828, rangeP75:0.1086, upPct:52.1, vol:'high', minConf:55, revPenalty:5, bestStrat:'FKT, CEX, SRE' },
+    '1HZ75V': { avgRangePct:0.0664, rangeP25:0.0461, rangeP50:0.0620, rangeP75:0.0804, upPct:50.0, vol:'high', minConf:55, revPenalty:8, bestStrat:'MACDX, FKT, RSIX' },
+    '1HZ50V': { avgRangePct:0.0438, rangeP25:0.0315, rangeP50:0.0409, rangeP75:0.0529, upPct:47.8, vol:'mid',  minConf:55, revPenalty:10, bestStrat:'SRE, RSIX, HAM' },
+    '1HZ25V': { avgRangePct:0.0216, rangeP25:0.0160, rangeP50:0.0202, rangeP75:0.0258, upPct:48.5, vol:'mid',  minConf:55, revPenalty:12, bestStrat:'MACDX, CEX, HAM' },
+    '1HZ10V': { avgRangePct:0.0088, rangeP25:0.0063, rangeP50:0.0084, rangeP75:0.0107, upPct:48.8, vol:'low',  minConf:55, revPenalty:15, bestStrat:'MACDX, FKT, RB' },
+    'R_100':  { avgRangePct:0.0770, rangeP25:0.0540, rangeP50:0.0732, rangeP75:0.0964, upPct:49.1, vol:'high', minConf:55, revPenalty:5, bestStrat:'FKT, SRE, EXH' },
+    'R_75':   { avgRangePct:0.0570, rangeP25:0.0406, rangeP50:0.0526, rangeP75:0.0690, upPct:51.0, vol:'high', minConf:55, revPenalty:8, bestStrat:'CEX, RSIX, MACDX' },
+    'R_50':   { avgRangePct:0.0384, rangeP25:0.0263, rangeP50:0.0357, rangeP75:0.0482, upPct:50.0, vol:'mid',  minConf:55, revPenalty:10, bestStrat:'RB, MACDX, EXH' },
+    'R_25':   { avgRangePct:0.0195, rangeP25:0.0139, rangeP50:0.0182, rangeP75:0.0238, upPct:48.9, vol:'mid',  minConf:55, revPenalty:12, bestStrat:'ENG, FKT, SRE' },
+    'R_10':   { avgRangePct:0.0076, rangeP25:0.0052, rangeP50:0.0070, rangeP75:0.0093, upPct:50.5, vol:'low',  minConf:55, revPenalty:15, bestStrat:'EXH, MACDX, HAM' },
   },
   MAX_SIGNAL_LATENCY_MS:4000, // 4s window after candle close (26% of 15s candles)
   BREAKEVEN_ENABLED:true,
@@ -1477,21 +1495,40 @@ function handleOhlc(data){
   return;
 }
 
-function evaluateAndTrade(sym){
-  try {
-  if(sym===G.CURRENT_MARKET) drawChart();
-  if(G.TRADE_MODE==='DIGITS') return;
-  if(!G.RUNNING) return;
-  if(G.MARKET_SELECTION_MODE==='manual' && sym!==G.SELECTED_MARKET) return;
-  if(G.TRADE_LOCK || G.ACTIVE_CONTRACTS.size >= 1) return;
+function evaluateSingleMarket(sym){
+  // Evaluate ONE market, return {action, conf, src} or null
   const c = G.MARKET.candles[sym];
-  if(!c || c.length < 14) return;
-  // ---- Market-specific parameters ----
-  const ms = G.MARKET_STATS[sym] || { avgRangePct:0.05, rangeP50:0.04, upPct:50, vol:'mid', minConf:72, revPenalty:10 };
-  // ---- Consecutive-candle reversal check (data-proven: 60%+ on high vol only) ----
+  if(!c || c.length < 14) return null;
+  const ms = G.MARKET_STATS[sym] || { avgRangePct:0.05, rangeP50:0.04, upPct:50, vol:'mid', minConf:55, revPenalty:10 };
+  // Trend context
+  const c4 = c.slice(-5, -1);
+  if(c4.length < 4) return null;
+  const trendPct = ((c4[3].close - c4[0].close) / c4[0].close) * 100;
+  const trendDir = trendPct > 0.05 ? 'UP' : trendPct < -0.05 ? 'DOWN' : 'FLAT';
+  // Evaluate strategies
+  let riseCount = 0, fallCount = 0, bestSignal = null, bestConf = 0;
+  for(let i = 0; i < G.STRATEGIES.length; i++){
+    if(!G.STRATEGY_ACTIVE[i]) continue;
+    try {
+      const signal = G.STRATEGIES[i].analyze(c);
+      if(!signal) continue;
+      let effectiveConf = signal.conf;
+      if(trendDir === 'UP' && signal.action === 'RISE') effectiveConf -= ms.revPenalty;
+      else if(trendDir === 'DOWN' && signal.action === 'FALL') effectiveConf -= ms.revPenalty;
+      else if(trendDir === 'UP' && signal.action === 'FALL') effectiveConf += 8;
+      else if(trendDir === 'DOWN' && signal.action === 'RISE') effectiveConf += 8;
+      const isReversal = (trendDir !== 'FLAT' &&
+        ((signal.action === 'RISE' && trendDir === 'DOWN') || (signal.action === 'FALL' && trendDir === 'UP')));
+      const minConf = ms.minConf || 55;
+      if(effectiveConf < minConf) continue;
+      if(signal.action === 'RISE') riseCount++;
+      else fallCount++;
+      if(effectiveConf > bestConf){ bestConf = effectiveConf; bestSignal = { ...signal, conf:effectiveConf }; }
+    } catch(e){}
+  }
+  // Consecutive-candle reversal (high vol only)
   let revSignal = null;
   if(ms.vol === 'high'){
-    // Check longest streak first (higher winrate per data)
     for(let streak = 5; streak >= 3; streak--){
       if(c.length < streak + 2) continue;
       let allUp = true, allDown = true;
@@ -1510,56 +1547,45 @@ function evaluateAndTrade(sym){
       }
     }
   }
-  // ---- Trend context: net move over last 4 candles (1 minute) ----
-  const c4 = c.slice(-5, -1);
-  const trendPct = ((c4[3].close - c4[0].close) / c4[0].close) * 100;
-  const trendDir = trendPct > 0.05 ? 'UP' : trendPct < -0.05 ? 'DOWN' : 'FLAT';
-  // ---- Market-specific range gate ----
-  const lastCandle = c[c.length-1];
-  const rangePct = lastCandle ? (lastCandle.high - lastCandle.low) / ((lastCandle.high + lastCandle.low) / 2) * 100 : 0;
-  const minRange = ms.vol === 'high' ? 0.01 : ms.vol === 'low' ? 0.005 : 0.015;
-  if(rangePct < minRange) return;
-  // ---- Evaluate ALL strategies, collect consensus ----
-  let riseCount = 0, fallCount = 0;
-  let bestSignal = null, bestConf = 0;
-  for(let i = 0; i < G.STRATEGIES.length; i++){
-    if(!G.STRATEGY_ACTIVE[i]) continue;
-    try {
-      const signal = G.STRATEGIES[i].analyze(c);
-      if(!signal) continue;
-      // Market-adjusted trend penalty/boost
-      let effectiveConf = signal.conf;
-      if(trendDir === 'UP' && signal.action === 'RISE') effectiveConf -= ms.revPenalty;
-      else if(trendDir === 'DOWN' && signal.action === 'FALL') effectiveConf -= ms.revPenalty;
-      else if(trendDir === 'UP' && signal.action === 'FALL') effectiveConf += 8;
-      else if(trendDir === 'DOWN' && signal.action === 'RISE') effectiveConf += 8;
-      // Market-specific minimum confidence
-      const isReversal = (trendDir !== 'FLAT' &&
-        ((signal.action === 'RISE' && trendDir === 'DOWN') || (signal.action === 'FALL' && trendDir === 'UP')));
-      const minConf = isReversal ? ms.minConf : ms.minConf + 5;
-      if(effectiveConf < minConf) continue;
-      if(signal.action === 'RISE') riseCount++;
-      else fallCount++;
-      if(effectiveConf > bestConf){ bestConf = effectiveConf; bestSignal = signal; }
-    } catch(e) {
-      log(`[STRAT] ${G.STRATEGIES[i].code}: ${e.message}`,'e');
-    }
-  }
-  // ---- Consensus: strategies OR consecutive-candle reversal ----
-  let consensus = riseCount >= 2 || fallCount >= 2;
+  // Pick best signal
   let useSignal = bestSignal;
-  // Include reversal signal if it beats best strategy
-  if(revSignal && (!bestSignal || revSignal.conf >= bestConf)){
-    useSignal = revSignal;
-    bestConf = revSignal.conf;
-    consensus = true;
-  }
-  // Single strong strategy (≥90) also counts
-  if(bestSignal && bestConf >= 90 && !consensus) consensus = true;
-  if(consensus && useSignal){
-    log(`[SIGNAL] ${sym}: ${useSignal.action} ${bestConf}% · ${riseCount}R ${fallCount}F · ${useSignal.src} [${trendDir}] ${ms.vol}`,'t');
-    G.CURRENT_MARKET = sym;
-    execTrade(useSignal, sym);
+  if(revSignal && (!bestSignal || revSignal.conf >= bestConf)) useSignal = revSignal;
+  if(!useSignal) return null;
+  const total = riseCount + fallCount;
+  // Trade if: consensus (2+ same dir) OR single strong (>=70)
+  const consensus = (riseCount >= 2 || fallCount >= 2) || (useSignal.conf >= 70 && total >= 1);
+  if(!consensus) return null;
+  return { ...useSignal, sym, riseCount, fallCount, trendDir, vol:ms.vol };
+}
+
+function evaluateAndTrade(sym){
+  try {
+  if(sym===G.CURRENT_MARKET) drawChart();
+  if(G.TRADE_MODE==='DIGITS') return;
+  if(!G.RUNNING) return;
+  if(G.TRADE_LOCK || G.ACTIVE_CONTRACTS.size >= 1) return;
+  if(G.MARKET_SELECTION_MODE==='manual'){
+    if(sym!==G.SELECTED_MARKET) return;
+    const result = evaluateSingleMarket(sym);
+    if(result){
+      log(`[SIGNAL] ${result.sym}: ${result.action} ${result.conf}% · ${result.riseCount}R ${result.fallCount}F · ${result.src} [${result.trendDir}] ${result.vol}`,'t');
+      G.CURRENT_MARKET = result.sym;
+      execTrade(result, result.sym);
+    }
+  } else {
+    // AUTO MODE: scan ALL markets for strongest signal
+    let best = null;
+    for(const s of SYMBOLS){
+      const r = evaluateSingleMarket(s.sym);
+      if(r && (!best || r.conf > best.conf || (r.conf === best.conf && r.riseCount + r.fallCount > best.riseCount + best.fallCount))) best = r;
+    }
+    if(best){
+      log(`[AUTO] ${best.sym}: ${best.action} ${best.conf}% · ${best.src} · ${best.riseCount}R ${best.fallCount}F [${best.trendDir}] ${best.vol}`,'t');
+      G.CURRENT_MARKET = best.sym;
+      G.SELECTED_MARKET = best.sym;
+      execTrade(best, best.sym);
+      updateWatchlist();
+    }
   }
   } catch(e){ log(`[CRASH] evaluateAndTrade: ${e.message}`,'e'); console.error(e); }
 }
@@ -1898,18 +1924,19 @@ function updateWatchlist(){
   const html = SYMBOLS.map(s=>{
     const c = G.MARKET.candles[s.sym] || [];
     const price = c.length? c[c.length-1].close.toFixed(3) : '—';
-    let sigTxt='—', sigCls='sig-none', sig=null;
-    if(c.length>=20){
-      sig = getConsensus(s.sym);
-      if(sig){ sigTxt = `${sig.action} ${sig.conf}%`;
-        sigCls = sig.action==='RISE'?'sig-rise':'sig-fall';
-        if(sig.action==='RISE') rise++; else fall++; }
+    let sigTxt='—', sigCls='sig-none';
+    const sig = evaluateSingleMarket(s.sym);
+    if(sig){
+      sigTxt = `${sig.action} ${sig.conf}%`;
+      sigCls = sig.action==='RISE'?'sig-rise':'sig-fall';
+      if(sig.action==='RISE') rise++; else fall++;
     }
     const selCls = s.sym===G.CURRENT_MARKET ? 'selected':'';
+    const src = sig ? sig.src : '—';
     return `<div class="watch-item ${selCls}" onclick="selectMarket('${s.sym}')">
       <div>
         <div class="sym">${s.name} <span style="font-size:10px;color:var(--muted);font-weight:500;">${s.sym}</span></div>
-        <div style="font-size:10px;color:var(--muted);margin-top:2px;">${c.length} candles · 15s</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px;">${c.length} candles · ${src}</div>
       </div>
       <div style="text-align:right;">
         <div class="price">${price}</div>
@@ -1923,17 +1950,9 @@ function updateWatchlist(){
   if(total===0){ pill.className='signal-pill none'; pill.textContent='NONE'; }
   else if(rise>fall){ pill.className='signal-pill rise'; pill.textContent=`RISE ${rise}/${SYMBOLS.length}`; }
   else { pill.className='signal-pill fall'; pill.textContent=`FALL ${fall}/${SYMBOLS.length}`; }
-  // strongest reversal: highest |z-score|
-  let topName='—', topVal=0;
-  SYMBOLS.forEach(s=>{
-    const c = G.MARKET.candles[s.sym] || [];
-    if(c.length<22) return;
-    const cl = closes(c); const m=sma(cl,20); const sd=stddev(cl,20);
-    if(m===null||!sd) return;
-    const z = Math.abs((cl[cl.length-1]-m)/sd);
-    if(z>topVal){ topVal=z; topName=s.name; }
-  });
-  document.getElementById('watchTopMarket').textContent = topName + (topVal>0?` (z=${topVal.toFixed(2)})`:'');
+  // Best market: current signal
+  const topSig = evaluateSingleMarket(G.CURRENT_MARKET);
+  document.getElementById('watchTopMarket').textContent = topSig ? `${G.CURRENT_MARKET}: ${topSig.action} ${topSig.conf}%` : '—';
 }
 
 function selectMarket(sym){
@@ -1950,31 +1969,29 @@ function setSelectionMode(mode){
   const manualBtn = document.getElementById('modeManualBtn');
   const autoBtn = document.getElementById('modeAutoBtn');
   if(mode==='manual'){
-    manualBtn.style.background = 'var(--green)';
-    manualBtn.style.color = '#fff';
-    autoBtn.style.background = 'var(--surface-2)';
-    autoBtn.style.color = 'var(--dim)';
-    log(`[MODE] Manual selection — trading only ${G.SELECTED_MARKET}`,'s');
+    manualBtn.className = 'btn btn-success';
+    autoBtn.className = 'btn';
   } else {
-    autoBtn.style.background = 'var(--green)';
-    autoBtn.style.color = '#fff';
-    manualBtn.style.background = 'var(--surface-2)';
-    manualBtn.style.color = 'var(--dim)';
-    log('[MODE] Auto — trading any market with signal','i');
+    autoBtn.className = 'btn btn-success';
+    manualBtn.className = 'btn';
   }
   updateModeUI();
+  updateWatchlist();
+  log(`[MODE] ${mode==='manual'?'Manual — trading only '+G.SELECTED_MARKET:'Auto — scanning all markets'}`,'i');
 }
 
 function updateModeUI(){
   const indicator = document.getElementById('modeIndicator');
-  if(!indicator) return;
   const target = document.getElementById('modeTargetMarket');
-  if(!target) return;
   const symInfo = SYMBOLS.find(s=>s.sym===G.SELECTED_MARKET);
-  target.textContent = symInfo ? `${symInfo.name} (${G.SELECTED_MARKET})` : G.SELECTED_MARKET;
-  indicator.innerHTML = G.MARKET_SELECTION_MODE==='manual'
-    ? `<span class="dot g"></span>Trading only: <b style="color:var(--green);">${target.textContent}</b>`
-    : `<span class="dot y"></span>Auto mode: <b style="color:var(--warn);">any market with signal</b>`;
+  if(target) target.textContent = symInfo ? `${symInfo.name} (${G.SELECTED_MARKET})` : G.SELECTED_MARKET;
+  if(indicator){
+    if(G.MARKET_SELECTION_MODE==='manual'){
+      indicator.innerHTML = `<span class="dot g"></span>Manual: ${G.SELECTED_MARKET}`;
+    } else {
+      indicator.innerHTML = `<span class="dot y"></span>Auto mode`;
+    }
+  }
 }
 
 // ============================================================
@@ -2379,7 +2396,10 @@ document.addEventListener('DOMContentLoaded', () => {
     log(`[FATAL] ${msg} (${line}:${col})`,'e');
   };
   // Init market selection mode UI
+  setSelectionMode(G.MARKET_SELECTION_MODE);
+  updateWatchlist();
   setInterval(updateDash, 2000);
+  setInterval(updateWatchlist, 3000);
 });
 </script>
 </body>
