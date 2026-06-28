@@ -222,6 +222,7 @@ body{padding:6px 8px 60px;max-width:600px;margin:0 auto}
 <script>setTimeout(()=>{const s=document.getElementById('splash');if(s)s.remove()},10000);</script>
 <div id="app">
 
+
   <!-- ===== HEADER ===== -->
   <div class="hdr">
     <div style="display:flex;align-items:center;gap:6px;">
@@ -270,56 +271,54 @@ body{padding:6px 8px 60px;max-width:600px;margin:0 auto}
     <div style="display:none;">
       <input type="number" id="tStake" value="1.00" step="0.01">
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
-      <input type="text" id="tgToken" placeholder="Telegram bot token" class="inp" style="font-size:9px;padding:3px 5px;" value="" onchange="G.TELEGRAM_BOT_TOKEN=this.value;saveState()">
-      <input type="text" id="tgChatId" placeholder="Telegram chat ID" class="inp" style="font-size:9px;padding:3px 5px;" value="" onchange="G.TELEGRAM_CHAT_ID=this.value;saveState()">
+    <div style="display:none;">
+      <input type="text" id="tgToken"><input type="text" id="tgChatId">
     </div>
   </div>
 
-  <!-- ===== STRATEGIES (always visible, R/F only) ===== -->
-  <details id="rfStratDetails" style="margin-bottom:4px;">
-    <summary style="font-size:8px;color:var(--muted);cursor:pointer;letter-spacing:.6px;text-transform:uppercase;padding:2px 0;">Strategies</summary>
-    <div id="rfStratList" style="font-size:9px;color:var(--muted);"></div>
-  </details>
+  <!-- ===== STRATEGY DROPDOWN (R/F only) ===== -->
+  <div id="rfStratRow" style="display:none;margin-bottom:4px;">
+    <div class="card" style="padding:6px 8px;">
+      <div style="display:flex;gap:4px;align-items:center;">
+        <span style="font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;font-weight:600;">Strategy</span>
+        <select id="rfStratSelect" class="sel" style="font-size:10px;padding:3px 5px;flex:1;">
+          <option value="MACDX">MACD Flip+Signal</option>
+          <option value="FKT">Fakeout Trap</option>
+          <option value="SRE">Streak+RSI</option>
+          <option value="CEX">Contraction-Expansion</option>
+        </select>
+        <span style="font-size:8px;color:var(--muted);font-weight:600;letter-spacing:.4px;">MODE</span>
+        <select id="modeSelect" class="sel" style="font-size:10px;padding:3px 5px;width:auto;" onchange="setSelectionMode(this.value)">
+          <option value="auto">AUTO</option>
+          <option value="manual">MANUAL</option>
+        </select>
+      </div>
+    </div>
+  </div>
 
   <!-- ===== ENGINE SECTION: RISE/FALL ===== -->
   <div id="rfSection">
-    <div class="card" style="margin-bottom:4px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <h3 style="margin:0;">RISE/FALL Engine</h3>
-        <div id="rfStatus"><span class="blink-dot gray"></span>STOP</div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px;">
-        <div class="field"><label>Stake ($)</label><input class="inp" id="rfStake" type="number" value="1" min="0.5" step="0.5" style="font-size:10px;padding:4px 6px;"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;">
-          <button id="rfStartBtn" class="btn btn-primary" onclick="startRF()" style="font-size:8px;padding:4px;">▶ RUN</button>
-          <button id="rfStopBtn" class="btn btn-danger" onclick="stopRF()" disabled style="font-size:8px;padding:4px;">■ STOP</button>
+    <div class="card" style="margin-bottom:4px;padding:8px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <input class="inp" id="rfStake" type="number" value="1" min="0.5" step="0.5" style="width:60px;font-size:10px;padding:3px 5px;">
+          <div id="rfStatus"><span class="blink-dot gray"></span></div>
+        </div>
+        <div style="display:flex;gap:3px;">
+          <button id="rfStartBtn" class="btn btn-primary" onclick="startRF()" style="font-size:9px;padding:4px 10px;">▶</button>
+          <button id="rfStopBtn" class="btn btn-danger" onclick="stopRF()" disabled style="font-size:9px;padding:4px 10px;">■</button>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;font-size:9px;">
-        <div><span style="color:var(--muted);">Signal</span><div id="dashSignal" style="font-weight:700;font-size:11px;">—</div></div>
-        <div><span style="color:var(--muted);">Strategy</span><div id="dashStrategy" style="font-weight:700;font-size:10px;">—</div></div>
-        <div><span style="color:var(--muted);">Target</span><div id="dDTarget" style="color:var(--green);font-weight:700;">$0</div></div>
-        <div><span style="color:var(--muted);">Loss</span><div id="dDLoss" style="color:var(--red);font-weight:700;">$0</div></div>
+      <div style="display:flex;gap:8px;font-size:10px;">
+        <span id="dashSignal" style="font-weight:700;">—</span>
+        <span id="dashStrategy" style="color:var(--muted);">—</span>
+        <span id="dashTarget" style="color:var(--green);">T:$0</span>
+        <span id="dashLoss" style="color:var(--red);">L:$0</span>
+        <span id="modeTargetMarket" style="color:var(--dim);flex:1;text-align:right;"></span>
       </div>
     </div>
-
-    <!-- ===== MARKET SELECTION ===== -->
-    <div class="card" style="margin-bottom:4px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-        <h3 style="margin:0">Market Selection</h3>
-        <div id="modeIndicator"><span class="dot y"></span>Auto mode</div>
-      </div>
-      <div style="display:flex;gap:3px;margin-bottom:4px;">
-        <button id="modeAutoBtn" class="btn btn-success" onclick="setSelectionMode('auto')" style="font-size:8px;padding:4px;flex:1;">AUTO</button>
-        <button id="modeManualBtn" class="btn" onclick="setSelectionMode('manual')" style="font-size:8px;padding:4px;flex:1;">MANUAL</button>
-      </div>
-      <div id="modeTargetMarket" style="font-size:9px;color:var(--muted);margin-bottom:4px;text-align:center;">—</div>
-      <div id="watchlistBody" style="max-height:180px;overflow-y:auto;"></div>
-      <div style="display:flex;justify-content:space-between;margin-top:3px;font-size:8px;color:var(--muted);">
-        <span id="watchConsensus" class="signal-pill none">NONE</span>
-        <span id="watchTopMarket" style="color:var(--dim);">—</span>
-      </div>
+    <div class="card" style="margin-bottom:4px;padding:4px 6px;">
+      <div id="watchlistBody" style="max-height:150px;overflow-y:auto;"></div>
     </div>
   </div>
 
@@ -394,11 +393,21 @@ body{padding:6px 8px 60px;max-width:600px;margin:0 auto}
         </div>
       </div>
       <div class="dg-cell" style="margin-bottom:3px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;">
-          <div class="dg-anal-stat" style="flex-direction:column;align-items:center;"><span class="l">Ticks</span><span class="v">0</span></div>
-          <div class="dg-anal-stat" style="flex-direction:column;align-items:center;"><span class="l">Unique</span><span class="v">0</span></div>
-          <div class="dg-anal-stat" style="flex-direction:column;align-items:center;"><span class="l">Mode</span><span class="v">—</span></div>
-          <div class="dg-anal-stat" style="flex-direction:column;align-items:center;"><span class="l">Entropy</span><span class="v">—</span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;">
+          <div>
+            <div class="l" style="font-size:9px;">System</div>
+            <div style="display:flex;align-items:center;gap:4px;">
+              <span id="dgSysBadge" style="font-size:10px;font-weight:700;padding:1px 6px;border-radius:3px;">Oscar</span>
+              <span id="dgSysProg" style="font-size:9px;color:var(--muted);">—</span>
+            </div>
+          </div>
+          <div>
+            <div class="l" style="font-size:9px;">Streak</div>
+            <div style="display:flex;gap:4px;">
+              <span id="dgWinStreak" style="color:var(--green);font-weight:700;">W:0</span>
+              <span id="dgLossStreak" style="color:var(--red);font-weight:700;">L:0</span>
+            </div>
+          </div>
         </div>
       </div>
     </details>
@@ -485,7 +494,7 @@ const G = {
   HEARTBEAT:null, PING_TIMEOUT:null, RECONN:null, RECONN_ATT:0, RECONN_ACTIVE:false,
   STRATEGIES:[], STRATEGY_ACTIVE:[],
   WINS:0, LOSSES:0, CONS_LOSS:0, PNL:0, TRADES:0,
-  MARKET:{ candles:{}, prices:{}, tickSubs:{}, tickBuf:{}, candleOpenAt:{}, lastCloseAt:{}, subOk:{} },
+  MARKET:{ candles:{}, prices:{}, tickSubs:{}, tickBuf:{}, candleOpenAt:{}, lastCloseAt:{}, subOk:{}, cooldown:{} },
   CURRENT_MARKET:'R_50',
   MARKET_SELECTION_MODE:'auto',
   SELECTED_MARKET:'R_50',
@@ -517,8 +526,8 @@ const G = {
   TRADE_MODE:'DIGITS',        // 'RISEFALL' or 'DIGITS'
   DIGITS:{},                  // legacy placeholder (not used by digit engine)
   // Telegram configuration
-  TELEGRAM_BOT_TOKEN:'',
-  TELEGRAM_CHAT_ID:'',
+  TELEGRAM_BOT_TOKEN:'8903146940:AAHDEPeUaw_ihF9dTme3Hi0eS7Cv2MbzRyg',
+  TELEGRAM_CHAT_ID:'8363983871',
   SESSION_START_SENT:false,
   // Copytrading
   COPYTRADING_ENABLED:false,
@@ -559,6 +568,8 @@ const BotState = {
   martingaleMult: 2,
   totalWins: 0,
   totalLosses: 0,
+  winStreak: 0,
+  lossStreak: 0,
   lastAction: '',
   lastContractType: '',
   cyclePnL: 0
@@ -629,52 +640,7 @@ function initStrategies(){
   // Cross-market average probabilities
   G.DIGIT_AVG = {dou:{0:50,1:49,2:53,3:51,4:52,5:52,6:50,7:52,8:49,9:48},deo:{0:51,1:49,2:49,3:52,4:55,5:52,6:48,7:49,8:53,9:52},ou:{O:51,U:49},eo:{E:51,D:49},pou:{UU:51,UO:50,OO:51,OU:50},peo:{ED:49,DD:52,DE:54,EE:49}};
   G.STRATEGIES = [
-    // 1. RSI Extreme + Reversal Candle Confirmation
-    { name:'RSI Extreme + Confirm', code:'RSIX',
-      desc:'RSI extreme AND prior bar opposite-color AND current bar reversal close',
-      analyze:(c)=>{
-        if(c.length<17) return null;
-        const cl=closes(c); const r=rsi(cl,14); const rPrev=rsi(cl.slice(0,-1),14);
-        if(r===null||rPrev===null) return null;
-        const last=c[c.length-1], prev=c[c.length-2];
-        if(rPrev<=25 && r>rPrev && prev.close<prev.open && last.close>last.open && last.close>prev.close)
-          return { action:'RISE', conf:Math.min(96, 70+(25-rPrev)*1.6), src:'RSIX', strength:25-rPrev };
-        if(rPrev>=75 && r<rPrev && prev.close>prev.open && last.close<last.open && last.close<prev.close)
-          return { action:'FALL', conf:Math.min(96, 70+(rPrev-75)*1.6), src:'RSIX', strength:rPrev-75 };
-        return null;
-      } },
-    // 2. Bollinger 2.5sigma Snap-Back with Close-Inside Confirmation
-    { name:'BB 2.5sig Snap-Back', code:'BBX',
-      desc:'Prior bar pierces +/-2.5sig, current bar closes back inside with opposite color',
-      analyze:(c)=>{
-        if(c.length<22) return null;
-        const cl=closes(c); const m=sma(cl,20); const sd=stddev(cl,20);
-        if(m===null||!sd) return null;
-        const upper=m+2.5*sd, lower=m-2.5*sd;
-        const last=c[c.length-1], prev=c[c.length-2];
-        if(prev.low<=lower && last.close>lower && last.close>last.open && last.close>prev.close)
-          return { action:'RISE', conf:Math.min(95, 72+((lower-prev.low)/sd)*15), src:'BBX' };
-        if(prev.high>=upper && last.close<upper && last.close<last.open && last.close<prev.close)
-          return { action:'FALL', conf:Math.min(95, 72+((prev.high-upper)/sd)*15), src:'BBX' };
-        return null;
-      } },
-    // 3. Engulfing + Trend Filter + Body-Size Confirmation
-    { name:'Engulfing + Trend', code:'ENG',
-      desc:'Engulfing body >=1.6x prior, after >=3-bar opposing trend',
-      analyze:(c)=>{
-        if(c.length<7) return null;
-        const a=c[c.length-2], b=c[c.length-1];
-        const aBody=Math.abs(a.close-a.open), bBody=Math.abs(b.close-b.open);
-        if(aBody===0||bBody<aBody*1.6) return null;
-        const trendDown = c[c.length-5].close>c[c.length-2].close && c[c.length-4].close>c[c.length-3].close;
-        const trendUp   = c[c.length-5].close<c[c.length-2].close && c[c.length-4].close<c[c.length-3].close;
-        if(trendDown && a.close<a.open && b.close>b.open && b.close>=a.open && b.open<=a.close)
-          return { action:'RISE', conf:Math.min(94, 70+(bBody/aBody)*10), src:'ENG' };
-        if(trendUp && a.close>a.open && b.close<b.open && b.close<=a.open && b.open>=a.close)
-          return { action:'FALL', conf:Math.min(94, 70+(bBody/aBody)*10), src:'ENG' };
-        return null;
-      } },
-    // 4. MACD Histogram Zero-Cross + Signal Cross Confirmation
+    // 1. MACD Histogram Zero-Cross + Signal Cross Confirmation
     { name:'MACD Flip+Signal', code:'MACDX',
       desc:'Histogram flips sign AND MACD crosses 9-EMA signal line',
       analyze:(c)=>{
@@ -694,7 +660,7 @@ function initStrategies(){
           return { action:'FALL', conf:Math.min(92, 72+Math.abs(histNow-histPrev)*3000), src:'MACDX' };
         return null;
       } },
-    // 5. FAKEOUT TRAP REVERSAL — stop-run sweep detection
+    // 2. FAKEOUT TRAP REVERSAL — stop-run sweep detection
     { name:'Fakeout Trap Reversal', code:'FKT',
       desc:'Prior bar sweeps swing extreme and rejects, current bar confirms reversal',
       analyze:(c)=>{
@@ -714,7 +680,7 @@ function initStrategies(){
         }
         return null;
       } },
-    // 6. CONTRACTION EXPANSION — inside bar, then opposite-direction outside bar (62.7% cross-market)
+    // 4. CONTRACTION EXPANSION — inside bar, then opposite-direction outside bar
     { name:'Contraction-Expansion', code:'CEX',
       desc:'Inside bar, then breakout bar closes opposite side of inside range',
       analyze:(c)=>{
@@ -761,7 +727,7 @@ function initStrategies(){
         }
         return null;
       } },
-    // 9. STREAK + RSI EXTREME — 3-streak with overbought/oversold RSI
+    // 3. STREAK + RSI EXTREME — 3-streak with overbought/oversold RSI
     { name:'Streak+RSI Extreme', code:'SRE',
       desc:'3 consecutive same-direction candles AND RSI>=70 or <=30',
       analyze:(c)=>{
@@ -774,22 +740,6 @@ function initStrategies(){
         if(dn3 && r<=30) return { action:'RISE', conf:Math.min(95, 78+(30-r)*0.8), src:'SRE' };
         return null;
       } },
-    // 10. RANGE BOUNCE — price at extreme of 20-bar range, reversal candle
-    { name:'Range Bounce', code:'RB',
-      desc:'Price in bottom/top 10% of 20-bar range with confirming reversal candle',
-      analyze:(c)=>{
-        if(c.length<22) return null;
-        const last=c[c.length-1];
-        const high20=Math.max(...c.slice(-21,-1).map(x=>x.high));
-        const low20=Math.min(...c.slice(-21,-1).map(x=>x.low));
-        const range=high20-low20; if(range===0) return null;
-        const pos=(last.close-low20)/range;
-        if(pos<=0.10 && last.close>last.open && last.close>c[c.length-2].close)
-          return { action:'RISE', conf:Math.min(92, 72+(0.10-pos)*100), src:'RB' };
-        if(pos>=0.90 && last.close<last.open && last.close<c[c.length-2].close)
-          return { action:'FALL', conf:Math.min(92, 72+(pos-0.90)*100), src:'RB' };
-        return null;
-      } }
   ];
   G.STRATEGY_ACTIVE = G.STRATEGIES.map(()=>true);
 }
@@ -864,49 +814,73 @@ function setDigitContract(type){
   else { if(label)label.textContent='Even/Odd'; if(desc)desc.textContent='4 same-parity → switch'; }
 }
 
+function digitChiSq(hist){
+  // Chi-square test: are digits uniformly distributed?
+  if(hist.length < 50) return 0;
+  const freq=Array(10).fill(0); for(const d of hist) freq[d]++;
+  const exp = hist.length/10; let cs=0;
+  for(let i=0;i<10;i++) cs += (freq[i]-exp)*(freq[i]-exp)/exp;
+  return cs;
+}
+function digitRunTest(hist){
+  // Runs test: are digit movements random?
+  if(hist.length<30) return 0;
+  let runs=1, up=null; const n1=hist.filter(d=>d>=5).length, n2=hist.length-n1;
+  for(let i=1;i<hist.length;i++){
+    const d = hist[i] > hist[i-1] ? 1 : hist[i] < hist[i-1] ? -1 : 0;
+    if(up!==null && d!==0 && d!==up) runs++;
+    if(d!==0) up=d;
+  }
+  const expR = 1+(2*n1*n2)/(n1+n2);
+  return (runs - expR) / Math.sqrt(2*n1*n2*(2*n1*n2-n1-n2)/((n1+n2)*(n1+n2)*(n1+n2-1)));
+}
 function evaluateDigitStrategies(sym){
   if(BotState.contractActive) return;
   if(!G.WS||G.WS.readyState!==WebSocket.OPEN) return;
   const q = BotState.tickQueue;
   if(q.length < 2) return;
+  const hist = BotState.tickHistory;
+  // Statistical gates: need sufficient history AND non-uniform distribution
+  const chiSq = digitChiSq(hist);
+  if(hist.length < 50 || chiSq < 16.92) return; // p<0.05 required (9 d.f.)
   BotState.lastAction = '';
   BotState.lastContractType = '';
   const ct = BotState.contractType;
-  // Load market-specific or fallback probabilities
   const probs = G.DIGIT_PROBS[sym] || G.DIGIT_AVG;
   const curr = q[q.length-1];
   const prev = q.length >= 2 ? q[q.length-2] : curr;
-  // Clamp probability to [50, 100] for edge calculations (below 50 = flip direction)
   const edge = function(p, dir){
     if(dir === 'OVER' || dir === 'EVEN') return p >= 50 ? p : 100-p;
     return p < 50 ? 100-p : p;
   };
+  // Live-tick bias from actual history (last 100 ticks)
+  const recent = hist.slice(-100);
+  const recentFreq=Array(10).fill(0); for(const d of recent) recentFreq[d]++;
+  const liveOv = recent.filter(d=>d>5).length / recent.length * 100;
+  const liveEv = recent.filter(d=>d%2===0).length / recent.length * 100;
   if(ct === 'OU'){
-    // Multi-factor Over/Under model
-    // Factor 1: current digit -> next over probability
     const f1 = probs.dou && probs.dou[curr] !== undefined ? (probs.dou[curr] >= 50 ? probs.dou[curr] : 100-probs.dou[curr]) : 50;
     const f1dir = probs.dou && probs.dou[curr] !== undefined ? (probs.dou[curr] >= 50 ? 'OVER' : 'UNDER') : 'OVER';
-    // Factor 2: current OU -> next OU probability
     const currOU = curr >= 5 ? 'O' : 'U';
     const f2 = probs.ou && probs.ou[currOU] !== undefined ? (probs.ou[currOU] >= 50 ? probs.ou[currOU] : 100-probs.ou[currOU]) : 50;
     const f2dir = probs.ou && probs.ou[currOU] !== undefined ? (probs.ou[currOU] >= 50 ? (currOU==='O'?'OVER':'UNDER') : (currOU==='O'?'UNDER':'OVER')) : 'OVER';
-    // Factor 3: last 2 OU sequence
     const prevOU = prev >= 5 ? 'O' : 'U';
     const pair = prevOU+currOU;
     const f3 = probs.pou && probs.pou[pair] !== undefined ? (probs.pou[pair] >= 50 ? probs.pou[pair] : 100-probs.pou[pair]) : 50;
     const f3dir = probs.pou && probs.pou[pair] !== undefined ? (probs.pou[pair] >= 50 ? 'OVER' : 'UNDER') : 'OVER';
-    // Weighted consensus
+    // Live data factor
+    const f4 = Math.max(liveOv, 100-liveOv);
+    const f4dir = liveOv >= 50 ? 'OVER' : 'UNDER';
     let overScore = 0, underScore = 0;
     const add = function(conf, dir){ if(dir==='OVER') overScore+=conf; else underScore+=conf; };
-    add(f1, f1dir); add(f2, f2dir); add(f3, f3dir);
+    add(f1, f1dir); add(f2*0.8, f2dir); add(f3*0.8, f3dir); add(f4*0.6, f4dir);
     const totalConf = overScore + underScore;
     if(totalConf > 0){
       const overPct = overScore / totalConf * 100;
-      if(overPct >= 58) placeDigitContract(sym, 'DIGITOVER', 5);
-      else if(overPct <= 42) placeDigitContract(sym, 'DIGITUNDER', 5);
+      if(overPct >= 62) placeDigitContract(sym, 'DIGITOVER', 5);
+      else if(overPct <= 38) placeDigitContract(sym, 'DIGITUNDER', 5);
     }
   } else if(ct === 'EO'){
-    // Multi-factor Even/Odd model
     const f1 = probs.deo && probs.deo[curr] !== undefined ? (probs.deo[curr] >= 50 ? probs.deo[curr] : 100-probs.deo[curr]) : 50;
     const f1dir = probs.deo && probs.deo[curr] !== undefined ? (probs.deo[curr] >= 50 ? 'EVEN' : 'ODD') : 'EVEN';
     const currEO = curr % 2 === 0 ? 'E' : 'D';
@@ -916,14 +890,17 @@ function evaluateDigitStrategies(sym){
     const pair = prevEO+currEO;
     const f3 = probs.peo && probs.peo[pair] !== undefined ? (probs.peo[pair] >= 50 ? probs.peo[pair] : 100-probs.peo[pair]) : 50;
     const f3dir = probs.peo && probs.peo[pair] !== undefined ? (probs.peo[pair] >= 50 ? 'EVEN' : 'ODD') : 'EVEN';
+    // Live data factor
+    const f4 = Math.max(liveEv, 100-liveEv);
+    const f4dir = liveEv >= 50 ? 'EVEN' : 'ODD';
     let evenScore = 0, oddScore = 0;
     const add = function(conf, dir){ if(dir==='EVEN') evenScore+=conf; else oddScore+=conf; };
-    add(f1, f1dir); add(f2, f2dir); add(f3, f3dir);
+    add(f1, f1dir); add(f2*0.8, f2dir); add(f3*0.8, f3dir); add(f4*0.6, f4dir);
     const totalConf = evenScore + oddScore;
     if(totalConf > 0){
       const evenPct = evenScore / totalConf * 100;
-      if(evenPct >= 58) placeDigitContract(sym, 'DIGITEVEN');
-      else if(evenPct <= 42) placeDigitContract(sym, 'DIGITODD');
+      if(evenPct >= 62) placeDigitContract(sym, 'DIGITEVEN');
+      else if(evenPct <= 38) placeDigitContract(sym, 'DIGITODD');
     }
   }
 }
@@ -963,7 +940,7 @@ function onDigitContractResolved(won, profit){
   BotState.contractActive = false;
   G.TRADE_LOCK = false;
   if(won){
-    BotState.totalWins++;
+    BotState.totalWins++; BotState.winStreak++; BotState.lossStreak=0;
     BotState.totalProfitLoss += profit;
     BotState.cyclePnL += profit;
     if(BotState.riskMode === 'martingale'){
@@ -983,7 +960,7 @@ function onDigitContractResolved(won, profit){
       }
     }
   } else {
-    BotState.totalLosses++;
+    BotState.totalLosses++; BotState.lossStreak++; BotState.winStreak=0;
     BotState.totalProfitLoss -= Math.abs(profit);
     BotState.sessionDeficit += Math.abs(profit);
     BotState.cyclePnL -= Math.abs(profit);
@@ -1496,16 +1473,20 @@ function handleTick(data){
   if(!G.MARKET.candles[sym]) G.MARKET.candles[sym]=[];
   if(!G.MARKET.tickBuf[sym]) G.MARKET.tickBuf[sym]=[];
   if(!G.MARKET.candleOpenAt[sym]) G.MARKET.candleOpenAt[sym]=epoch*1000;
+  if(!G.MARKET.cooldown[sym]) G.MARKET.cooldown[sym]=0;
   const buf = G.MARKET.tickBuf[sym];
   buf.push(price);
   const elapsed = (epoch*1000) - G.MARKET.candleOpenAt[sym];
   if(elapsed >= G.CANDLE_INTERVAL_MS){
-    // Close a 15-second candle
+    // Close a 15-second candle — validate quality
+    const info = SYMBOLS.find(x=>x.sym===sym);
+    const expectedTicks = info && info.cat==='VOL1S' ? 15 : 7; // 1s →~15, 2s →~7
+    const minTicks = Math.max(3, Math.round(expectedTicks * 0.6));
     const candle = {
       epoch,
-      open:  buf[0],
-      high:  Math.max(...buf),
-      low:   Math.min(...buf),
+      open:  buf[0]||price,
+      high:  buf.length ? Math.max(...buf) : price,
+      low:   buf.length ? Math.min(...buf) : price,
       close: price,
       ticks: buf.length
     };
@@ -1515,7 +1496,10 @@ function handleTick(data){
     G.MARKET.candleOpenAt[sym] = epoch*1000;
     G.MARKET.prices[sym] = G.MARKET.candles[sym].map(c=>c.close);
     G.MARKET.lastCloseAt[sym] = Date.now();
-    evaluateAndTrade(sym);
+    // Only trade if candle has enough ticks AND cooldown expired
+    if(candle.ticks >= minTicks && (Date.now() - G.MARKET.cooldown[sym]) > 20000){
+      evaluateAndTrade(sym);
+    }
   } else {
     if(sym===G.CURRENT_MARKET) drawChart(true);
   }
@@ -1531,37 +1515,36 @@ function handleOhlc(data){
   return;
 }
 
+function getActiveStratCode(){
+  const sel = document.getElementById('rfStratSelect');
+  return sel ? sel.value : 'MACDX';
+}
 function evaluateSingleMarket(sym){
-  // Evaluate ONE market, return {action, conf, src} or null
   const c = G.MARKET.candles[sym];
   if(!c || c.length < 14) return null;
   const ms = G.MARKET_STATS[sym] || { avgRangePct:0.05, rangeP50:0.04, upPct:50, vol:'mid', minConf:55, revPenalty:10 };
-  // Trend context
   const c4 = c.slice(-5, -1);
   if(c4.length < 4) return null;
   const trendPct = ((c4[3].close - c4[0].close) / c4[0].close) * 100;
   const trendDir = trendPct > 0.05 ? 'UP' : trendPct < -0.05 ? 'DOWN' : 'FLAT';
-  // Evaluate strategies
-  let riseCount = 0, fallCount = 0, bestSignal = null, bestConf = 0;
+  // Find selected strategy by code
+  const code = getActiveStratCode();
+  let signal = null;
+  let riseCount = 0, fallCount = 0;
   for(let i = 0; i < G.STRATEGIES.length; i++){
-    if(!G.STRATEGY_ACTIVE[i]) continue;
-    try {
-      const signal = G.STRATEGIES[i].analyze(c);
-      if(!signal) continue;
-      let effectiveConf = signal.conf;
-      if(trendDir === 'UP' && signal.action === 'RISE') effectiveConf -= ms.revPenalty;
-      else if(trendDir === 'DOWN' && signal.action === 'FALL') effectiveConf -= ms.revPenalty;
-      else if(trendDir === 'UP' && signal.action === 'FALL') effectiveConf += 8;
-      else if(trendDir === 'DOWN' && signal.action === 'RISE') effectiveConf += 8;
-      const isReversal = (trendDir !== 'FLAT' &&
-        ((signal.action === 'RISE' && trendDir === 'DOWN') || (signal.action === 'FALL' && trendDir === 'UP')));
-      const minConf = ms.minConf || 55;
-      if(effectiveConf < minConf) continue;
-      if(signal.action === 'RISE') riseCount++;
-      else fallCount++;
-      if(effectiveConf > bestConf){ bestConf = effectiveConf; bestSignal = { ...signal, conf:effectiveConf }; }
-    } catch(e){}
+    if(G.STRATEGIES[i].code !== code) continue;
+    try { signal = G.STRATEGIES[i].analyze(c); } catch(e){}
+    break;
   }
+  if(!signal) return null;
+  let effectiveConf = signal.conf;
+  if(trendDir === 'UP' && signal.action === 'RISE') effectiveConf -= ms.revPenalty;
+  else if(trendDir === 'DOWN' && signal.action === 'FALL') effectiveConf -= ms.revPenalty;
+  else if(trendDir === 'UP' && signal.action === 'FALL') effectiveConf += 8;
+  else if(trendDir === 'DOWN' && signal.action === 'RISE') effectiveConf += 8;
+  const minConf = ms.minConf || 55;
+  if(effectiveConf < minConf) return null;
+  if(signal.action === 'RISE') riseCount++; else fallCount++;
   // Consecutive-candle reversal (high vol only)
   let revSignal = null;
   if(ms.vol === 'high'){
@@ -1578,19 +1561,13 @@ function evaluateSingleMarket(sym){
         const reversing = (allUp && lastClose < prevClose) || (allDown && lastClose > prevClose);
         let conf = 72 + (streak - 2) * 6;
         if(reversing) conf += 8;
-        revSignal = { action:opp, conf:Math.min(95, conf), src:`REV${streak}` };
+        revSignal = { action:opp, conf:Math.min(95, conf), src:'REV'+streak };
         break;
       }
     }
   }
-  // Pick best signal
-  let useSignal = bestSignal;
-  if(revSignal && (!bestSignal || revSignal.conf >= bestConf)) useSignal = revSignal;
-  if(!useSignal) return null;
-  const total = riseCount + fallCount;
-  // Trade if: consensus (2+ same dir) OR single strong (>=70)
-  const consensus = (riseCount >= 2 || fallCount >= 2) || (useSignal.conf >= 70 && total >= 1);
-  if(!consensus) return null;
+  let useSignal = { ...signal, conf:effectiveConf };
+  if(revSignal && revSignal.conf > effectiveConf) useSignal = revSignal;
   return { ...useSignal, sym, riseCount, fallCount, trendDir, vol:ms.vol };
 }
 
@@ -2053,18 +2030,11 @@ function selectMarket(sym){
 
 function setSelectionMode(mode){
   G.MARKET_SELECTION_MODE = mode;
-  const manualBtn = document.getElementById('modeManualBtn');
-  const autoBtn = document.getElementById('modeAutoBtn');
-  if(mode==='manual'){
-    manualBtn.className = 'btn btn-success';
-    autoBtn.className = 'btn';
-  } else {
-    autoBtn.className = 'btn btn-success';
-    manualBtn.className = 'btn';
-  }
+  const sel = document.getElementById('modeSelect');
+  if(sel) sel.value = mode;
   updateModeUI();
   updateWatchlist();
-  log(`[MODE] ${mode==='manual'?'Manual — trading only '+G.SELECTED_MARKET:'Auto — scanning all markets'}`,'i');
+  log('[MODE] '+(mode==='manual'?'Manual — '+G.SELECTED_MARKET:'Auto — all markets'),'i');
 }
 
 function updateModeUI(){
@@ -2093,7 +2063,7 @@ function switchMode(mode){
   if(el) el.classList.add('active');
   document.getElementById('dgSection').style.display = mode==='DIGITS' ? 'block' : 'none';
   document.getElementById('rfSection').style.display = mode==='RISEFALL' ? 'block' : 'none';
-  document.getElementById('rfStratDetails').style.display = mode==='RISEFALL' ? 'block' : 'none';
+  document.getElementById('rfStratRow').style.display = mode==='RISEFALL' ? 'block' : 'none';
   document.getElementById('microSection').style.display = mode==='MICRO' ? 'block' : 'none';
   document.getElementById('hdrTitle').innerHTML = mode==='DIGITS'
     ? 'Digits Bot <span style="color:var(--blue);font-size:10px;font-weight:600;margin-left:4px;">1t</span>'
@@ -2197,7 +2167,7 @@ function updateDigitsUI(){
         + '</div>';
     }).join('');
   }
-  setText('dgDistRange', `Last ${histLen} ticks`);
+  setText('dgDistRange', 'Last '+histLen+' ticks');
   const dgMarket = get('dgMarketName');
   if(dgMarket){ const s = G.CURRENT_MARKET; const info = SYMBOLS.find(x=>x.sym===s); dgMarket.textContent = info?info.name+' ('+s+')':s; }
   setText('dgHottest', maxD>=0 ? `${maxD} (${(maxF/hTotal*100).toFixed(1)}%)` : '—');
@@ -2231,6 +2201,25 @@ function updateDigitsUI(){
   for(let i=0;i<10;i++){ if(modeFreq[i]>modeC){ modeC=modeFreq[i]; modeD=i; } }
   setText('dgATicks', String(histLen));
   setText('dgAMode', q.length && modeD>=0 ? `${modeD} (${((modeC/qLen)*100).toFixed(0)}%)` : '—');
+  // Chi-square test for uniformity
+  let chiSq = 0;
+  const expected = hTotal / 10;
+  if(expected > 0){
+    for(let i=0;i<10;i++) chiSq += (hfreq[i]-expected)*(hfreq[i]-expected)/expected;
+  }
+  const chiStr = hTotal>=50 ? (chiSq>16.92?'BIASED':'uniform') : 'insufficient';
+  // Runs test for randomness
+  let runs = 1, up = null;
+  for(let i=1;i<hist.length;i++){
+    const d = hist[i] > hist[i-1] ? 1 : hist[i] < hist[i-1] ? -1 : 0;
+    if(up !== null && d !== 0 && d !== up) runs++;
+    if(d !== 0) up = d;
+  }
+  const n1 = hist.filter(d=>d>=5).length, n2 = hist.length - n1;
+  const expRuns = 1 + (2*n1*n2)/(n1+n2);
+  const runStr = hist.length>=30 ? (runs < expRuns*0.85 ? 'CLUSTERED' : runs > expRuns*1.15 ? 'OSCILLATING' : 'random') : '—';
+  // Confidence indicator
+  setText('dgDistRange', 'Last '+histLen+' ticks · χ²='+chiSq.toFixed(1)+' ('+chiStr+') · runs='+runStr);
   // Risk mode display
   const riskToggle = document.getElementById('dgRiskToggle');
   const martRow = document.getElementById('dgMartMultRow');
@@ -2240,6 +2229,29 @@ function updateDigitsUI(){
     if(martRow) martRow.style.display = BotState.riskMode === 'martingale' ? 'block' : 'none';
     if(riskDesc) riskDesc.textContent = BotState.riskMode === 'oscar' ? "Oscar's Grind" : 'Martingale';
   }
+  // System badge & progression
+  const sysBadge = get('dgSysBadge');
+  if(sysBadge){
+    const isMart = BotState.riskMode === 'martingale';
+    sysBadge.textContent = isMart ? 'MART' : 'OSCAR';
+    sysBadge.style.background = isMart ? 'rgba(239,68,68,0.2)' : 'rgba(59,130,246,0.2)';
+    sysBadge.style.color = isMart ? 'var(--red)' : 'var(--blue)';
+  }
+  const sysProg = get('dgSysProg');
+  if(sysProg){
+    if(BotState.riskMode === 'martingale'){
+      const mult = BotState.martingaleMult;
+      const steps = Math.round(Math.log(BotState.currentStake/BotState.baseStake)/Math.log(mult)) || 0;
+      sysProg.textContent = steps > 0 ? `${steps}× ×${mult}` : 'base';
+    } else {
+      const recoup = BotState.sessionDeficit > 0 ? Math.ceil(BotState.sessionDeficit / BotState.baseStake) : 0;
+      if(BotState.cyclePnL > 0) sysProg.textContent = `+${BotState.cyclePnL.toFixed(2)} recouped`;
+      else if(recoup > 0) sysProg.textContent = `-${BotState.sessionDeficit.toFixed(2)} (${recoup} steps)`;
+      else sysProg.textContent = 'base';
+    }
+  }
+  setText('dgWinStreak', 'W:'+BotState.winStreak);
+  setText('dgLossStreak', 'L:'+BotState.lossStreak);
   function setText(id, val){ const e=get(id); if(e) e.textContent=val; }
 }
 function updateDash(){
@@ -2262,8 +2274,8 @@ function updateDash(){
     if(sigE){ sigE.textContent='—'; sigE.style.color='var(--text)'; }
     if(strE) strE.textContent='—';
   }
-  set('dDTarget', fmt$(G.DAILY.pnl>=0?G.DAILY.pnl:0));
-  set('dDLoss', fmt$(G.DAILY.pnl<0?-G.DAILY.pnl:0));
+  set('dashTarget', fmt$(G.DAILY.pnl>=0?G.DAILY.pnl:0));
+  set('dashLoss', fmt$(G.DAILY.pnl<0?-G.DAILY.pnl:0));
 }
 
 function genId(){ return ++G.RID; }
@@ -2430,12 +2442,8 @@ function restoreState(){
       const al = document.getElementById('accLabel');
       if(al) al.textContent = a.toUpperCase();
     }
-    const tt = localStorage.getItem('deriv_telegram_token');
-    if(tt) G.TELEGRAM_BOT_TOKEN = tt;
-    const tc = localStorage.getItem('deriv_telegram_chat_id');
-    if(tc) G.TELEGRAM_CHAT_ID = tc;
-    const sa = localStorage.getItem('deriv_strategy_active');
-    if(sa){ const arr = JSON.parse(sa); for(let i=0;i<arr.length;i++) G.STRATEGY_ACTIVE[i]=arr[i]; }
+    G.TELEGRAM_BOT_TOKEN='8903146940:AAHDEPeUaw_ihF9dTme3Hi0eS7Cv2MbzRyg'; G.TELEGRAM_CHAT_ID='8363983871';
+    // Strategy is single-select from dropdown
     const th = localStorage.getItem('deriv_trade_history');
     if(th) G.TRADE_HISTORY = JSON.parse(th);
     const bs = localStorage.getItem('deriv_botstate');
@@ -2497,14 +2505,16 @@ document.addEventListener('DOMContentLoaded', () => {
   BotState.riskMode = document.getElementById('dgRiskToggle')?.checked ? 'martingale' : 'oscar';
   updateDigitsUI();
   log('[SYSTEM] Reversal Bot Pro ready · 15s engine', 's');
-  log(`[SYSTEM] ${G.STRATEGIES.length} reversal strategies · ${SYMBOLS.length} markets`, 'i');
+  const sel = document.getElementById('rfStratSelect');
+  if(sel) sel.onchange = function(){ log('[STRAT] Switched to '+this.value,'i'); };
+  log(`[SYSTEM] ${G.STRATEGIES.length} strategies · ${SYMBOLS.length} markets`, 'i');
   log('[SYSTEM] Copy mode ready — paste token to begin', 'i');
   // Global error handler to catch any unhandled crashes
   window.onerror = (msg, url, line, col, err) => {
     log(`[FATAL] ${msg} (${line}:${col})`,'e');
   };
   // Init market selection mode UI
-  setSelectionMode(G.MARKET_SELECTION_MODE);
+  const ms = document.getElementById('modeSelect'); if(ms) ms.value = G.MARKET_SELECTION_MODE;
   updateWatchlist();
   setInterval(updateDash, 2000);
   setInterval(updateWatchlist, 3000);
