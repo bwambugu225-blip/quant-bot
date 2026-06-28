@@ -1402,9 +1402,6 @@ function handleMsg(data, source='trade'){
     case 'buy':        handleBuy(data); break;
     case 'proposal':   handleProp(data); break;
     case 'proposal_open_contract': handleContract(data.proposal_open_contract); break;
-    case 'topup_virtual':
-      if(data.topup_virtual?.balance !== undefined){ G.BALANCE = data.topup_virtual.balance; updateDash(); log('[TOPUP] Balance: $'+G.BALANCE.toFixed(2),'s'); }
-      break;
     case 'error':
       if(data.error?.message && data.error.message!=='Please log in.') log(`[API] ${data.error.message}`,'e');
       break;
@@ -1878,8 +1875,10 @@ function updateMicroUI(){
   const ac = document.getElementById('microActive');
   if(ac) ac.textContent = String(G.ACTIVE_CONTRACTS.size);
 }
-function topupViaLegacyWS(amt){
-  // OTP WS doesn't support topup_virtual — use a temporary legacy WS instead
+function topupDemo(){
+  const amt = parseFloat(document.getElementById('topupAmount')?.value || 10000);
+  if(!G.AUTH){ log('[TOPUP] Authorize first','e'); return; }
+  // Custom deposit via legacy WS (topup_virtual supports custom amounts)
   log('[TOPUP] Depositing $'+amt.toFixed(2)+'...','i');
   const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id='+G.APP_ID);
   let authed = false;
@@ -1887,28 +1886,37 @@ function topupViaLegacyWS(amt){
   ws.onmessage = (e)=>{
     try {
       const d = JSON.parse(e.data);
-      if(d.msg_type==='authorize' && !d.error){
-        authed = true;
-        ws.send(JSON.stringify({ topup_virtual:1, amount:amt }));
-      } else if(d.msg_type==='topup_virtual'){
-        if(d.topup_virtual?.balance !== undefined){
-          G.BALANCE = d.topup_virtual.balance;
-          updateDash();
-          log('[TOPUP] Balance: $'+G.BALANCE.toFixed(2),'s');
-        } else {
-          log('[TOPUP] Failed: '+(d.error?.message||JSON.stringify(d)),'e');
-        }
+      if(d.msg_type==='authorize' && !d.error){ authed=true; ws.send(JSON.stringify({ topup_virtual:1, amount:amt })); }
+      else if(d.msg_type==='topup_virtual'){
+        if(d.topup_virtual?.balance !== undefined){ G.BALANCE=d.topup_virtual.balance; updateDash(); log('[TOPUP] Balance: $'+G.BALANCE.toFixed(2),'s'); }
+        else log('[TOPUP] Failed: '+(d.error?.message||'unknown'),'e');
         ws.close();
-      } else if(d.error && !authed){
-        log('[TOPUP] Auth error: '+d.error.message,'e');
-        ws.close();
-      }
-    } catch(ex){ log('[TOPUP] Parse error','e'); }
+      } else if(d.error && !authed){ log('[TOPUP] Auth error: '+d.error.message,'e'); ws.close(); }
+    } catch(ex){}
   };
   ws.onerror = ()=>{ log('[TOPUP] Connection failed','e'); };
 }
-function topupDemo(){ topupViaLegacyWS(parseFloat(document.getElementById('topupAmount')?.value || 10000)); }
-function resetDemo(){ topupViaLegacyWS(parseFloat(document.getElementById('topupAmount')?.value || 10000)); }
+async function resetDemo(){
+  const amt = parseFloat(document.getElementById('topupAmount')?.value || 10000);
+  if(!G.AUTH || !G.ACCOUNT_ID){ log('[RESET] Authorize first','e'); return; }
+  // Use the official Deriv REST API to reset demo balance to $10,000
+  // POST /trading/v1/options/accounts/{account_id}/reset-demo-balance
+  log('[RESET] Resetting demo balance...','i');
+  try {
+    const resp = await fetch('https://api.derivws.com/trading/v1/options/accounts/'+G.ACCOUNT_ID+'/reset-demo-balance', {
+      method:'POST',
+      headers:{ 'Authorization':'Bearer '+G.TOKEN, 'Deriv-App-ID':G.APP_ID }
+    });
+    if(resp.ok){
+      G.BALANCE = 10000;
+      updateDash();
+      log('[RESET] Balance reset to $10,000.00','s');
+    } else {
+      const err = await resp.json();
+      log('[RESET] Failed: '+(err.errors?.[0]?.message||resp.statusText),'e');
+    }
+  } catch(e){ log('[RESET] Error: '+e.message,'e'); }
+}
 function authorizeToken(){
   const token = document.getElementById('apiToken')?.value || G.TOKEN;
   if(!token){ log('[AUTH] Enter token','e'); return; }
