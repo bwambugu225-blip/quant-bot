@@ -230,6 +230,11 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
       <button class="btn btn-call" onclick="placeDigitManual('DIGITEVEN')" style="flex:1">EVEN</button>
       <button class="btn btn-put" onclick="placeDigitManual('DIGITODD')" style="flex:1">ODD</button>
     </div>
+    <!-- Auto-trade engine -->
+    <div style="display:flex;gap:4px;margin-top:4px">
+      <button id="dgEngineBtn" class="btn btn-accent" onclick="toggleDigitEngine()" style="flex:1;padding:5px;font-size:9px">AUTO ENGINE</button>
+      <button class="btn btn-ghost" onclick="resetDigitPnL()" style="padding:5px;font-size:9px">RESET</button>
+    </div>
     <!-- Status row -->
     <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
       <span id="dgEngineStatus"><span class="status-dot gray"></span></span>
@@ -739,11 +744,13 @@ function placeDigitManual(contractType){
   const label = isOU ? (contractType==='DIGITOVER'?'OVER':'UNDER') : (contractType==='DIGITEVEN'?'EVEN':'ODD');
   G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
   log(`[DIGIT] Manual ${label} $${stake.toFixed(2)} ${sym}`,'t');
-  G.WS.send(JSON.stringify({
+  const payload = {
     proposal:1, subscribe:1, amount:+stake.toFixed(2), basis:'stake',
     contract_type:contractType, currency:'USD', duration:1, duration_unit:'t',
     underlying_symbol:sym, req_id:genId()
-  }));
+  };
+  if(isOU) payload.barrier = '5';
+  G.WS.send(JSON.stringify(payload));
   BotState.contractActive = true;
   if(G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
   G.SENDING_TIMEOUT = setTimeout(()=>{
@@ -1041,6 +1048,24 @@ function resetSession(){
   resetDigitPnL();
   updateDash();
   log('[SYSTEM] Session reset','i');
+}
+
+function toggleDigitEngine(){
+  const btn = document.getElementById('dgEngineBtn');
+  BotState.isTrading = !BotState.isTrading;
+  if(BotState.isTrading){
+    BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
+    BotState.targetProfit = parseFloat(document.getElementById('dgTakeProfit')?.value || 10);
+    BotState.stopLoss = parseFloat(document.getElementById('dgStopLoss')?.value || 5);
+    BotState.currentStake = BotState.baseStake;
+    if(btn){ btn.textContent = 'STOP ENGINE'; btn.className = 'btn btn-danger'; }
+    log('[DIGIT] Auto engine started','s');
+  } else {
+    if(btn){ btn.textContent = 'AUTO ENGINE'; btn.className = 'btn btn-accent'; }
+    log('[DIGIT] Auto engine stopped','w');
+  }
+  updateDigitsUI();
+  saveState();
 }
 
 // ============================================================
@@ -1447,49 +1472,82 @@ function handleOhlc(data){
 function getActiveStratCode(){ return 'PVT'; }
 function evaluateSingleMarket(sym){
   const c = G.MARKET.candles[sym];
-  if(!c || c.length < 8) return null;
-  // Use last 8 candles for trend + pivot analysis
-  const candles = c.slice(-8);
+  if(!c || c.length < 12) return null;
+  const candles = c.slice(-12);
   const curr = candles[candles.length-1];
   const p1 = candles[candles.length-2];
-  const p2 = candles[candles.length-3];
-  const p3 = candles[candles.length-4];
-  const p4 = candles[candles.length-5];
-  const p5 = candles[candles.length-6];
+  if(!p1 || !curr) return null;
   // Filter: minimum candle range (avoid flat markets)
   const avgRange = candles.reduce((s,ca)=>s+Math.abs(ca.high-ca.low),0)/candles.length;
   if(avgRange < 0.001) return null;
-  // Determine near-term trend (last 5 candles direction)
-  const trendUp = (p1.close > p2.close ? 1:0)+(p2.close > p3.close ? 1:0)+(p3.close > p4.close ? 1:0)+(p4.close > p5.close ? 1:0);
-  const trendDown = 4 - trendUp;
-  // === TOP PIVOT (resistance) ===
-  // Find the highest high among p1,p2,p3,p4
-  const topPivotIdx = [p1,p2,p3,p4].reduce((best,ca,i)=>ca.high > best.high ? {high:ca.high,i} : best, {high:-Infinity,i:-1});
-  const topPivot = [p1,p2,p3,p4][topPivotIdx.i];
-  const topBreak = curr.high > topPivot.high;
-  // === BOTTOM PIVOT (support) ===
-  const botPivotIdx = [p1,p2,p3,p4].reduce((best,ca,i)=>ca.low < best.low ? {low:ca.low,i} : best, {low:Infinity,i:-1});
-  const botPivot = [p1,p2,p3,p4][botPivotIdx.i];
-  const botBreak = curr.low < botPivot.low;
-  // === FALL signal: price broke below support ===
-  if(botBreak && trendDown >= 3){
-    const pivotStrength = Math.abs(botPivot.low - (p1.close + p2.close + p3.close + p4.close)/4);
-    const conf = Math.min(92, 75 + Math.round(pivotStrength / avgRange * 15));
-    return { action:'FALL', conf, src:'PVT-H', sym, riseCount:0, fallCount:trendDown, trendDir:'DOWN', vol:avgRange > 1 ? 'high' : 'mid' };
+  // Trend: count direction of last 6 closes (wider lens)
+  let upCount=0, dnCount=0;
+  for(let i=candles.length-6; i<candles.length; i++){
+    if(candles[i].close > candles[i-1].close) upCount++;
+    else if(candles[i].close < candles[i-1].close) dnCount++;
   }
-  // === RISE signal: price broke above resistance ===
-  if(topBreak && trendUp >= 3){
-    const pivotStrength = Math.abs(topPivot.high - (p1.close + p2.close + p3.close + p4.close)/4);
-    const conf = Math.min(92, 75 + Math.round(pivotStrength / avgRange * 15));
-    return { action:'RISE', conf, src:'PVT-L', sym, riseCount:trendUp, fallCount:0, trendDir:'UP', vol:avgRange > 1 ? 'high' : 'mid' };
+  const trendDown = dnCount >= 4;
+  const trendUp = upCount >= 4;
+  // Pivot scan: find highest high / lowest low in candles[3..8] (avoid current & adjacent noise)
+  const pivotWindow = candles.slice(-9, -1);
+  let topHigh=-Infinity, topAt=-1;
+  let botLow=Infinity, botAt=-1;
+  for(let i=0; i<pivotWindow.length; i++){
+    if(pivotWindow[i].high > topHigh){ topHigh=pivotWindow[i].high; topAt=i; }
+    if(pivotWindow[i].low < botLow){ botLow=pivotWindow[i].low; botAt=i; }
   }
-  // === Reversal signal (pivot NOT broken — price rejected from extreme) ===
-  const atHigh = curr.high >= p1.high && p1.high > p2.high && p1.high > p3.high && trendDown >= 2;
-  const atLow = curr.low <= p1.low && p1.low < p2.low && p1.low < p3.low && trendUp >= 2;
-  if(atHigh && !topBreak)
-    return { action:'FALL', conf:78, src:'PVT-H', sym, riseCount:0, fallCount:trendDown, trendDir:'REV', vol:'—' };
-  if(atLow && !botBreak)
-    return { action:'RISE', conf:78, src:'PVT-L', sym, riseCount:trendUp, fallCount:0, trendDir:'REV', vol:'—' };
+  const topPivot = pivotWindow[topAt];
+  const botPivot = pivotWindow[botAt];
+  const topBreak = curr.high > topHigh;
+  const botBreak = curr.low < botLow;
+  // Confirmation factors:
+  // 1) Body ratio — small body + long wick at pivot = rejection
+  const currBody = Math.abs(curr.close - curr.open);
+  const currRange = curr.high - curr.low;
+  const bodyRatio = currRange > 0 ? currBody / currRange : 1;
+  const longWick = (curr.high - Math.max(curr.open,curr.close)) > currBody*2 ||
+                   (Math.min(curr.open,curr.close) - curr.low) > currBody*2;
+  // 2) Close position relative to range — close near opposite end = strong rejection
+  const closePos = currRange > 0
+    ? (curr.close - curr.low) / currRange
+    : 0.5;
+  // 3) Candle momentum — larger range than average = conviction
+  const momentumFactor = Math.min(1.5, currRange / (avgRange || 1));
+  // === FALL signal ===
+  if(botBreak && trendDown){
+    const pivotStrength = (botPivot ? Math.abs(botPivot.low - (p1.close + (candles[candles.length-3]?.close||p1.close))/2) : 0) / avgRange;
+    let conf = 75 + Math.round(pivotStrength * 12);
+    if(bodyRatio < 0.35 && longWick) conf += 8;
+    if(closePos > 0.65) conf += 5;
+    conf += Math.round((momentumFactor - 1) * 12);
+    if(topHigh - botLow > avgRange * 6) conf += 5; // wide range = more significant
+    return { action:'FALL', conf:Math.min(94, conf), src:'BRK-D', sym, trendDir:'DOWN' };
+  }
+  // === RISE signal ===
+  if(topBreak && trendUp){
+    const pivotStrength = (topPivot ? Math.abs(topPivot.high - (p1.close + (candles[candles.length-3]?.close||p1.close))/2) : 0) / avgRange;
+    let conf = 75 + Math.round(pivotStrength * 12);
+    if(bodyRatio < 0.35 && longWick) conf += 8;
+    if(closePos < 0.35) conf += 5;
+    conf += Math.round((momentumFactor - 1) * 12);
+    if(topHigh - botLow > avgRange * 6) conf += 5;
+    return { action:'RISE', conf:Math.min(94, conf), src:'BRK-U', sym, trendDir:'UP' };
+  }
+  // === Reversal: price rejected from pivot ===
+  const atHigh = curr.high >= topHigh && p1.high >= topHigh && dnCount >= 3;
+  const atLow = curr.low <= botLow && p1.low <= botLow && upCount >= 3;
+  if(atHigh && !topBreak && bodyRatio < 0.4 && longWick){
+    let conf = 78;
+    if(closePos < 0.3) conf += 6;
+    conf += Math.round((momentumFactor - 1) * 10);
+    return { action:'FALL', conf:Math.min(90, conf), src:'REV-D', sym, trendDir:'REV' };
+  }
+  if(atLow && !botBreak && bodyRatio < 0.4 && longWick){
+    let conf = 78;
+    if(closePos > 0.7) conf += 6;
+    conf += Math.round((momentumFactor - 1) * 10);
+    return { action:'RISE', conf:Math.min(90, conf), src:'REV-U', sym, trendDir:'REV' };
+  }
   return null;
 }
 
@@ -1504,7 +1562,7 @@ function evaluateAndTrade(sym){
   // Only evaluate the symbol whose candle just closed — not all markets
   if(G.MARKET_SELECTION_MODE==='manual' && sym!==G.SELECTED_MARKET) return;
   const result = evaluateSingleMarket(sym);
-  if(result && result.conf >= 82){
+  if(result && result.conf >= 80){
     const prices = G.MARKET.prices[sym];
     result.lastPrice = prices ? prices[prices.length-1] : 0;
     log(`[SIGNAL] ${result.sym}: ${result.action} ${result.conf}% · ${result.src}`,'t');
