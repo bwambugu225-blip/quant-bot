@@ -1262,15 +1262,20 @@ function handleTick(data){
   const buf = G.MARKET.tickBuf[sym];
   buf.push(price);
   // Intra-candle evaluation for volatile markets (every 2nd tick)
-  if(buf.length >= 2 && buf.length % 2 === 0 && G.RUNNING && G.ACTIVE_CONTRACTS.size===0 && Date.now() - G.BOOT_AT > 4000 && G.TRADE_MODE!=='DIGITS'){
+  if(buf.length >= 2 && buf.length % 2 === 0 && G.RUNNING && Date.now() - G.BOOT_AT > 4000 && G.TRADE_MODE!=='DIGITS'){
     if(G.MARKET_SELECTION_MODE!=='manual' || sym===G.SELECTED_MARKET){
       const result = evaluateSingleMarket(sym, buf);
       if(result && result.conf >= 75){
-        log(`[SIGNAL] ${result.sym}: ${result.action} ${result.conf}% · ${result.src} (intra)`,'t');
-        G.CURRENT_MARKET = result.sym;
-        G.SELECTED_MARKET = result.sym;
-        updateWatchlist();
-        execTrade(result, result.sym);
+        result.lastPrice = price;
+        const canTrade = G.ACTIVE_CONTRACTS.size === 0;
+        const ev = result.evidence || {};
+        log(`[SIGNAL] ${result.sym}: ${result.action} ${result.conf}% · ${ev.pattern} rsi=${ev.rsi} trend=${ev.upN}U/${ev.dnN}D body=${ev.bodyR} ${canTrade?'':'[SKIP]'}`,'t');
+        if(canTrade){
+          G.CURRENT_MARKET = result.sym;
+          G.SELECTED_MARKET = result.sym;
+          updateWatchlist();
+          execTrade(result, result.sym);
+        }
       }
     }
   }
@@ -1304,6 +1309,7 @@ function handleTick(data){
       const key = sym+':'+candle.epoch;
       G._signalOnCandle[key] = { action: G.LAST_SIGNAL?.action||'FALL', conf: G.LAST_SIGNAL?.conf||0, price: candle.close };
       candle.signal = G._signalOnCandle[key];
+      storeSignal(sym, candle.epoch, G.LAST_SIGNAL, true);
       G._tradedCandle[sym] = false;
     }
     if(candle.ticks >= minTicks){
@@ -1323,6 +1329,18 @@ function handleCandles(data){
 function handleOhlc(data){
   // Kept for compatibility; tick-driven engine now owns candles.
   return;
+}
+
+// ── Signal evidence storage ──
+function storeSignal(sym, epoch, result, traded){
+  if(!result) return;
+  if(!G._allSignals) G._allSignals = [];
+  G._allSignals.push({
+    sym, epoch, traded: !!traded, price: result.lastPrice || 0,
+    action: result.action, conf: result.conf, pattern: result.evidence?.pattern||result.src,
+    evidence: result.evidence || {}
+  });
+  if(G._allSignals.length > 200) G._allSignals.shift();
 }
 
 function calcRSI(prices, period){
@@ -1444,8 +1462,14 @@ function evaluateSingleMarket(sym, liveBuf){
     if(lowerWick > upperWick * 1.5){ conf += 6; n++; }
   }
   if(n >= 2 && conf >= 75){
-    return { action: isFall ? 'FALL' : 'RISE', conf: Math.min(92, conf),
-      src: isFall ? 'REV-D' : 'REV-U', sym, trendDir:'REV' };
+    const pattern = bearRev||bullRev ? 'REV' : bearRevSingle||bullRevSingle ? 'PVT' : dojiBear||dojiBull ? 'DOJI' : engulfBear||engulfBull ? 'ENGLF' : 'PB';
+    return {
+      action: isFall ? 'FALL' : 'RISE',
+      conf: Math.min(92, conf),
+      src: isFall ? 'REV-D' : 'REV-U',
+      sym, trendDir:'REV',
+      evidence: { pattern, rsi: Math.round(rsi), ema20: curr.close > ema20 ? 'ABOVE' : 'BELOW', upN: upCount, dnN: dnCount, bodyR: (bodyRatio*100).toFixed(0)+'%' }
+    };
   }
   return null;
 }
@@ -1469,7 +1493,8 @@ function evaluateAndTrade(sym){
       G._signalOnCandle[key] = { action: result.action, conf: result.conf, price: lastCdl.close };
       lastCdl.signal = G._signalOnCandle[key];
     }
-    log(`[SIGNAL] ${result.sym}: ${result.action} ${result.conf}% · ${result.src}`,'t');
+    storeSignal(sym, lastCdl?.epoch||0, result, true);
+    log(`[SIGNAL] ${result.sym}: ${result.action} ${result.conf}% · ${result.evidence?.pattern||result.src}`,'t');
     G.CURRENT_MARKET = result.sym;
     G.SELECTED_MARKET = result.sym;
     updateWatchlist();
@@ -1729,47 +1754,28 @@ function drawChart(){
     const bw=Math.max(1,cw*0.6), yo=ny(Math.max(k.open,k.close)), yc=ny(Math.min(k.open,k.close));
     ctx.fillRect(x-bw/2,yo,bw,Math.max(1,yc-yo));
   });
-  // Signal markers — drawn on candle body
+  // Signal markers — all signals from G._allSignals matched by epoch
+  const allSigs = G._allSignals || [];
+  const arrowSize = Math.max(10, cw*0.55);
   all.forEach((k,i)=>{
-    const s = k.signal;
-    if(!s) return;
-    const x=i*cw+cw/2;
-    const isCall = s.action === 'RISE' || s.action === 'CALL';
-    const cy = isCall ? Math.min(ny(k.low)-4, h-12) : Math.max(ny(k.high)+4, 12);
-    ctx.globalAlpha = Math.max(0.3, 1 - (all.length-1-i) * 0.06);
-    // filled diamond bg
+    const sig = allSigs.find(s => s.sym===sym && s.epoch===k.epoch);
+    if(!sig) return;
+    const x = i*cw+cw/2;
+    const isCall = sig.action === 'RISE';
+    const posY = isCall ? ny(k.low) - 4 : ny(k.high) + 4;
+    const clampedY = Math.max(10, Math.min(h-10, posY));
+    // Arrow
     ctx.fillStyle = isCall ? POS : NEG;
-    const r = Math.max(5, cw*0.35);
-    ctx.beginPath();
-    ctx.moveTo(x, cy-r); ctx.lineTo(x+r, cy);
-    ctx.lineTo(x, cy+r); ctx.lineTo(x-r, cy);
-    ctx.closePath(); ctx.fill();
-    // label
-    ctx.fillStyle = '#fff';
-    ctx.font = `bold ${Math.max(8, cw*0.45)}px sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(isCall ? '↑' : '↓', x, cy);
-    ctx.globalAlpha = 1;
+    ctx.font = `bold ${arrowSize}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = isCall ? 'bottom' : 'top';
+    ctx.fillText(isCall ? '↑' : '↓', x, clampedY);
+    // Pattern label
+    ctx.fillStyle = isCall ? POS : NEG;
+    ctx.font = `bold ${Math.max(6, arrowSize*0.55)}px sans-serif`;
+    ctx.textBaseline = isCall ? 'top' : 'bottom';
+    ctx.fillText(sig.pattern, x, isCall ? clampedY + 2 : clampedY - 2);
   });
-  // Also draw LAST_SIGNAL marker on the very last closed candle as fallback
-  if(!all.length) return;
-  const lastClosedCdl = hasLive && all.length >= 2 ? all[all.length-2] : all[all.length-1];
-  if(lastClosedCdl && !lastClosedCdl.signal && G.LAST_SIGNAL && G.LAST_SIGNAL.sym === sym){
-    const x = (hasLive ? all.length-2 : all.length-1) * cw + cw/2;
-    const isCall = G.LAST_SIGNAL.action === 'RISE';
-    const cy = isCall ? Math.min(ny(lastClosedCdl.low)-4, h-12) : Math.max(ny(lastClosedCdl.high)+4, 12);
-    ctx.fillStyle = isCall ? POS : NEG;
-    const r = Math.max(5, cw*0.35);
-    ctx.beginPath();
-    ctx.moveTo(x, cy-r); ctx.lineTo(x+r, cy);
-    ctx.lineTo(x, cy+r); ctx.lineTo(x-r, cy);
-    ctx.closePath(); ctx.fill();
-    ctx.fillStyle = '#fff';
-    ctx.font = `bold ${Math.max(8, cw*0.45)}px sans-serif`;
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(isCall ? '↑' : '↓', x, cy);
-  }
-  ctx.globalAlpha = 1;
   ctx.textAlign='left';
   ctx.textBaseline='alphabetic';
 }
