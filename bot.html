@@ -128,11 +128,36 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
 .dg-circle.now{animation:dgPulse .8s infinite}
 .log-details{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:6px 10px;margin-bottom:8px;box-shadow:var(--shadow)}
 .log-details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;text-transform:uppercase;letter-spacing:.5px;list-style:none;display:flex;align-items:center}
-.log-details summary::-webkit-details-marker{display:none}}
+.log-details summary::-webkit-details-marker{display:none}
+/* ── Login Overlay ── */
+.login-overlay{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f0f1a 0%,#1a1a2e 40%,#16213e 100%);transition:opacity .5s ease,visibility .5s ease}
+.login-overlay.hidden{opacity:0;visibility:hidden;pointer-events:none}
+.login-card{background:rgba(255,255,255,.04);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:40px;width:340px;max-width:90vw;text-align:center;box-shadow:0 25px 60px rgba(0,0,0,.5)}
+.login-card h1{font-size:22px;font-weight:700;margin:0 0 4px;background:linear-gradient(135deg,#f7971e,#ffd200);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.login-card p{font-size:11px;color:var(--muted);margin:0 0 20px}
+.login-card input{width:100%;box-sizing:border-box;padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#fff;font-size:13px;outline:none;transition:border-color .2s;margin-bottom:12px}
+.login-card input:focus{border-color:#f7971e}
+.login-card input::placeholder{color:rgba(255,255,255,.3)}
+.login-card .btn-login{width:100%;padding:10px;border-radius:10px;border:none;background:linear-gradient(135deg,#f7971e,#ffd200);color:#0f0f1a;font-size:13px;font-weight:700;cursor:pointer;transition:transform .15s,box-shadow .15s}
+.login-card .btn-login:hover{transform:translateY(-1px);box-shadow:0 8px 25px rgba(247,151,30,.35)}
+.login-card .btn-login:active{transform:translateY(0)}
+.login-card .login-error{font-size:10px;color:#ef4444;margin-top:8px;min-height:16px}
+.login-card .login-footer{font-size:9px;color:rgba(255,255,255,.25);margin-top:16px}
 </style>
 </head>
-<body>
-<div id="app" style="display:flex;min-height:100vh">
+<body style="margin:0">
+<!-- Login Overlay -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-card">
+    <h1>⚡ BTraders</h1>
+    <p>Enter your PAT to access the bot</p>
+    <input type="password" id="loginPat" placeholder="Paste your Deriv PAT token" autofocus>
+    <button class="btn-login" onclick="authorizePat()">Authorize</button>
+    <div class="login-error" id="loginError"></div>
+    <div class="login-footer">A Deriv API token with <strong>Read</strong> + <strong>Trade</strong> scopes</div>
+  </div>
+</div>
+<div id="app" style="display:none;min-height:100vh">
 
 <!-- MAIN CONTENT -->
 <div id="main" style="flex:1;overflow-y:auto;max-width:100%">
@@ -248,26 +273,12 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
       <button class="btn btn-call" onclick="placeDigitManual('DIGITEVEN')" style="flex:1">EVEN</button>
       <button class="btn btn-put" onclick="placeDigitManual('DIGITODD')" style="flex:1">ODD</button>
     </div>
-    <!-- Martingale for digits -->
-    <div style="display:flex;gap:4px;align-items:center;margin-top:4px">
-      <label style="display:flex;align-items:center;gap:3px;font-size:7px;color:var(--muted);cursor:pointer">
-        <input type="checkbox" id="dgMartToggle" onchange="toggleDigitMartingale()" style="width:12px;height:12px;accent-color:var(--accent)">
-        Martingale
-      </label>
-      <input class="inp inp-sm" id="dgMartMult" type="number" value="2" min="2" max="10" step="1" style="width:35px;display:none">
-      <span id="dgSysBadge" style="font-size:7px;color:var(--warn);margin-left:auto"></span>
-    </div>
-    <!-- Auto-trade engine -->
-    <div style="display:flex;gap:4px;margin-top:4px">
-      <button id="dgEngineBtn" class="btn btn-accent" onclick="toggleDigitEngine()" style="flex:1;padding:5px;font-size:9px">AUTO ENGINE</button>
-      <button class="btn btn-ghost" onclick="resetDigitPnL()" style="padding:5px;font-size:9px">RESET</button>
-    </div>
     <!-- Status row -->
     <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
-      <span id="dgEngineStatus"><span class="status-dot gray"></span></span>
       <span id="dgCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
       <span id="dgSessionPnL" style="font-size:10px;font-weight:600;color:var(--muted)">$0.00</span>
       <span id="dgWLRatio" style="font-size:9px;color:var(--muted)">0-0</span>
+      <button class="btn btn-ghost" onclick="resetDigitPnL()" style="padding:2px 6px;font-size:7px;margin-left:auto">RESET</button>
     </div>
     <!-- Analysis panel -->
     <div style="margin-top:6px">
@@ -411,7 +422,7 @@ const G = {
   SG_TAB:0,
   LAST_SIGNAL:null, LAST_MARKET_MSG_AT:0, LAST_TRADE_MSG_AT:0,
   BOOT_AT:0, PENDING_SIGNAL:null, PENDING_SIGNAL_AT:0,
-  CANDLE_INTERVAL_MS:10000,   // 10-second candles → more trade frequency
+  CANDLE_INTERVAL_MS:15000,   // 15-second candles
   CANDLE_BUFFER_MS:3000,     // 3s buffer for settlement between trades
   TRADE_DURATION_SECONDS:10,  // 10s — matches candle interval for back-to-back trades
   // Market-specific parameters derived from 15s OHLC analysis (see analyze.py)
@@ -796,156 +807,6 @@ function digitRunTest(hist){
   return (runs - expR) / Math.sqrt(2*n1*n2*(2*n1*n2-n1-n2)/((n1+n2)*(n1+n2)*(n1+n2-1)));
 }
 
-// ============================================================
-// DIGIT STRATEGY — advanced multi-factor with high-confidence gate
-// ============================================================
-
-let _lastDigitTradeAt = 0;
-function evaluateDigitStrategies(sym){
-  if(BotState.contractActive) return;
-  if(!G.WS||G.WS.readyState!==WebSocket.OPEN) return;
-  if(Date.now() - _lastDigitTradeAt < 3500) return;
-  const q = BotState.tickQueue;
-  if(q.length < 4) return;
-  const hist = BotState.tickHistory;
-  if(hist.length < 60) return;
-  // Statistical gate: require meaningful bias
-  const chiSq = digitChiSq(hist);
-  if(chiSq < 10) return;
-  // Entropy filter: last 20 ticks must have at least 7 unique values (avoid sticky/dead markets)
-  const last20 = hist.slice(-20);
-  const uniq = new Set(last20).size;
-  if(uniq < 5) return;
-  // Consecutive pattern penalty: if last 3 digits are all same bucket (all ≥5 or all <5) AND same move direction, skip
-  const last3 = q.slice(-3);
-  const allOver = last3.every(d => d >= 5);
-  const allUnder = last3.every(d => d < 5);
-  const monotonic = (allOver || allUnder);
-  // Win-streak dampener: after 2+ wins, raise threshold further
-  const streakPenalty = BotState.winStreak >= 2 ? 1.05 : 1.0;
-
-  BotState.lastAction = '';
-  BotState.lastContractType = '';
-  const ct = BotState.contractType;
-  const probs = G.DIGIT_PROBS[sym] || G.DIGIT_AVG;
-  const curr = q[q.length-1];
-  const prev = q.length >= 2 ? q[q.length-2] : curr;
-  const pq = BotState.priceQueue;
-  const edge = (p) => Math.abs(p - 50);
-
-  if(ct === 'OU'){
-    const f1_raw = (probs.dou && probs.dou[curr] !== undefined) ? probs.dou[curr] : 50;
-    const f1_active = edge(f1_raw) >= 7;
-    const f1_dir = f1_raw >= 50 ? 'OVER' : 'UNDER';
-    const currOU = curr >= 5 ? 'O' : 'U';
-    const f2_raw = (probs.ou && probs.ou[currOU] !== undefined) ? probs.ou[currOU] : 50;
-    const f2_over = currOU === 'O' ? f2_raw : 100 - f2_raw;
-    const f2_active = edge(f2_over) >= 6;
-    const f2_dir = f2_over >= 50 ? 'OVER' : 'UNDER';
-    const prevOU = prev >= 5 ? 'O' : 'U';
-    const pair = prevOU + currOU;
-    const f3_raw = (probs.pou && probs.pou[pair] !== undefined) ? probs.pou[pair] : 50;
-    const f3_active = edge(f3_raw) >= 9;
-    const f3_dir = f3_raw >= 50 ? 'OVER' : 'UNDER';
-    let f4_active = false, f4_dir = 'OVER';
-    if(pq.length >= 3){
-      const up = pq[pq.length-1] > pq[pq.length-2];
-      const upPrev = pq[pq.length-2] > pq[pq.length-3];
-      const streak = up === upPrev;
-      if(streak && probs.dir){
-        const r = probs.dir[up?'up':'dn'];
-        if(r !== undefined){
-          f4_active = Math.abs(r - 50) >= 5;
-          f4_dir = r >= 50 ? 'OVER' : 'UNDER';
-        }
-      }
-    }
-    const recent50 = hist.slice(-50);
-    const liveOver = recent50.filter(d => d >= 5).length;
-    const liveEdge = Math.abs(liveOver - 25);
-    const f5_active = liveEdge >= 8;
-    const f5_dir = liveOver > 25 ? 'OVER' : 'UNDER';
-    let overScore=0, underScore=0, overF=0, underF=0;
-    const vote = (e,d,w)=>{if(e<=0)return;const s=e*w;if(d==='OVER'){overScore+=s;overF++}else{underScore+=s;underF++}};
-    if(f1_active) vote(edge(f1_raw), f1_dir, 1.0);
-    if(f2_active) vote(edge(f2_over), f2_dir, 0.8);
-    if(f3_active) vote(edge(f3_raw), f3_dir, 0.9);
-    if(f4_active) vote(7, f4_dir, 0.7);
-    if(f5_active) vote(liveEdge*2.5, f5_dir, 0.6);
-    const totScore = overScore + underScore;
-    if(totScore > 0 && (overF+underF) >= 3){
-      const pct = Math.max(overScore, underScore) / totScore * 100 / streakPenalty;
-      const recent20 = q.slice(-20);
-      const ro = recent20.filter(d=>d>5).length;
-      const streakConf = Math.max(ro, recent20.length-ro)/recent20.length*100;
-      const isOver = overScore > underScore;
-      // Trade only with 78%+ confidence AND 70%+ streak confirmation
-      if(pct >= 78 && streakConf >= 70){
-        // Additional protection: skip if monotonic (all over/under last 3)
-        if(monotonic && pct < 85) return;
-        const dir = isOver ? 'OVER' : 'UNDER';
-        log(`[DIGIT] OU→${dir} ${pct.toFixed(0)}% (${overF}O-${underF}U, χ²=${chiSq.toFixed(1)})`,'t');
-        _lastDigitTradeAt = Date.now();
-        placeDigitContract(sym, 'DIGIT'+(isOver?'OVER':'UNDER'), 5);
-      }
-    }
-  }
-  else if(ct === 'EO'){
-    const f1_raw = (probs.deo && probs.deo[curr] !== undefined) ? probs.deo[curr] : 50;
-    const f1_active = edge(f1_raw) >= 7;
-    const f1_dir = f1_raw >= 50 ? 'EVEN' : 'ODD';
-    const currEO = curr % 2 === 0 ? 'E' : 'D';
-    const f2_raw = (probs.eo && probs.eo[currEO] !== undefined) ? probs.eo[currEO] : 50;
-    const f2_even = currEO === 'E' ? f2_raw : 100 - f2_raw;
-    const f2_active = edge(f2_even) >= 6;
-    const f2_dir = f2_even >= 50 ? 'EVEN' : 'ODD';
-    const prevEO = prev % 2 === 0 ? 'E' : 'D';
-    const pair = prevEO + currEO;
-    const f3_raw = (probs.peo && probs.peo[pair] !== undefined) ? probs.peo[pair] : 50;
-    const f3_active = edge(f3_raw) >= 10;
-    const f3_dir = f3_raw >= 50 ? 'EVEN' : 'ODD';
-    let f4_active = false, f4_dir = 'EVEN';
-    if(pq.length >= 3){
-      const up = pq[pq.length-1] > pq[pq.length-2];
-      const upPrev = pq[pq.length-2] > pq[pq.length-3];
-      const streak = up === upPrev;
-      if(streak && probs.dir){
-        const r = probs.dir[up?'up':'dn'];
-        if(r !== undefined){
-          f4_active = Math.abs(r - 50) >= 5;
-          f4_dir = r >= 50 ? 'EVEN' : 'ODD';
-        }
-      }
-    }
-    const recent50 = hist.slice(-50);
-    const liveEven = recent50.filter(d => d % 2 === 0).length;
-    const liveEdge = Math.abs(liveEven - 25);
-    const f5_active = liveEdge >= 8;
-    const f5_dir = liveEven > 25 ? 'EVEN' : 'ODD';
-    let evenScore=0, oddScore=0, evenF=0, oddF=0;
-    const vote = (e,d,w)=>{if(e<=0)return;const s=e*w;if(d==='EVEN'){evenScore+=s;evenF++}else{oddScore+=s;oddF++}};
-    if(f1_active) vote(edge(f1_raw), f1_dir, 1.0);
-    if(f2_active) vote(edge(f2_even), f2_dir, 0.8);
-    if(f3_active) vote(edge(f3_raw), f3_dir, 0.9);
-    if(f4_active) vote(7, f4_dir, 0.7);
-    if(f5_active) vote(liveEdge*2.5, f5_dir, 0.6);
-    const totScore = evenScore + oddScore;
-    if(totScore > 0 && (evenF+oddF) >= 3){
-      const pct = Math.max(evenScore, oddScore) / totScore * 100 / streakPenalty;
-      const recent20 = q.slice(-20);
-      const re = recent20.filter(d=>d%2===0).length;
-      const streakConf = Math.max(re, recent20.length-re)/recent20.length*100;
-      const isEven = evenScore > oddScore;
-      if(pct >= 80 && streakConf >= 70){
-        const dir = isEven ? 'EVEN' : 'ODD';
-        log(`[DIGIT] EO→${dir} ${pct.toFixed(0)}% (${evenF}E-${oddF}O, χ²=${chiSq.toFixed(1)})`,'t');
-        _lastDigitTradeAt = Date.now();
-        placeDigitContract(sym, 'DIGIT'+(isEven?'EVEN':'ODD'));
-      }
-    }
-  }
-}
-
 function placeDigitContract(sym, contractType, barrier){
   const stake = BotState.currentStake;
   BotState.contractActive = true;
@@ -984,28 +845,11 @@ function onDigitContractResolved(won, profit){
   if(won){
     BotState.totalWins++; BotState.winStreak++; BotState.lossStreak=0;
     BotState.totalProfitLoss += profit;
-    BotState.cyclePnL += profit;
-    if(BotState.riskMode === 'martingale'){
-      BotState.currentStake = BotState.baseStake;
-      BotState.sessionDeficit = Math.max(0, BotState.sessionDeficit - profit);
-      if(BotState.sessionDeficit <= 0){ BotState.sessionDeficit = 0; BotState.cyclePnL = 0; }
-    } else {
-      BotState.currentStake = BotState.baseStake;
-    }
   } else {
     BotState.totalLosses++; BotState.lossStreak++; BotState.winStreak=0;
     BotState.totalProfitLoss -= Math.abs(profit);
-    BotState.sessionDeficit += Math.abs(profit);
-    BotState.cyclePnL -= Math.abs(profit);
-    if(BotState.riskMode === 'martingale'){
-      BotState.currentStake = +(BotState.currentStake * BotState.martingaleMult).toFixed(2);
-    } else {
-      BotState.currentStake = BotState.baseStake;
-    }
   }
-  BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
-  BotState.targetProfit = parseFloat(document.getElementById('dgTakeProfit')?.value || 10);
-  BotState.stopLoss = parseFloat(document.getElementById('dgStopLoss')?.value || 5);
+  BotState.currentStake = BotState.baseStake;
   if(BotState.totalProfitLoss >= BotState.targetProfit || BotState.totalProfitLoss <= -BotState.stopLoss){
     log(`[DIGIT] ${BotState.totalProfitLoss >= BotState.targetProfit ? 'TP' : 'SL'} hit — resetting PnL, continuing`,'w');
     resetDigitPnL();
@@ -1056,24 +900,6 @@ function resetDigitPnL(){
   log('[DIGIT] PnL reset','i');
   updateDigitsUI();
 }
-function toggleMartingale(){
-  const cb = document.getElementById('dgMartToggle');
-  if(cb && cb.checked){
-    BotState.riskMode = 'martingale';
-    BotState.martingaleMult = parseFloat(document.getElementById('dgMartMult')?.value || 2);
-    BotState.currentStake = BotState.baseStake;
-    BotState.sessionDeficit = 0;
-    BotState.cyclePnL = 0;
-    log(`[DIGIT] Martingale ON (×${BotState.martingaleMult})`,'i');
-  } else {
-    BotState.riskMode = 'flat';
-    BotState.currentStake = BotState.baseStake;
-    BotState.sessionDeficit = 0;
-    BotState.cyclePnL = 0;
-    log('[DIGIT] Flat betting','i');
-  }
-  updateDigitsUI();
-}
 function resetSession(){
   G.WINS=0; G.LOSSES=0; G.TRADES=0; G.PNL=0; G.CONS_LOSS=0;
   G.DAILY={ pnl:0, trades:0, hourTrades:[], date:'' };
@@ -1082,46 +908,6 @@ function resetSession(){
   resetDigitPnL();
   updateDash();
   log('[SYSTEM] Session reset','i');
-}
-
-function toggleDigitMartingale(){
-  const cb = document.getElementById('dgMartToggle');
-  const mult = document.getElementById('dgMartMult');
-  if(cb && cb.checked){
-    if(mult) mult.style.display = 'inline-block';
-    BotState.riskMode = 'martingale';
-    BotState.martingaleMult = parseFloat(document.getElementById('dgMartMult')?.value || 2);
-    BotState.currentStake = BotState.baseStake;
-    BotState.sessionDeficit = 0;
-    BotState.cyclePnL = 0;
-    log('[DIGIT] Martingale ON (x'+BotState.martingaleMult+')','i');
-  } else {
-    if(mult) mult.style.display = 'none';
-    BotState.riskMode = 'flat';
-    BotState.currentStake = BotState.baseStake;
-    BotState.sessionDeficit = 0;
-    BotState.cyclePnL = 0;
-    log('[DIGIT] Flat betting','i');
-  }
-  updateDigitsUI();
-}
-
-function toggleDigitEngine(){
-  const btn = document.getElementById('dgEngineBtn');
-  BotState.isTrading = !BotState.isTrading;
-  if(BotState.isTrading){
-    BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
-    BotState.targetProfit = parseFloat(document.getElementById('dgTakeProfit')?.value || 10);
-    BotState.stopLoss = parseFloat(document.getElementById('dgStopLoss')?.value || 5);
-    BotState.currentStake = BotState.baseStake;
-    if(btn){ btn.textContent = 'STOP ENGINE'; btn.className = 'btn btn-danger'; }
-    log('[DIGIT] Auto engine started','s');
-  } else {
-    if(btn){ btn.textContent = 'AUTO ENGINE'; btn.className = 'btn btn-accent'; }
-    log('[DIGIT] Auto engine stopped','w');
-  }
-  updateDigitsUI();
-  saveState();
 }
 
 // ============================================================
@@ -1251,9 +1037,16 @@ async function authorizeWithToken(token){
     if(!wsUrl) throw new Error('No WS URL');
     log(`[AUTH] OTP obtained (${wsUrl.includes('demo')?'DEMO':'REAL'})`,'s');
     saveState();
+    showApp();
     connectOTP(wsUrl);
   } catch(err){
     log(`[AUTH] Failed: ${err.message}`,'e');
+    const errEl = document.getElementById('loginError');
+    if(errEl) errEl.textContent = err.message || 'Authorization failed';
+    const btn = document.querySelector('.btn-login');
+    if(btn) btn.textContent = 'Authorize';
+    const inp = document.getElementById('loginPat');
+    if(inp) inp.disabled = false;
     scheduleRecon();
   }
 }
@@ -1461,14 +1254,24 @@ function handleTick(data){
   if(!sym || !Number.isFinite(price) || !Number.isFinite(epoch)) return;
   processDigit(sym, price);
   updateDigitsUI();
-  if(G.TRADE_MODE==='DIGITS' && BotState.isTrading && !G.TRADE_LOCK && G.ACTIVE_CONTRACTS.size===0 && BotState.tickQueue.length >= 4){
-    evaluateDigitStrategies(sym);
-  }
   if(!G.MARKET.candles[sym]) G.MARKET.candles[sym]=[];
   if(!G.MARKET.tickBuf[sym]) G.MARKET.tickBuf[sym]=[];
   if(!G.MARKET.candleOpenAt[sym]) G.MARKET.candleOpenAt[sym]=epoch*1000;
   const buf = G.MARKET.tickBuf[sym];
   buf.push(price);
+  // Intra-candle evaluation for volatile markets (every 3rd tick)
+  if(buf.length >= 3 && buf.length % 3 === 0 && G.RUNNING && G.ACTIVE_CONTRACTS.size===0 && Date.now() - G.BOOT_AT > 4000 && G.TRADE_MODE!=='DIGITS'){
+    if(G.MARKET_SELECTION_MODE!=='manual' || sym===G.SELECTED_MARKET){
+      const result = evaluateSingleMarket(sym, buf);
+      if(result && result.conf >= 75){
+        log(`[SIGNAL] ${result.sym}: ${result.action} ${result.conf}% · ${result.src} (intra)`,'t');
+        G.CURRENT_MARKET = result.sym;
+        G.SELECTED_MARKET = result.sym;
+        updateWatchlist();
+        execTrade(result, result.sym);
+      }
+    }
+  }
   const elapsed = (epoch*1000) - G.MARKET.candleOpenAt[sym];
   if(elapsed >= G.CANDLE_INTERVAL_MS){
     // Close a 15-second candle — validate quality
@@ -1485,16 +1288,28 @@ function handleTick(data){
     };
     G.MARKET.candles[sym].push(candle);
     if(G.MARKET.candles[sym].length > 220) G.MARKET.candles[sym].shift();
+    if(!G.MARKET.tickPrices) G.MARKET.tickPrices={};
+    if(!G.MARKET.tickPrices[sym]) G.MARKET.tickPrices[sym]=[];
+    G.MARKET.tickPrices[sym].push(...buf);
+    if(G.MARKET.tickPrices[sym].length > 80) G.MARKET.tickPrices[sym].splice(0,G.MARKET.tickPrices[sym].length-60);
     G.MARKET.tickBuf[sym] = [];
     G.MARKET.candleOpenAt[sym] = epoch*1000;
     G.MARKET.prices[sym] = G.MARKET.candles[sym].map(c=>c.close);
     G.MARKET.lastCloseAt[sym] = Date.now();
+    // Store signal marker if a trade was placed during this candle
+    if(G._tradedCandle?.[sym]){
+      if(!G.SIGNAL_MARKERS) G.SIGNAL_MARKERS = [];
+      G.SIGNAL_MARKERS.push({ sym, epoch: candle.epoch, price: candle.close, action: G.LAST_SIGNAL?.action||'FALL', conf: G.LAST_SIGNAL?.conf||0 });
+      if(G.SIGNAL_MARKERS.length > 500) G.SIGNAL_MARKERS.shift();
+      G._tradedCandle[sym] = false;
+    }
     if(candle.ticks >= minTicks){
       evaluateAndTrade(sym);
     }
-  } else {
-    if(sym===G.CURRENT_MARKET) drawChart(true);
+    // Reset trade flag so it doesn't leak to the next candle
+    if(G._tradedCandle) G._tradedCandle[sym] = false;
   }
+  if(sym===G.CURRENT_MARKET) drawChart();
 }
 
 function handleCandles(data){
@@ -1507,84 +1322,101 @@ function handleOhlc(data){
   return;
 }
 
+function calcRSI(prices, period){
+  if(prices.length < period + 1) return 50;
+  const c = prices.slice(-period-1);
+  let g=0, l=0;
+  for(let i=1;i<c.length;i++){ const d=c[i]-c[i-1]; if(d>0) g+=d; else l-=d; }
+  const ag=g/period, al=l/period;
+  if(al===0) return 100;
+  return 100 - 100/(1+ag/al);
+}
+function calcEMA(prices, period){
+  if(prices.length < period) return prices[prices.length-1];
+  const k=2/(period+1);
+  let ema = prices.slice(0,period).reduce((a,b)=>a+b,0)/period;
+  for(let i=period;i<prices.length;i++) ema = prices[i]*k + ema*(1-k);
+  return ema;
+}
 function getActiveStratCode(){ return 'PVT'; }
-function evaluateSingleMarket(sym){
+function evaluateSingleMarket(sym, liveBuf){
   const c = G.MARKET.candles[sym];
-  if(!c || c.length < 12) return null;
-  const candles = c.slice(-12);
-  const curr = candles[candles.length-1];
-  const p1 = candles[candles.length-2];
-  if(!p1 || !curr) return null;
-  // Filter: minimum candle range (avoid flat markets)
+  const prices = G.MARKET.prices[sym] || [];
+  if(!c || c.length < 10) return null;
+  const candles = c.slice(-14);
+  const lastClosed = candles[candles.length-1];
+  // Build current candle: from liveBuf if provided (intra-candle), else last closed candle
+  let curr, p1;
+  if(liveBuf && liveBuf.length >= 2){
+    curr = {
+      open: lastClosed.close,
+      high: Math.max(...liveBuf),
+      low: Math.min(...liveBuf),
+      close: liveBuf[liveBuf.length-1]
+    };
+    p1 = lastClosed;
+  } else {
+    curr = candles[candles.length-1];
+    p1 = candles[candles.length-2];
+    if(!p1 || !curr) return null;
+  }
   const avgRange = candles.reduce((s,ca)=>s+Math.abs(ca.high-ca.low),0)/candles.length;
   if(avgRange < 0.001) return null;
-  // Trend: count direction of last 6 closes (wider lens)
+  // Indicators
+  const rsi = prices.length >= 15 ? calcRSI(prices, 14) : 50;
+  const ema20 = prices.length >= 20 ? calcEMA(prices, 20) : curr.close;
+  const ema50 = prices.length >= 50 ? calcEMA(prices, 50) : curr.close;
+  // Trend
   let upCount=0, dnCount=0;
   for(let i=candles.length-6; i<candles.length; i++){
     if(candles[i].close > candles[i-1].close) upCount++;
     else if(candles[i].close < candles[i-1].close) dnCount++;
   }
-  const trendDown = dnCount >= 4;
-  const trendUp = upCount >= 4;
-  // Pivot scan: find highest high / lowest low in candles[3..8] (avoid current & adjacent noise)
-  const pivotWindow = candles.slice(-9, -1);
-  let topHigh=-Infinity, topAt=-1;
-  let botLow=Infinity, botAt=-1;
+  // Pivot scan
+  const pivotWindow = candles.slice(-10, -1);
+  let topHigh=-Infinity, topAt=-1, botLow=Infinity, botAt=-1;
   for(let i=0; i<pivotWindow.length; i++){
     if(pivotWindow[i].high > topHigh){ topHigh=pivotWindow[i].high; topAt=i; }
     if(pivotWindow[i].low < botLow){ botLow=pivotWindow[i].low; botAt=i; }
   }
-  const topPivot = pivotWindow[topAt];
-  const botPivot = pivotWindow[botAt];
   const topBreak = curr.high > topHigh;
   const botBreak = curr.low < botLow;
-  // Confirmation factors:
-  // 1) Body ratio — small body + long wick at pivot = rejection
   const currBody = Math.abs(curr.close - curr.open);
   const currRange = curr.high - curr.low;
   const bodyRatio = currRange > 0 ? currBody / currRange : 1;
-  const longWick = (curr.high - Math.max(curr.open,curr.close)) > currBody*2 ||
-                   (Math.min(curr.open,curr.close) - curr.low) > currBody*2;
-  // 2) Close position relative to range — close near opposite end = strong rejection
-  const closePos = currRange > 0
-    ? (curr.close - curr.low) / currRange
-    : 0.5;
-  // 3) Candle momentum — larger range than average = conviction
-  const momentumFactor = Math.min(1.5, currRange / (avgRange || 1));
-  // === FALL signal ===
-  if(botBreak && trendDown){
-    const pivotStrength = (botPivot ? Math.abs(botPivot.low - (p1.close + (candles[candles.length-3]?.close||p1.close))/2) : 0) / avgRange;
-    let conf = 75 + Math.round(pivotStrength * 12);
-    if(bodyRatio < 0.35 && longWick) conf += 8;
-    if(closePos > 0.65) conf += 5;
-    conf += Math.round((momentumFactor - 1) * 12);
-    if(topHigh - botLow > avgRange * 6) conf += 5; // wide range = more significant
-    return { action:'FALL', conf:Math.min(94, conf), src:'BRK-D', sym, trendDir:'DOWN' };
-  }
-  // === RISE signal ===
-  if(topBreak && trendUp){
-    const pivotStrength = (topPivot ? Math.abs(topPivot.high - (p1.close + (candles[candles.length-3]?.close||p1.close))/2) : 0) / avgRange;
-    let conf = 75 + Math.round(pivotStrength * 12);
-    if(bodyRatio < 0.35 && longWick) conf += 8;
-    if(closePos < 0.35) conf += 5;
-    conf += Math.round((momentumFactor - 1) * 12);
-    if(topHigh - botLow > avgRange * 6) conf += 5;
-    return { action:'RISE', conf:Math.min(94, conf), src:'BRK-U', sym, trendDir:'UP' };
-  }
-  // === Reversal: price rejected from pivot ===
-  const atHigh = curr.high >= topHigh && p1.high >= topHigh && dnCount >= 3;
-  const atLow = curr.low <= botLow && p1.low <= botLow && upCount >= 3;
-  if(atHigh && !topBreak && bodyRatio < 0.4 && longWick){
-    let conf = 78;
-    if(closePos < 0.3) conf += 6;
-    conf += Math.round((momentumFactor - 1) * 10);
-    return { action:'FALL', conf:Math.min(90, conf), src:'REV-D', sym, trendDir:'REV' };
-  }
-  if(atLow && !botBreak && bodyRatio < 0.4 && longWick){
-    let conf = 78;
-    if(closePos > 0.7) conf += 6;
-    conf += Math.round((momentumFactor - 1) * 10);
-    return { action:'RISE', conf:Math.min(90, conf), src:'REV-U', sym, trendDir:'REV' };
+  const upperWick = curr.high - Math.max(curr.open, curr.close);
+  const lowerWick = Math.min(curr.open, curr.close) - curr.low;
+  const longUpperWick = upperWick > currBody * 1.5;
+  const longLowerWick = lowerWick > currBody * 1.5;
+  const closePos = currRange > 0 ? (curr.close - curr.low) / currRange : 0.5;
+  const atHigh = curr.high >= topHigh && p1.high >= topHigh * 0.995;
+  const atLow = curr.low <= botLow && p1.low <= botLow * 1.005;
+  // === PATH 1: Reversal (candlestick pattern determines direction) ===
+  const bearRev = atHigh && !topBreak && bodyRatio < 0.45 && longUpperWick;
+  const bullRev = atLow && !botBreak && bodyRatio < 0.45 && longLowerWick;
+  // Also catch single-candle pivot tests (current touches pivot, prev was close)
+  const bearRevSingle = !bearRev && curr.high >= topHigh && !topBreak && bodyRatio < 0.35 && longUpperWick && dnCount >= 2;
+  const bullRevSingle = !bullRev && curr.low <= botLow && !botBreak && bodyRatio < 0.35 && longLowerWick && upCount >= 2;
+  if(bearRev || bullRev || bearRevSingle || bullRevSingle){
+    const isFall = bearRev || bearRevSingle;
+    let conf = bearRev||bullRev ? 55 : 48, n = 1;
+    if(isFall){
+      if(rsi > 65){ conf += 14; n++; }
+      if(curr.close < ema20){ conf += 10; n++; }
+      if(closePos < 0.35){ conf += 10; n++; }
+      if(dnCount >= 3){ conf += 8; n++; }
+      if(curr.close < ema50){ conf += 8; n++; }
+    } else {
+      if(rsi < 35){ conf += 14; n++; }
+      if(curr.close > ema20){ conf += 10; n++; }
+      if(closePos > 0.65){ conf += 10; n++; }
+      if(upCount >= 3){ conf += 8; n++; }
+      if(curr.close > ema50){ conf += 8; n++; }
+    }
+    if(n >= 2 && conf >= 75){
+      return { action: isFall ? 'FALL' : 'RISE', conf: Math.min(94, conf),
+        src: isFall ? 'REV-D' : 'REV-U', sym, trendDir:'REV' };
+    }
   }
   return null;
 }
@@ -1595,12 +1427,18 @@ function evaluateAndTrade(sym){
   if(!G.RUNNING) return;
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
   if(Date.now() - G.BOOT_AT < 4000) return;
-  if(sym===G.CURRENT_MARKET) drawChart();
   if(G.MARKET_SELECTION_MODE==='manual' && sym!==G.SELECTED_MARKET) return;
   const result = evaluateSingleMarket(sym);
-  if(result && result.conf >= 80){
+  if(result && result.conf >= 75){
     const prices = G.MARKET.prices[sym];
     result.lastPrice = prices ? prices[prices.length-1] : 0;
+    const cdl = G.MARKET.candles[sym];
+    const lastCdl = cdl?.[cdl.length-1];
+    if(lastCdl){
+      if(!G.SIGNAL_MARKERS) G.SIGNAL_MARKERS = [];
+      G.SIGNAL_MARKERS.push({ sym, epoch: lastCdl.epoch, price: lastCdl.close, action: result.action, conf: result.conf });
+      if(G.SIGNAL_MARKERS.length > 500) G.SIGNAL_MARKERS.shift();
+    }
     log(`[SIGNAL] ${result.sym}: ${result.action} ${result.conf}% · ${result.src}`,'t');
     G.CURRENT_MARKET = result.sym;
     G.SELECTED_MARKET = result.sym;
@@ -1625,6 +1463,8 @@ function execTrade(signal, asset){
   const ct = signal.action==='RISE'?'CALL':'PUT';
   G.LAST_SIGNAL = { ...signal, stake, dur, asset };
   log(`[TRADE] ${ct} $${stake.toFixed(2)} ${asset} via ${signal.src}`,'t');
+  if(!G._tradedCandle) G._tradedCandle = {};
+  G._tradedCandle[asset] = true;
   broadcastCopySignal(ct, asset, stake);
   G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
   if(G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
@@ -1817,82 +1657,69 @@ function toggleTheme(){
 function drawChart(){
   const canvas = document.getElementById('liveChart');
   if(!canvas) return;
+  const s = getComputedStyle(document.documentElement);
+  const clr = k=>s.getPropertyValue('--'+k).trim();
+  const MUTED=clr('muted'), LINE=clr('line'), POS=clr('positive'), NEG=clr('negative');
   const sym = G.CURRENT_MARKET;
-  const c = G.MARKET.candles[sym] || [];
+  const raw = G.MARKET.candles[sym] || [];
+  const c = raw.slice(-39);
+  const liveBuf = G.MARKET.tickBuf?.[sym] || [];
+  const hasLive = liveBuf.length > 0;
+  const liveCandle = hasLive ? {
+    open: c.length ? c[c.length-1].close : liveBuf[0],
+    high: Math.max(...liveBuf),
+    low: Math.min(...liveBuf),
+    close: liveBuf[liveBuf.length-1]
+  } : null;
+  const all = liveCandle ? [...c, liveCandle] : c;
   const dpr = window.devicePixelRatio || 1;
   const w = canvas.clientWidth, h = canvas.clientHeight;
   if(canvas.width!==w*dpr||canvas.height!==h*dpr){ canvas.width=w*dpr; canvas.height=h*dpr; }
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,w,h);
-  if(c.length<2){
-    ctx.fillStyle='#5a6079'; ctx.font='11px monospace';
-    ctx.fillText('Loading 15s candles...', 12, h/2);
+  if(all.length<2){
+    ctx.fillStyle=MUTED; ctx.font='11px monospace';
+    ctx.fillText('Waiting for data...',12,h/2);
     return;
   }
-  const view = c.slice(-60);
-  const min = Math.min(...view.map(x=>x.low));
-  const max = Math.max(...view.map(x=>x.high));
-  const pad = (max-min)*0.1 || max*0.001;
-  const yMin=min-pad, yMax=max+pad;
-  const ny = (v)=> h - ((v-yMin)/(yMax-yMin))*h;
-  const cw = w/view.length;
-  // grid
-  ctx.strokeStyle='#1a1d2c'; ctx.lineWidth=1;
-  for(let i=1;i<5;i++){ const y=h*i/5; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); }
-  // bollinger overlay
-  const cl = closes(c);
-  if(cl.length>=20){
-    const points = [];
-    const pointsU=[]; const pointsL=[];
-    for(let i=cl.length-view.length;i<cl.length;i++){
-      if(i<19) continue;
-      const slice = cl.slice(i-19,i+1);
-      const m = slice.reduce((a,b)=>a+b,0)/20;
-      const sd = Math.sqrt(slice.reduce((a,b)=>a+(b-m)**2,0)/20);
-      const xi = (i-(cl.length-view.length)+0.5)*cw;
-      points.push([xi,ny(m)]);
-      pointsU.push([xi,ny(m+2*sd)]);
-      pointsL.push([xi,ny(m-2*sd)]);
-    }
-    ctx.strokeStyle='#00e5ff55'; ctx.lineWidth=1;
-    [pointsU,pointsL].forEach(pts=>{ ctx.beginPath(); pts.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])); ctx.stroke(); });
-    ctx.strokeStyle='#00e5ffaa';
-    ctx.beginPath(); points.forEach((p,i)=>i?ctx.lineTo(p[0],p[1]):ctx.moveTo(p[0],p[1])); ctx.stroke();
+  let lo=Infinity,hi=-Infinity;
+  for(const k of all){if(k.low<lo)lo=k.low;if(k.high>hi)hi=k.high;}
+  const pad=(hi-lo)*0.1||0.001, yMin=lo-pad, yMax=hi+pad;
+  const ny=v=>h-((v-yMin)/(yMax-yMin))*h;
+  const cw=w/all.length;
+  ctx.strokeStyle=LINE; ctx.lineWidth=1;
+  for(let i=1;i<5;i++){const y=h*i/5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+  all.forEach((k,i)=>{
+    const live = hasLive && i===all.length-1;
+    const x=i*cw+cw/2, up=k.close>=k.open;
+    ctx.strokeStyle=live?MUTED:(up?POS:NEG); ctx.lineWidth=live?1:1;
+    ctx.beginPath();ctx.moveTo(x,ny(k.high));ctx.lineTo(x,ny(k.low));ctx.stroke();
+    ctx.fillStyle=live?MUTED:(up?POS:NEG);
+    const bw=Math.max(1,cw*0.6), yo=ny(Math.max(k.open,k.close)), yc=ny(Math.min(k.open,k.close));
+    ctx.fillRect(x-bw/2,yo,bw,Math.max(1,yc-yo));
+  });
+  // Signal markers (filtered to current symbol)
+  const markers = (G.SIGNAL_MARKERS || []).filter(m=>m.sym===sym);
+  if(markers.length && all.length){
+    const total = markers.length;
+    all.forEach((k,i)=>{
+      const sig = markers.find(m=>m.epoch===k.epoch);
+      if(!sig) return;
+      const x=i*cw+cw/2;
+      const isCall = sig.action === 'RISE' || sig.action === 'CALL';
+      const age = total - markers.indexOf(sig);
+      const alpha = Math.max(0.3, 1 - age * 0.08);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = isCall ? POS : NEG;
+      ctx.font = `bold ${Math.max(8,cw*0.5)}px monospace`;
+      ctx.textAlign = 'center';
+      const y = isCall ? ny(k.low)-4 : ny(k.high)+12;
+      ctx.fillText(isCall ? '▲' : '▼', x, y);
+    });
+    ctx.globalAlpha = 1;
   }
-  // candles
-  view.forEach((k,i)=>{
-    const x = i*cw + cw/2;
-    const up = k.close>=k.open;
-    ctx.strokeStyle = up?'#00ff41':'#ff1744'; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(x,ny(k.high)); ctx.lineTo(x,ny(k.low)); ctx.stroke();
-    ctx.fillStyle = up?'#00ff41':'#ff1744';
-    const bw = Math.max(2, cw*0.7);
-    const yo = ny(Math.max(k.open,k.close)), yc = ny(Math.min(k.open,k.close));
-    ctx.fillRect(x-bw/2, yo, bw, Math.max(1, yc-yo));
-  });
-  // ===== Swing highs/lows overlay (2-bar pivots within visible window) =====
-  const swingHi = [], swingLo = [];
-  for(let i=2;i<view.length-2;i++){
-    const k=view[i];
-    if(k.high>view[i-1].high && k.high>view[i-2].high && k.high>view[i+1].high && k.high>view[i+2].high) swingHi.push({i,v:k.high});
-    if(k.low <view[i-1].low  && k.low <view[i-2].low  && k.low <view[i+1].low  && k.low <view[i+2].low ) swingLo.push({i,v:k.low});
-  }
-  ctx.font='10px ui-monospace,monospace'; ctx.textAlign='center';
-  swingHi.forEach(p=>{
-    const x=p.i*cw+cw/2, y=ny(p.v);
-    ctx.fillStyle='#ff1744'; ctx.beginPath(); ctx.moveTo(x,y-3); ctx.lineTo(x-4,y-9); ctx.lineTo(x+4,y-9); ctx.closePath(); ctx.fill();
-    ctx.fillStyle='#ff8aa3'; ctx.fillText('H', x, y-12);
-  });
-  swingLo.forEach(p=>{
-    const x=p.i*cw+cw/2, y=ny(p.v);
-    ctx.fillStyle='#00ff41'; ctx.beginPath(); ctx.moveTo(x,y+3); ctx.lineTo(x-4,y+9); ctx.lineTo(x+4,y+9); ctx.closePath(); ctx.fill();
-    ctx.fillStyle='#7af0c8'; ctx.fillText('L', x, y+18);
-  });
   ctx.textAlign='left';
-  // Latest swept-zone lines (the breakout levels the fakeout guard watches)
-  if(swingHi.length){ const top=Math.max(...swingHi.map(p=>p.v)); ctx.strokeStyle='#ff174455'; ctx.setLineDash([4,3]); ctx.beginPath(); ctx.moveTo(0,ny(top)); ctx.lineTo(w,ny(top)); ctx.stroke(); ctx.setLineDash([]); }
-  if(swingLo.length){ const bot=Math.min(...swingLo.map(p=>p.v)); ctx.strokeStyle='#00ff4155'; ctx.setLineDash([4,3]); ctx.beginPath(); ctx.moveTo(0,ny(bot)); ctx.lineTo(w,ny(bot)); ctx.stroke(); ctx.setLineDash([]); }
 }
 
 // ============================================================
@@ -2366,6 +2193,26 @@ function updateCopyStats() {}
 function copyLog() {}
 async function broadcastCopySignal() {}
 
+// ── Login Screen ──
+function authorizePat(){
+  const inp = document.getElementById('loginPat');
+  const err = document.getElementById('loginError');
+  const token = inp?.value?.trim();
+  if(!token){ err.textContent='Please paste your PAT token'; return; }
+  err.textContent='';
+  inp.disabled=true;
+  document.querySelector('.btn-login').textContent='Authorizing...';
+  authorizeWithToken(token).catch(e => {
+    err.textContent=e.message||'Authorization failed';
+    inp.disabled=false;
+    document.querySelector('.btn-login').textContent='Authorize';
+  });
+}
+function showApp(){
+  document.getElementById('loginOverlay').classList.add('hidden');
+  document.getElementById('app').style.display='flex';
+}
+
 // ============================================================
 // INIT
 // ============================================================
@@ -2373,8 +2220,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // Theme init
   if(localStorage.getItem('btr_theme') !== 'dark') document.documentElement.classList.remove('dark');
   const themeBtn = document.getElementById('themeBtn');
-  if(themeBtn) themeBtn.textContent = document.documentElement.classList.contains('dark') ? '\u2600\ufe0f' : '\U0001f319';
+  if(themeBtn) themeBtn.textContent = document.documentElement.classList.contains('dark') ? '\u2600\ufe0f' : '\u{1f319}';
   G.BOOT_AT = Date.now();
+  // Login Enter key
+  document.getElementById('loginPat')?.addEventListener('keydown', e => { if(e.key==='Enter') authorizePat(); });
   initStrategies();
   SYMBOLS.forEach(s => { G.MARKET.candles[s.sym] = []; G.MARKET.prices[s.sym] = []; });
   restoreState();
@@ -2404,6 +2253,13 @@ document.addEventListener('DOMContentLoaded', () => {
   window.onerror = (msg, url, line, col, err) => {
     log(`[FATAL] ${msg} (${line}:${col})`,'e');
   };
+  // Duration change → rebuild all candles at new interval
+  document.getElementById('rfDuration')?.addEventListener('change', function(){
+    const raw = this.value;
+    if(raw.endsWith('t')){ G.TRADE_DURATION = parseInt(raw); G.TRADE_DURATION_UNIT = 't'; }
+    else { G.TRADE_DURATION = parseInt(raw); G.TRADE_DURATION_UNIT = 's'; }
+    log(`[DURATION] ${G.TRADE_DURATION}${G.TRADE_DURATION_UNIT}`,'i');
+  });
   updateWatchlist();
   setInterval(updateDash, 2000);
   setInterval(updateWatchlist, 3000);
