@@ -6,17 +6,26 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>Reversal Bot</title>
+<title>BTraders</title>
 <style>
 :root{
+  --bg:#f0f2f5;--surface:#fff;--surface-2:#f5f7fa;--line:rgba(0,0,0,.08);
+  --text:#1a1d23;--muted:#6b7280;--dim:#9ca3af;
+  --positive:#10b981;--negative:#ef4444;--accent:#2563eb;--warn:#f59e0b;
+  --pos-dim:rgba(16,185,129,.1);--neg-dim:rgba(239,68,68,.1);--acc-dim:rgba(37,99,235,.1);
+  --font:'JetBrains Mono','SF Mono','Fira Code',monospace;
+  --font-head:'Inter','Segoe UI',-apple-system,sans-serif;
+  --radius:10px;--radius-sm:6px;
+  --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  --logo:linear-gradient(135deg,#2563eb,#7c3aed);
+}
+.dark{
   --bg:#0d111c;--surface:rgba(22,28,48,.95);--surface-2:rgba(30,38,62,.95);--line:rgba(60,70,110,.3);
   --text:#d0d8e8;--muted:#6a7a9a;--dim:#3a4a6a;
   --positive:#00c853;--negative:#ff1744;--accent:#2979ff;--warn:#ffd600;
   --pos-dim:rgba(0,200,83,.12);--neg-dim:rgba(255,23,68,.12);--acc-dim:rgba(41,121,255,.12);
-  --font:'JetBrains Mono','SF Mono','Fira Code',monospace;
-  --font-head:'Inter','Segoe UI',-apple-system,sans-serif;
-  --radius:8px;--radius-sm:4px;
   --shadow:0 2px 8px rgba(0,0,0,.3);
+  --logo:linear-gradient(135deg,#2979ff,#00c853);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:12px;overflow-x:hidden}
@@ -26,8 +35,8 @@ html,body{background:var(--bg);color:var(--text);font-family:var(--font);font-si
 .mtop{background:var(--surface);border-bottom:1px solid var(--line);padding:6px 10px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
 .mtop-l{display:flex;align-items:center;gap:8px}
 .mtop-r{display:flex;align-items:center;gap:10px}
-.logo{font-family:var(--font-head);font-size:14px;font-weight:700;letter-spacing:1px;color:var(--text)}
-.logo span{color:var(--positive)}
+.logo{font-family:var(--font-head);font-size:15px;font-weight:800;letter-spacing:0;background:var(--logo);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.logo span{-webkit-text-fill-color:currentColor;color:var(--accent)}
 .bal{font-size:18px;font-weight:700;font-family:var(--font-head);color:var(--positive)}
 .bal-label{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
 .conn{width:6px;height:6px;border-radius:50%;display:inline-block}
@@ -111,11 +120,15 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
 #app{display:flex;min-height:100vh}
 #main{flex:1;overflow-y:auto;max-width:100%}
 @media(max-width:800px){.sidebar{display:none}}
-.dg-circle{text-align:center;position:relative;padding:2px 0}
+.dg-circle{text-align:center;position:relative;padding:2px 0;transition:.15s}
+.dg-circle.now{transform:scale(1.1)}
 .dg-circle .c{display:flex;justify-content:center}
 .dg-circle .pct{font-size:6px;color:var(--muted);display:block;line-height:1;margin-top:1px}
-.dg-circle .now-marker{font-size:7px;line-height:1;display:block;height:8px;color:var(--accent);animation:dgBounce 1s infinite}
-@keyframes dgBounce{0%,100%{transform:translateY(0)}50%{transform:translateY(2px)}}
+@keyframes dgPulse{0%,100%{transform:scale(1.1)}50%{transform:scale(1.15)}}
+.dg-circle.now{animation:dgPulse .8s infinite}
+.log-details{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:6px 10px;margin-bottom:8px;box-shadow:var(--shadow)}
+.log-details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;text-transform:uppercase;letter-spacing:.5px;list-style:none;display:flex;align-items:center}
+.log-details summary::-webkit-details-marker{display:none}}
 </style>
 </head>
 <body>
@@ -127,11 +140,16 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
 <!-- TOP BAR -->
 <div class="mtop">
   <div class="mtop-l">
-    <div class="logo">REVERSAL<span>BOT</span></div>
+    <div class="logo">B<span>TRADERS</span></div>
     <span id="connDot" class="conn r"></span>
     <span id="engineStatus" style="font-size:8px;color:var(--muted);font-weight:600;">OFFLINE</span>
   </div>
   <div class="mtop-r">
+    <button onclick="toggleTheme()" title="Toggle theme" style="background:none;border:none;cursor:pointer;font-size:14px;line-height:1;padding:2px" id="themeBtn">🌙</button>
+    <label class="switch" title="Live / Demo">
+      <input type="checkbox" id="accToggle" onchange="toggleAccount()">
+      <span class="slider"></span>
+    </label>
     <div style="text-align:right">
       <div class="bal-label">Balance</div>
       <div id="dashBalance" class="bal">$0.00</div>
@@ -230,6 +248,15 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
       <button class="btn btn-call" onclick="placeDigitManual('DIGITEVEN')" style="flex:1">EVEN</button>
       <button class="btn btn-put" onclick="placeDigitManual('DIGITODD')" style="flex:1">ODD</button>
     </div>
+    <!-- Martingale for digits -->
+    <div style="display:flex;gap:4px;align-items:center;margin-top:4px">
+      <label style="display:flex;align-items:center;gap:3px;font-size:7px;color:var(--muted);cursor:pointer">
+        <input type="checkbox" id="dgMartToggle" onchange="toggleDigitMartingale()" style="width:12px;height:12px;accent-color:var(--accent)">
+        Martingale
+      </label>
+      <input class="inp inp-sm" id="dgMartMult" type="number" value="2" min="2" max="10" step="1" style="width:35px;display:none">
+      <span id="dgSysBadge" style="font-size:7px;color:var(--warn);margin-left:auto"></span>
+    </div>
     <!-- Auto-trade engine -->
     <div style="display:flex;gap:4px;margin-top:4px">
       <button id="dgEngineBtn" class="btn btn-accent" onclick="toggleDigitEngine()" style="flex:1;padding:5px;font-size:9px">AUTO ENGINE</button>
@@ -314,7 +341,8 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
   <div class="card">
     <div class="card-title">Markets</div>
     <div id="modeTargetMarket" style="font-size:9px;font-weight:600;margin-bottom:3px"></div>
-    <div id="watchlistBody" style="max-height:280px;overflow-y:auto"></div>
+    <select id="marketSelect" class="inp" onchange="selectMarketFromDropdown(this.value)" style="margin-bottom:4px;font-size:9px"></select>
+    <div id="watchlistBody" style="max-height:200px;overflow-y:auto"></div>
   </div>
 
   <!-- Auth row -->
@@ -325,16 +353,10 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
     </div>
   </div>
 
-  <!-- Console -->
-  <div class="card" style="padding:6px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-      <div class="card-title" style="margin:0">Log</div>
-      <div style="display:flex;gap:3px">
-        <button class="btn btn-ghost" onclick="clearLog()" style="padding:1px 6px;font-size:7px">Clear</button>
-      </div>
-    </div>
-    <div class="console-box" id="logBox"></div>
-  </div>
+  <details class="log-details">
+    <summary><span style="font-size:8px;font-weight:600;color:var(--muted)">Log</span> <button class="btn btn-ghost" onclick="event.stopPropagation();clearLog()" style="padding:1px 6px;font-size:7px;margin-left:6px">Clear</button></summary>
+    <div class="console-box" id="logBox" style="margin-top:4px"></div>
+  </details>
 </div>
 
 </div><!-- end row -->
@@ -345,12 +367,6 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
 <div class="sidebar" style="width:180px">
   <div class="card">
     <div class="card-title">Account</div>
-    <div style="display:flex;gap:4px;align-items:center;margin-bottom:4px">
-      <span id="accLabel" style="font-size:8px;color:var(--muted)">DEMO</span>
-      <label class="switch"><input type="checkbox" id="accToggle" onchange="toggleAccount()"><span class="slider"></span></label>
-      <span style="font-size:8px;color:var(--muted)">Real</span>
-    </div>
-    <div style="font-size:8px;color:var(--muted)">Daily Target</div>
     <div id="dashTarget" style="font-size:12px;font-weight:600">$0.00</div>
     <div style="font-size:8px;color:var(--muted);margin-top:2px">Daily Stop</div>
     <div id="dashLoss" style="font-size:12px;font-weight:600;color:var(--negative)">$0.00</div>
@@ -370,7 +386,7 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
     <div id="modeIndicator" style="font-size:8px;color:var(--muted);margin-top:2px">Auto</div>
   </div>
 
-  <div class="footer">Reversal Bot v2</div>
+  <div class="footer">BTraders v1</div>
 </div>
 
 </div><!-- end app -->
@@ -781,25 +797,33 @@ function digitRunTest(hist){
 }
 
 // ============================================================
-// ENHANCED DIGIT STRATEGY EVALUATION
-// ============================================================
-// Feature extraction & fusion across 5+ independent signal sources
+// DIGIT STRATEGY — advanced multi-factor with high-confidence gate
 // ============================================================
 
 let _lastDigitTradeAt = 0;
 function evaluateDigitStrategies(sym){
   if(BotState.contractActive) return;
   if(!G.WS||G.WS.readyState!==WebSocket.OPEN) return;
-  // Anti-spam: minimum 3s between digit trades
-  if(Date.now() - _lastDigitTradeAt < 3000) return;
+  if(Date.now() - _lastDigitTradeAt < 3500) return;
   const q = BotState.tickQueue;
-  if(q.length < 2) return;
+  if(q.length < 4) return;
   const hist = BotState.tickHistory;
-  if(hist.length < 40) return; // require sufficient history
-  // === STATISTICAL GATE ===
+  if(hist.length < 60) return;
+  // Statistical gate: require meaningful bias
   const chiSq = digitChiSq(hist);
-  const chiOk = hist.length >= 60 && chiSq >= 7.0;
-  if(!chiOk && hist.length < 100) return; // no weak history trades
+  if(chiSq < 10) return;
+  // Entropy filter: last 20 ticks must have at least 7 unique values (avoid sticky/dead markets)
+  const last20 = hist.slice(-20);
+  const uniq = new Set(last20).size;
+  if(uniq < 5) return;
+  // Consecutive pattern penalty: if last 3 digits are all same bucket (all ≥5 or all <5) AND same move direction, skip
+  const last3 = q.slice(-3);
+  const allOver = last3.every(d => d >= 5);
+  const allUnder = last3.every(d => d < 5);
+  const monotonic = (allOver || allUnder);
+  // Win-streak dampener: after 2+ wins, raise threshold further
+  const streakPenalty = BotState.winStreak >= 2 ? 1.05 : 1.0;
+
   BotState.lastAction = '';
   BotState.lastContractType = '';
   const ct = BotState.contractType;
@@ -808,105 +832,115 @@ function evaluateDigitStrategies(sym){
   const prev = q.length >= 2 ? q[q.length-2] : curr;
   const pq = BotState.priceQueue;
   const edge = (p) => Math.abs(p - 50);
+
   if(ct === 'OU'){
     const f1_raw = (probs.dou && probs.dou[curr] !== undefined) ? probs.dou[curr] : 50;
-    const f1_active = edge(f1_raw) >= 5;
+    const f1_active = edge(f1_raw) >= 7;
     const f1_dir = f1_raw >= 50 ? 'OVER' : 'UNDER';
     const currOU = curr >= 5 ? 'O' : 'U';
     const f2_raw = (probs.ou && probs.ou[currOU] !== undefined) ? probs.ou[currOU] : 50;
     const f2_over = currOU === 'O' ? f2_raw : 100 - f2_raw;
-    const f2_active = edge(f2_over) >= 4;
+    const f2_active = edge(f2_over) >= 6;
     const f2_dir = f2_over >= 50 ? 'OVER' : 'UNDER';
     const prevOU = prev >= 5 ? 'O' : 'U';
     const pair = prevOU + currOU;
     const f3_raw = (probs.pou && probs.pou[pair] !== undefined) ? probs.pou[pair] : 50;
-    const f3_active = edge(f3_raw) >= 7;
+    const f3_active = edge(f3_raw) >= 9;
     const f3_dir = f3_raw >= 50 ? 'OVER' : 'UNDER';
-    let f4_active = false, f4_dir = 'OVER', f4_raw = 50;
-    if(pq.length >= 2 && probs.dir) {
+    let f4_active = false, f4_dir = 'OVER';
+    if(pq.length >= 3){
       const up = pq[pq.length-1] > pq[pq.length-2];
-      f4_raw = probs.dir[up?'up':'dn'] !== undefined ? probs.dir[up?'up':'dn'] : 50;
-      f4_active = edge(f4_raw) >= 4;
-      f4_dir = f4_raw >= 50 ? 'OVER' : 'UNDER';
+      const upPrev = pq[pq.length-2] > pq[pq.length-3];
+      const streak = up === upPrev;
+      if(streak && probs.dir){
+        const r = probs.dir[up?'up':'dn'];
+        if(r !== undefined){
+          f4_active = Math.abs(r - 50) >= 5;
+          f4_dir = r >= 50 ? 'OVER' : 'UNDER';
+        }
+      }
     }
-    const recent40 = hist.slice(-40);
-    const liveOver = recent40.filter(d => d >= 5).length;
-    const liveEdge = Math.abs(liveOver - 20);
-    const f5_active = liveEdge >= 7;
-    const f5_dir = liveOver > 20 ? 'OVER' : 'UNDER';
-    let overScore = 0, underScore = 0, overFactors = 0, underFactors = 0;
-    const vote = (e, dir, w) => { if(e <= 0) return; const s = e * w; if(dir === 'OVER') { overScore += s; overFactors++; } else { underScore += s; underFactors++; } };
+    const recent50 = hist.slice(-50);
+    const liveOver = recent50.filter(d => d >= 5).length;
+    const liveEdge = Math.abs(liveOver - 25);
+    const f5_active = liveEdge >= 8;
+    const f5_dir = liveOver > 25 ? 'OVER' : 'UNDER';
+    let overScore=0, underScore=0, overF=0, underF=0;
+    const vote = (e,d,w)=>{if(e<=0)return;const s=e*w;if(d==='OVER'){overScore+=s;overF++}else{underScore+=s;underF++}};
     if(f1_active) vote(edge(f1_raw), f1_dir, 1.0);
     if(f2_active) vote(edge(f2_over), f2_dir, 0.8);
     if(f3_active) vote(edge(f3_raw), f3_dir, 0.9);
-    if(f4_active) vote(edge(f4_raw), f4_dir, 0.6);
-    if(f5_active) vote(liveEdge * 2.5, f5_dir, 0.5);
+    if(f4_active) vote(7, f4_dir, 0.7);
+    if(f5_active) vote(liveEdge*2.5, f5_dir, 0.6);
     const totScore = overScore + underScore;
-    const totFactors = overFactors + underFactors;
-    if(totScore > 0 && totFactors >= 3 && chiOk){
-      const overPct = overScore / totScore * 100;
-      const recentTicks = q.slice(-20);
-      const recentOver = recentTicks.filter(d=>d>5).length;
-      const streakConf = Math.max(recentOver, recentTicks.length - recentOver) / recentTicks.length * 100;
-      let trade = false;
-      if(overPct >= 72 && streakConf >= 65){ trade=true; }
-      else if(overPct <= 28 && streakConf >= 65){ trade=true; overPct=100-overPct; }
-      if(trade){
-        const dir = overPct >= 50 ? 'OVER' : 'UNDER';
-        log(`[DIGIT] OU→${dir} ${overPct.toFixed(0)}% (${overFactors}O-${underFactors}U, χ²=${chiSq.toFixed(1)})`,'t');
+    if(totScore > 0 && (overF+underF) >= 3){
+      const pct = Math.max(overScore, underScore) / totScore * 100 / streakPenalty;
+      const recent20 = q.slice(-20);
+      const ro = recent20.filter(d=>d>5).length;
+      const streakConf = Math.max(ro, recent20.length-ro)/recent20.length*100;
+      const isOver = overScore > underScore;
+      // Trade only with 78%+ confidence AND 70%+ streak confirmation
+      if(pct >= 78 && streakConf >= 70){
+        // Additional protection: skip if monotonic (all over/under last 3)
+        if(monotonic && pct < 85) return;
+        const dir = isOver ? 'OVER' : 'UNDER';
+        log(`[DIGIT] OU→${dir} ${pct.toFixed(0)}% (${overF}O-${underF}U, χ²=${chiSq.toFixed(1)})`,'t');
         _lastDigitTradeAt = Date.now();
-        placeDigitContract(sym, dir==='OVER'?'DIGITOVER':'DIGITUNDER', 5);
+        placeDigitContract(sym, 'DIGIT'+(isOver?'OVER':'UNDER'), 5);
       }
     }
   }
   else if(ct === 'EO'){
     const f1_raw = (probs.deo && probs.deo[curr] !== undefined) ? probs.deo[curr] : 50;
-    const f1_active = edge(f1_raw) >= 5;
+    const f1_active = edge(f1_raw) >= 7;
     const f1_dir = f1_raw >= 50 ? 'EVEN' : 'ODD';
     const currEO = curr % 2 === 0 ? 'E' : 'D';
     const f2_raw = (probs.eo && probs.eo[currEO] !== undefined) ? probs.eo[currEO] : 50;
     const f2_even = currEO === 'E' ? f2_raw : 100 - f2_raw;
-    const f2_active = edge(f2_even) >= 4;
+    const f2_active = edge(f2_even) >= 6;
     const f2_dir = f2_even >= 50 ? 'EVEN' : 'ODD';
     const prevEO = prev % 2 === 0 ? 'E' : 'D';
     const pair = prevEO + currEO;
     const f3_raw = (probs.peo && probs.peo[pair] !== undefined) ? probs.peo[pair] : 50;
-    const f3_active = edge(f3_raw) >= 8;
+    const f3_active = edge(f3_raw) >= 10;
     const f3_dir = f3_raw >= 50 ? 'EVEN' : 'ODD';
-    let f4_active = false, f4_dir = 'EVEN', f4_raw = 50;
-    if(pq.length >= 2 && probs.dir) {
+    let f4_active = false, f4_dir = 'EVEN';
+    if(pq.length >= 3){
       const up = pq[pq.length-1] > pq[pq.length-2];
-      f4_raw = probs.dir[up?'up':'dn'] !== undefined ? (probs.dir[up?'up':'dn'] >= 50 ? 52 : 48) : 50;
-      f4_active = true;
-      f4_dir = f4_raw >= 50 ? 'EVEN' : 'ODD';
+      const upPrev = pq[pq.length-2] > pq[pq.length-3];
+      const streak = up === upPrev;
+      if(streak && probs.dir){
+        const r = probs.dir[up?'up':'dn'];
+        if(r !== undefined){
+          f4_active = Math.abs(r - 50) >= 5;
+          f4_dir = r >= 50 ? 'EVEN' : 'ODD';
+        }
+      }
     }
-    const recent40 = hist.slice(-40);
-    const liveEven = recent40.filter(d => d % 2 === 0).length;
-    const liveEdge = Math.abs(liveEven - 20);
-    const f5_active = liveEdge >= 7;
-    const f5_dir = liveEven > 20 ? 'EVEN' : 'ODD';
-    let evenScore = 0, oddScore = 0, evenFactors = 0, oddFactors = 0;
-    const vote = (e, dir, w) => { if(e <= 0) return; const s = e * w; if(dir === 'EVEN') { evenScore += s; evenFactors++; } else { oddScore += s; oddFactors++; } };
+    const recent50 = hist.slice(-50);
+    const liveEven = recent50.filter(d => d % 2 === 0).length;
+    const liveEdge = Math.abs(liveEven - 25);
+    const f5_active = liveEdge >= 8;
+    const f5_dir = liveEven > 25 ? 'EVEN' : 'ODD';
+    let evenScore=0, oddScore=0, evenF=0, oddF=0;
+    const vote = (e,d,w)=>{if(e<=0)return;const s=e*w;if(d==='EVEN'){evenScore+=s;evenF++}else{oddScore+=s;oddF++}};
     if(f1_active) vote(edge(f1_raw), f1_dir, 1.0);
     if(f2_active) vote(edge(f2_even), f2_dir, 0.8);
     if(f3_active) vote(edge(f3_raw), f3_dir, 0.9);
-    if(f4_active) vote(5, f4_dir, 0.5);
-    if(f5_active) vote(liveEdge * 2.5, f5_dir, 0.5);
+    if(f4_active) vote(7, f4_dir, 0.7);
+    if(f5_active) vote(liveEdge*2.5, f5_dir, 0.6);
     const totScore = evenScore + oddScore;
-    const totFactors = evenFactors + oddFactors;
-    if(totScore > 0 && totFactors >= 3 && chiOk){
-      const evenPct = evenScore / totScore * 100;
-      const recentTicks = q.slice(-20);
-      const recentEven = recentTicks.filter(d=>d%2===0).length;
-      const streakConf = Math.max(recentEven, recentTicks.length - recentEven) / recentTicks.length * 100;
-      let trade = false;
-      if(evenPct >= 72 && streakConf >= 65){ trade=true; }
-      else if(evenPct <= 28 && streakConf >= 65){ trade=true; evenPct=100-evenPct; }
-      if(trade){
-        const dir = evenPct >= 50 ? 'EVEN' : 'ODD';
-        log(`[DIGIT] EO→${dir} ${evenPct.toFixed(0)}% (${evenFactors}E-${oddFactors}O, χ²=${chiSq.toFixed(1)})`,'t');
+    if(totScore > 0 && (evenF+oddF) >= 3){
+      const pct = Math.max(evenScore, oddScore) / totScore * 100 / streakPenalty;
+      const recent20 = q.slice(-20);
+      const re = recent20.filter(d=>d%2===0).length;
+      const streakConf = Math.max(re, recent20.length-re)/recent20.length*100;
+      const isEven = evenScore > oddScore;
+      if(pct >= 80 && streakConf >= 70){
+        const dir = isEven ? 'EVEN' : 'ODD';
+        log(`[DIGIT] EO→${dir} ${pct.toFixed(0)}% (${evenF}E-${oddF}O, χ²=${chiSq.toFixed(1)})`,'t');
         _lastDigitTradeAt = Date.now();
-        placeDigitContract(sym, dir==='EVEN'?'DIGITEVEN':'DIGITODD');
+        placeDigitContract(sym, 'DIGIT'+(isEven?'EVEN':'ODD'));
       }
     }
   }
@@ -1048,6 +1082,28 @@ function resetSession(){
   resetDigitPnL();
   updateDash();
   log('[SYSTEM] Session reset','i');
+}
+
+function toggleDigitMartingale(){
+  const cb = document.getElementById('dgMartToggle');
+  const mult = document.getElementById('dgMartMult');
+  if(cb && cb.checked){
+    if(mult) mult.style.display = 'inline-block';
+    BotState.riskMode = 'martingale';
+    BotState.martingaleMult = parseFloat(document.getElementById('dgMartMult')?.value || 2);
+    BotState.currentStake = BotState.baseStake;
+    BotState.sessionDeficit = 0;
+    BotState.cyclePnL = 0;
+    log('[DIGIT] Martingale ON (x'+BotState.martingaleMult+')','i');
+  } else {
+    if(mult) mult.style.display = 'none';
+    BotState.riskMode = 'flat';
+    BotState.currentStake = BotState.baseStake;
+    BotState.sessionDeficit = 0;
+    BotState.cyclePnL = 0;
+    log('[DIGIT] Flat betting','i');
+  }
+  updateDigitsUI();
 }
 
 function toggleDigitEngine(){
@@ -1405,24 +1461,6 @@ function handleTick(data){
   if(!sym || !Number.isFinite(price) || !Number.isFinite(epoch)) return;
   processDigit(sym, price);
   updateDigitsUI();
-  // Pending signal confirmation: check if price confirms the predicted direction
-  if(G.PENDING_SIGNAL && G.PENDING_SIGNAL.sym === sym && G.ACTIVE_CONTRACTS.size === 0){
-    const age = Date.now() - G.PENDING_SIGNAL_AT;
-    if(age > 2500){
-      G.PENDING_SIGNAL = null; // expired
-    } else {
-      const dir = G.PENDING_SIGNAL.action === 'RISE' ? 1 : -1;
-      if(price > G.PENDING_SIGNAL.lastPrice && dir > 0){
-        log(`[CONFIRM] ${G.PENDING_SIGNAL.action} ${G.PENDING_SIGNAL.sym} tick confirms direction → trade`,'s');
-        execTrade(G.PENDING_SIGNAL, G.PENDING_SIGNAL.sym);
-        G.PENDING_SIGNAL = null;
-      } else if(price < G.PENDING_SIGNAL.lastPrice && dir < 0){
-        log(`[CONFIRM] ${G.PENDING_SIGNAL.action} ${G.PENDING_SIGNAL.sym} tick confirms direction → trade`,'s');
-        execTrade(G.PENDING_SIGNAL, G.PENDING_SIGNAL.sym);
-        G.PENDING_SIGNAL = null;
-      }
-    }
-  }
   if(G.TRADE_MODE==='DIGITS' && BotState.isTrading && !G.TRADE_LOCK && G.ACTIVE_CONTRACTS.size===0 && BotState.tickQueue.length >= 4){
     evaluateDigitStrategies(sym);
   }
@@ -1556,21 +1594,18 @@ function evaluateAndTrade(sym){
   if(G.TRADE_MODE==='DIGITS') return;
   if(!G.RUNNING) return;
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
-  // Startup cooldown: skip trades during first 4s after connect (history sync)
   if(Date.now() - G.BOOT_AT < 4000) return;
   if(sym===G.CURRENT_MARKET) drawChart();
-  // Only evaluate the symbol whose candle just closed — not all markets
   if(G.MARKET_SELECTION_MODE==='manual' && sym!==G.SELECTED_MARKET) return;
   const result = evaluateSingleMarket(sym);
   if(result && result.conf >= 80){
     const prices = G.MARKET.prices[sym];
     result.lastPrice = prices ? prices[prices.length-1] : 0;
     log(`[SIGNAL] ${result.sym}: ${result.action} ${result.conf}% · ${result.src}`,'t');
-    G.PENDING_SIGNAL = result;
-    G.PENDING_SIGNAL_AT = Date.now();
     G.CURRENT_MARKET = result.sym;
     G.SELECTED_MARKET = result.sym;
     updateWatchlist();
+    execTrade(result, result.sym);
   }
   } catch(e){ log(`[CRASH] evaluateAndTrade: ${e.message}`,'e'); console.error(e); }
 }
@@ -1768,6 +1803,13 @@ function toggleAccount(){
   if(al) al.textContent = G.ACCOUNT_TYPE.toUpperCase();
   if(G.AUTH){ if(G.WS) try{ G.WS.close(); }catch(e){} authorizeWithToken(G.TOKEN); }
 }
+function toggleTheme(){
+  document.documentElement.classList.toggle('dark');
+  const btn = document.getElementById('themeBtn');
+  const isDark = document.documentElement.classList.contains('dark');
+  btn.textContent = isDark ? '☀️' : '🌙';
+  localStorage.setItem('btr_theme', isDark ? 'dark' : 'light');
+}
 
 // ============================================================
 // CHART (15s candles)
@@ -1856,6 +1898,13 @@ function drawChart(){
 // ============================================================
 // WATCHLIST
 // ============================================================
+function selectMarketFromDropdown(sym){
+  G.MARKET_SELECTION_MODE = 'manual';
+  G.SELECTED_MARKET = sym;
+  G.CURRENT_MARKET = sym;
+  selectMarket(sym);
+}
+
 function updateWatchlist(){
   const body = document.getElementById('watchlistBody');
   if(!body) return;
@@ -1951,7 +2000,7 @@ function switchMode(mode){
   document.getElementById('rfStratRow').style.display = mode==='RISEFALL' ? 'block' : 'none';
   document.getElementById('hdrTitle').innerHTML = mode==='DIGITS'
     ? 'Digits Bot <span style="color:var(--accent);font-size:10px;font-weight:600;margin-left:4px;">1t</span>'
-    : 'Reversal Bot <span style="color:var(--positive);font-size:10px;font-weight:600;margin-left:4px;">10s</span>';
+    : 'R/F Bot <span style="color:var(--positive);font-size:10px;font-weight:600;margin-left:4px;">10s</span>';
   const si = document.getElementById('modeSubInfo');
   if(si) si.textContent = mode;
   log('[MODE] Switched to '+mode,'i');
@@ -2025,16 +2074,17 @@ function updateDigitsUI(){
       const ringColor = isMax ? 'var(--positive)' : isMin ? 'var(--negative)' : 'var(--muted)';
       const txtColor = isMax ? 'var(--positive)' : isMin ? 'var(--negative)' : 'var(--muted)';
       const dash = pct === 0 ? '0.1 99.9' : pct.toFixed(1) + ' ' + (100-pct).toFixed(1);
-      return '<div class="dg-circle">'
+      const nowStroke = isNow ? '4.5' : '3.5';
+      const nowGlow = isNow ? 'filter:drop-shadow(0 0 4px var(--accent));' : '';
+      return '<div class="dg-circle'+(isNow?' now':'')+'">'
         + '<div class="c">'
-        + '<svg viewBox="0 0 36 36" style="width:30px;height:30px;transform:rotate(-90deg);overflow:visible;">'
-        + '<circle cx="18" cy="18" r="15.5" fill="none" stroke="var(--surface-2)" stroke-width="3.5"/>'
-        + '<circle cx="18" cy="18" r="15.5" fill="none" stroke="'+ringColor+'" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="'+dash+'"/>'
-        + '<text x="18" y="20" text-anchor="middle" font-size="10" font-weight="700" fill="'+txtColor+'" transform="rotate(90,18,18)">'+i+'</text>'
+        + '<svg viewBox="0 0 36 36" style="width:30px;height:30px;transform:rotate(-90deg);overflow:visible;'+nowGlow+'">'
+        + '<circle cx="18" cy="18" r="15.5" fill="'+(isNow?'var(--acc-dim)':'none')+'" stroke="var(--surface-2)" stroke-width="'+nowStroke+'"/>'
+        + '<circle cx="18" cy="18" r="15.5" fill="none" stroke="'+ringColor+'" stroke-width="'+nowStroke+'" stroke-linecap="round" stroke-dasharray="'+dash+'"/>'
+        + '<text x="18" y="20" text-anchor="middle" font-size="12" font-weight="800" fill="'+txtColor+'" transform="rotate(90,18,18)">'+i+'</text>'
         + '</svg>'
         + '</div>'
         + '<span class="pct">'+pctStr+'%</span>'
-        + (isNow ? '<span class="now-marker">&#9660;</span>' : '<span class="now-marker"></span>')
         + '</div>';
     }).join('');
   }
@@ -2320,11 +2370,21 @@ async function broadcastCopySignal() {}
 // INIT
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
+  // Theme init
+  if(localStorage.getItem('btr_theme') !== 'dark') document.documentElement.classList.remove('dark');
+  const themeBtn = document.getElementById('themeBtn');
+  if(themeBtn) themeBtn.textContent = document.documentElement.classList.contains('dark') ? '\u2600\ufe0f' : '\U0001f319';
   G.BOOT_AT = Date.now();
   initStrategies();
   SYMBOLS.forEach(s => { G.MARKET.candles[s.sym] = []; G.MARKET.prices[s.sym] = []; });
   restoreState();
   renderStratList();
+  // Populate market dropdown
+  const sel = document.getElementById('marketSelect');
+  if(sel){
+    sel.innerHTML = SYMBOLS.map(s => `<option value="${s.sym}">${s.name}</option>`).join('');
+    sel.value = G.CURRENT_MARKET || SYMBOLS[0]?.sym;
+  }
   updateDash();
   initCopytrading();
   connectMarketWS();
@@ -2337,9 +2397,9 @@ document.addEventListener('DOMContentLoaded', () => {
   BotState.stopLoss = parseFloat(document.getElementById('dgStopLoss')?.value || 5);
   BotState.currentStake = BotState.baseStake;
   updateDigitsUI();
-  log('[SYSTEM] Reversal Bot Pro ready · 15s engine', 's');
-  log(`[SYSTEM] ${G.STRATEGIES.length} strategies · ${SYMBOLS.length} markets`, 'i');
-  log('[SYSTEM] Copy mode ready — paste token to begin', 'i');
+  log('[SYSTEM] BTraders ready \u00b7 15s engine', 's');
+  log(`[SYSTEM] ${G.STRATEGIES.length} strategies \u00b7 ${SYMBOLS.length} markets`, 'i');
+  log('[SYSTEM] Copy mode ready \u2014 paste token to begin', 'i');
   // Global error handler to catch any unhandled crashes
   window.onerror = (msg, url, line, col, err) => {
     log(`[FATAL] ${msg} (${line}:${col})`,'e');
