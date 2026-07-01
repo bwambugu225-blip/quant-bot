@@ -1704,27 +1704,45 @@ function drawChart(){
     ctx.fillRect(x-bw/2,yo,bw,Math.max(1,yc-yo));
   });
   // Signal markers — drawn on candle body
-  const signals = G._signalOnCandle || {};
   all.forEach((k,i)=>{
-    const sig = k.signal || signals[sym+':'+k.epoch];
-    if(!sig) return;
+    const s = k.signal;
+    if(!s) return;
     const x=i*cw+cw/2;
-    const isCall = sig.action === 'RISE' || sig.action === 'CALL';
-    const age = i; // newer candles (higher index) = more recent
-    const alpha = Math.max(0.35, 1 - (all.length-1-i) * 0.07);
-    ctx.globalAlpha = alpha;
-    // Background dot
+    const isCall = s.action === 'RISE' || s.action === 'CALL';
+    const cy = isCall ? Math.min(ny(k.low)-4, h-12) : Math.max(ny(k.high)+4, 12);
+    ctx.globalAlpha = Math.max(0.3, 1 - (all.length-1-i) * 0.06);
+    // filled diamond bg
     ctx.fillStyle = isCall ? POS : NEG;
+    const r = Math.max(5, cw*0.35);
     ctx.beginPath();
-    ctx.arc(x, isCall ? ny(k.low)-2 : ny(k.high)+2, Math.max(4, cw*0.3), 0, Math.PI*2);
-    ctx.fill();
-    // Arrow
+    ctx.moveTo(x, cy-r); ctx.lineTo(x+r, cy);
+    ctx.lineTo(x, cy+r); ctx.lineTo(x-r, cy);
+    ctx.closePath(); ctx.fill();
+    // label
     ctx.fillStyle = '#fff';
-    ctx.font = `bold ${Math.max(9, cw*0.55)}px monospace`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(isCall ? '▲' : '▼', x, isCall ? ny(k.low)-2 : ny(k.high)+2);
+    ctx.font = `bold ${Math.max(8, cw*0.45)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(isCall ? '↑' : '↓', x, cy);
+    ctx.globalAlpha = 1;
   });
+  // Also draw LAST_SIGNAL marker on the very last closed candle as fallback
+  if(!all.length) return;
+  const lastClosedCdl = hasLive && all.length >= 2 ? all[all.length-2] : all[all.length-1];
+  if(lastClosedCdl && !lastClosedCdl.signal && G.LAST_SIGNAL && G.LAST_SIGNAL.sym === sym){
+    const x = (hasLive ? all.length-2 : all.length-1) * cw + cw/2;
+    const isCall = G.LAST_SIGNAL.action === 'RISE';
+    const cy = isCall ? Math.min(ny(lastClosedCdl.low)-4, h-12) : Math.max(ny(lastClosedCdl.high)+4, 12);
+    ctx.fillStyle = isCall ? POS : NEG;
+    const r = Math.max(5, cw*0.35);
+    ctx.beginPath();
+    ctx.moveTo(x, cy-r); ctx.lineTo(x+r, cy);
+    ctx.lineTo(x, cy+r); ctx.lineTo(x-r, cy);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.max(8, cw*0.45)}px sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(isCall ? '↑' : '↓', x, cy);
+  }
   ctx.globalAlpha = 1;
   ctx.textAlign='left';
   ctx.textBaseline='alphabetic';
