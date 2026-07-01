@@ -9,7 +9,7 @@
 <title>BTraders</title>
 <style>
 :root{
-  --bg:#f0f2f5;--surface:#fff;--surface-2:#f5f7fa;--line:rgba(0,0,0,.08);
+  --bg:#f0f2f5;--surface:rgba(255,255,255,.85);--surface-2:rgba(255,255,255,.9);--line:rgba(0,0,0,.08);
   --text:#1a1d23;--muted:#6b7280;--dim:#9ca3af;
   --positive:#10b981;--negative:#ef4444;--accent:#2563eb;--warn:#f59e0b;
   --pos-dim:rgba(16,185,129,.1);--neg-dim:rgba(239,68,68,.1);--acc-dim:rgba(37,99,235,.1);
@@ -20,19 +20,21 @@
   --logo:linear-gradient(135deg,#2563eb,#7c3aed);
 }
 .dark{
-  --bg:#0d111c;--surface:rgba(22,28,48,.95);--surface-2:rgba(30,38,62,.95);--line:rgba(60,70,110,.3);
+  --bg:linear-gradient(135deg,#0f0f1a 0%,#1a1a2e 40%,#16213e 100%);
+  --surface:rgba(255,255,255,.04);--surface-2:rgba(255,255,255,.06);--line:rgba(255,255,255,.08);
   --text:#d0d8e8;--muted:#6a7a9a;--dim:#3a4a6a;
-  --positive:#00c853;--negative:#ff1744;--accent:#2979ff;--warn:#ffd600;
-  --pos-dim:rgba(0,200,83,.12);--neg-dim:rgba(255,23,68,.12);--acc-dim:rgba(41,121,255,.12);
+  --positive:#00c853;--negative:#ff1744;--accent:#f7971e;--warn:#ffd600;
+  --pos-dim:rgba(0,200,83,.12);--neg-dim:rgba(255,23,68,.12);--acc-dim:rgba(247,151,30,.12);
   --shadow:0 2px 8px rgba(0,0,0,.3);
-  --logo:linear-gradient(135deg,#2979ff,#00c853);
+  --logo:linear-gradient(135deg,#f7971e,#ffd200);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 html,body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:12px;overflow-x:hidden}
+.dark html,.dark body{background-attachment:fixed}
 ::-webkit-scrollbar{width:2px}
 ::-webkit-scrollbar-track{background:var(--bg)}
 ::-webkit-scrollbar-thumb{background:var(--dim)}
-.mtop{background:var(--surface);border-bottom:1px solid var(--line);padding:6px 10px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+.mtop{background:rgba(255,255,255,.03);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:6px 10px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
 .mtop-l{display:flex;align-items:center;gap:8px}
 .mtop-r{display:flex;align-items:center;gap:10px}
 .logo{font-family:var(--font-head);font-size:15px;font-weight:800;letter-spacing:0;background:var(--logo);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
@@ -46,7 +48,7 @@ html,body{background:var(--bg);color:var(--text);font-family:var(--font);font-si
 .row{display:flex;gap:8px;padding:6px 10px}
 .col{flex:1}
 .col-2{flex:2}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;box-shadow:var(--shadow)}
+.card{background:var(--surface);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;box-shadow:var(--shadow)}
 .card-title{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin-bottom:6px}
 .btn{border:1px solid var(--line);background:var(--surface);padding:7px 14px;font-weight:600;font-size:10px;cursor:pointer;color:var(--text);font-family:var(--font);border-radius:var(--radius-sm);transition:all .2s;text-transform:uppercase;letter-spacing:.4px}
 .btn:hover{opacity:.9;border-color:var(--muted)}
@@ -58,12 +60,12 @@ html,body{background:var(--bg);color:var(--text);font-family:var(--font);font-si
 .btn-put:hover{background:#ff2e55;box-shadow:0 0 20px rgba(255,23,68,.25)}
 .btn-accent{background:var(--accent);border-color:var(--accent);color:#fff}
 .btn-accent:hover{box-shadow:0 0 20px rgba(41,121,255,.25)}
-.btn-ghost{background:transparent;border-color:var(--line);color:var(--muted)}
+.btn-ghost{background:rgba(255,255,255,.03);border-color:var(--line);color:var(--muted)}
 .btn-ghost:hover{color:var(--text);border-color:var(--muted)}
-.inp{background:var(--bg);border:1px solid var(--line);padding:6px 8px;color:var(--text);font-size:10px;width:100%;outline:none;font-family:var(--font);border-radius:var(--radius-sm)}
+.inp{background:rgba(255,255,255,.06);border:1px solid var(--line);padding:6px 8px;color:var(--text);font-size:10px;width:100%;outline:none;font-family:var(--font);border-radius:var(--radius-sm)}
 .inp:focus{border-color:var(--muted)}
 .inp-sm{padding:4px 6px;font-size:9px}
-.kpi{text-align:center;padding:6px 4px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm)}
+.kpi{text-align:center;padding:6px 4px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:var(--radius-sm)}
 .kpi .v{font-size:15px;font-weight:700;font-family:var(--font-head)}
 .kpi .l{font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
 .tag{display:inline-block;padding:1px 5px;font-size:7px;font-weight:600;border:1px solid;border-radius:2px}
@@ -85,7 +87,7 @@ html,body{background:var(--bg);color:var(--text);font-family:var(--font);font-si
 .sig-none{border-color:var(--dim);color:var(--dim)}
 .sig-rise{border-color:var(--positive);color:var(--positive)}
 .sig-fall{border-color:var(--negative);color:var(--negative)}
-.console-box{background:#080b16;overflow-y:auto;padding:4px 6px;font-size:8px;line-height:1.5;border:1px solid var(--line);border-radius:var(--radius-sm);max-height:80px;font-family:var(--font)}
+.console-box{background:rgba(0,0,0,.3);overflow-y:auto;padding:4px 6px;font-size:8px;line-height:1.5;border:1px solid var(--line);border-radius:var(--radius-sm);max-height:80px;font-family:var(--font)}
 .console-box div{padding:1px 0;color:var(--muted)}
 .console-box .w{color:var(--warn)}
 .console-box .e{color:var(--negative)}
@@ -115,7 +117,7 @@ html,body{background:var(--bg);color:var(--text);font-family:var(--font);font-si
 .switch input:checked+.slider{border-color:var(--positive);background:var(--pos-dim)}
 .switch input:checked+.slider:before{transform:translateX(12px);background:var(--positive)}
 details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;text-transform:uppercase;letter-spacing:.5px}
-.sidebar{background:var(--surface);border-left:1px solid var(--line);padding:8px;width:180px;flex-shrink:0;overflow-y:auto}
+.sidebar{background:rgba(255,255,255,.02);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-left:1px solid var(--line);padding:8px;width:180px;flex-shrink:0;overflow-y:auto}
 .sidebar .card{margin-bottom:6px}
 #app{display:flex;min-height:100vh}
 #main{flex:1;overflow-y:auto;max-width:100%}
@@ -1298,9 +1300,10 @@ function handleTick(data){
     G.MARKET.lastCloseAt[sym] = Date.now();
     // Store signal marker if a trade was placed during this candle
     if(G._tradedCandle?.[sym]){
-      if(!G.SIGNAL_MARKERS) G.SIGNAL_MARKERS = [];
-      G.SIGNAL_MARKERS.push({ sym, epoch: candle.epoch, price: candle.close, action: G.LAST_SIGNAL?.action||'FALL', conf: G.LAST_SIGNAL?.conf||0 });
-      if(G.SIGNAL_MARKERS.length > 500) G.SIGNAL_MARKERS.shift();
+      if(!G._signalOnCandle) G._signalOnCandle = {};
+      const key = sym+':'+candle.epoch;
+      G._signalOnCandle[key] = { action: G.LAST_SIGNAL?.action||'FALL', conf: G.LAST_SIGNAL?.conf||0, price: candle.close };
+      candle.signal = G._signalOnCandle[key];
       G._tradedCandle[sym] = false;
     }
     if(candle.ticks >= minTicks){
@@ -1435,9 +1438,10 @@ function evaluateAndTrade(sym){
     const cdl = G.MARKET.candles[sym];
     const lastCdl = cdl?.[cdl.length-1];
     if(lastCdl){
-      if(!G.SIGNAL_MARKERS) G.SIGNAL_MARKERS = [];
-      G.SIGNAL_MARKERS.push({ sym, epoch: lastCdl.epoch, price: lastCdl.close, action: result.action, conf: result.conf });
-      if(G.SIGNAL_MARKERS.length > 500) G.SIGNAL_MARKERS.shift();
+      if(!G._signalOnCandle) G._signalOnCandle = {};
+      const key = sym+':'+lastCdl.epoch;
+      G._signalOnCandle[key] = { action: result.action, conf: result.conf, price: lastCdl.close };
+      lastCdl.signal = G._signalOnCandle[key];
     }
     log(`[SIGNAL] ${result.sym}: ${result.action} ${result.conf}% · ${result.src}`,'t');
     G.CURRENT_MARKET = result.sym;
@@ -1699,27 +1703,31 @@ function drawChart(){
     const bw=Math.max(1,cw*0.6), yo=ny(Math.max(k.open,k.close)), yc=ny(Math.min(k.open,k.close));
     ctx.fillRect(x-bw/2,yo,bw,Math.max(1,yc-yo));
   });
-  // Signal markers (filtered to current symbol)
-  const markers = (G.SIGNAL_MARKERS || []).filter(m=>m.sym===sym);
-  if(markers.length && all.length){
-    const total = markers.length;
-    all.forEach((k,i)=>{
-      const sig = markers.find(m=>m.epoch===k.epoch);
-      if(!sig) return;
-      const x=i*cw+cw/2;
-      const isCall = sig.action === 'RISE' || sig.action === 'CALL';
-      const age = total - markers.indexOf(sig);
-      const alpha = Math.max(0.3, 1 - age * 0.08);
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = isCall ? POS : NEG;
-      ctx.font = `bold ${Math.max(8,cw*0.5)}px monospace`;
-      ctx.textAlign = 'center';
-      const y = isCall ? ny(k.low)-4 : ny(k.high)+12;
-      ctx.fillText(isCall ? '▲' : '▼', x, y);
-    });
-    ctx.globalAlpha = 1;
-  }
+  // Signal markers — drawn on candle body
+  const signals = G._signalOnCandle || {};
+  all.forEach((k,i)=>{
+    const sig = k.signal || signals[sym+':'+k.epoch];
+    if(!sig) return;
+    const x=i*cw+cw/2;
+    const isCall = sig.action === 'RISE' || sig.action === 'CALL';
+    const age = i; // newer candles (higher index) = more recent
+    const alpha = Math.max(0.35, 1 - (all.length-1-i) * 0.07);
+    ctx.globalAlpha = alpha;
+    // Background dot
+    ctx.fillStyle = isCall ? POS : NEG;
+    ctx.beginPath();
+    ctx.arc(x, isCall ? ny(k.low)-2 : ny(k.high)+2, Math.max(4, cw*0.3), 0, Math.PI*2);
+    ctx.fill();
+    // Arrow
+    ctx.fillStyle = '#fff';
+    ctx.font = `bold ${Math.max(9, cw*0.55)}px monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(isCall ? '▲' : '▼', x, isCall ? ny(k.low)-2 : ny(k.high)+2);
+  });
+  ctx.globalAlpha = 1;
   ctx.textAlign='left';
+  ctx.textBaseline='alphabetic';
 }
 
 // ============================================================
