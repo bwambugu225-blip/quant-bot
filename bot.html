@@ -321,7 +321,7 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
           <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Ticks</div><div id="dgATicks" style="font-size:12px;font-weight:700">0</div>
         </div>
         <div style="background:var(--bg);padding:3px;text-align:center;border:1px solid var(--line);border-radius:var(--radius-sm)">
-          <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Mode</div><div id="dgAMode" style="font-size:12px;font-weight:700">--</div>
+          <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Chi-Sq</div><div id="dgChiSq" style="font-size:12px;font-weight:700">--</div>
         </div>
         <div style="background:var(--bg);padding:3px;text-align:center;border:1px solid var(--line);border-radius:var(--radius-sm)">
           <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Win Streak</div>
@@ -771,8 +771,10 @@ function placeDigitManual(contractType){
   const stake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
   const isOU = contractType === 'DIGITOVER' || contractType === 'DIGITUNDER';
   const label = isOU ? (contractType==='DIGITOVER'?'OVER':'UNDER') : (contractType==='DIGITEVEN'?'EVEN':'ODD');
+  const cs = digitChiSq(BotState.tickHistory);
+  const csInfo = cs > 16.9 ? ` χ²=${cs.toFixed(1)} skewed` : cs > 11.1 ? ` χ²=${cs.toFixed(1)}` : '';
   G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
-  log(`[DIGIT] Manual ${label} $${stake.toFixed(2)} ${sym}`,'t');
+  log(`[DIGIT] Manual ${label} $${stake.toFixed(2)} ${sym}${csInfo}`,'t');
   const payload = {
     proposal:1, subscribe:1, amount:+stake.toFixed(2), basis:'stake',
     contract_type:contractType, currency:'USD', duration:1, duration_unit:'t',
@@ -1261,24 +1263,6 @@ function handleTick(data){
   if(!G.MARKET.candleOpenAt[sym]) G.MARKET.candleOpenAt[sym]=epoch*1000;
   const buf = G.MARKET.tickBuf[sym];
   buf.push(price);
-  // Intra-candle evaluation for volatile markets (every 2nd tick)
-  if(buf.length >= 2 && buf.length % 2 === 0 && G.RUNNING && Date.now() - G.BOOT_AT > 4000 && G.TRADE_MODE!=='DIGITS'){
-    if(G.MARKET_SELECTION_MODE!=='manual' || sym===G.SELECTED_MARKET){
-      const result = evaluateSingleMarket(sym, buf);
-      if(result && result.conf >= 75){
-        result.lastPrice = price;
-        const canTrade = G.ACTIVE_CONTRACTS.size === 0;
-        const ev = result.evidence || {};
-        log(`[SIGNAL] ${result.sym}: ${result.action} ${result.conf}% · ${ev.pattern} rsi=${ev.rsi} trend=${ev.upN}U/${ev.dnN}D body=${ev.bodyR} ${canTrade?'':'[SKIP]'}`,'t');
-        if(canTrade){
-          G.CURRENT_MARKET = result.sym;
-          G.SELECTED_MARKET = result.sym;
-          updateWatchlist();
-          execTrade(result, result.sym);
-        }
-      }
-    }
-  }
   const elapsed = (epoch*1000) - G.MARKET.candleOpenAt[sym];
   if(elapsed >= G.CANDLE_INTERVAL_MS){
     // Close a 15-second candle — validate quality
@@ -1974,6 +1958,12 @@ function updateDigitsUI(){
     }).join('');
   }
   setText('dgDistRange', 'Last '+histLen+' ticks');
+  const cs = digitChiSq(hist);
+  const chiEl = get('dgChiSq');
+  if(chiEl){
+    chiEl.textContent = cs ? cs.toFixed(1) : '--';
+    chiEl.style.color = cs > 16.9 ? 'var(--negative)' : cs > 11.1 ? 'var(--warn)' : 'var(--muted)';
+  }
   const dgMarket = get('dgMarketName');
   if(dgMarket){ const s = G.CURRENT_MARKET; const info = SYMBOLS.find(x=>x.sym===s); dgMarket.textContent = info?info.name+' ('+s+')':s; }
   setText('dgHottest', maxD>=0 ? `${maxD} (${(maxF/hTotal*100).toFixed(1)}%)` : '—');
@@ -2006,7 +1996,6 @@ function updateDigitsUI(){
   let modeD=-1, modeC=0;
   for(let i=0;i<10;i++){ if(modeFreq[i]>modeC){ modeC=modeFreq[i]; modeD=i; } }
   setText('dgATicks', String(histLen));
-  setText('dgAMode', q.length && modeD>=0 ? `${modeD} (${((modeC/qLen)*100).toFixed(0)}%)` : '—');
   // Chi-square test for uniformity
   let chiSq = 0;
   const expected = hTotal / 10;
