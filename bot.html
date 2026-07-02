@@ -169,7 +169,7 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
 <div id="app" style="display:none;min-height:100vh">
 
 <!-- MAIN CONTENT -->
-<div id="main" style="flex:1;overflow-y:auto;max-width:100%">
+<div id="main" style="flex:1;overflow-y:auto;min-width:0">
 
 <!-- TOP BAR -->
 <div class="mtop">
@@ -274,8 +274,15 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
       <div class="field" style="flex:1"><label>Target</label><input class="inp" id="dgTakeProfit" type="number" value="10" min="1" step="1"></div>
       <div class="field" style="flex:1"><label>Stop</label><input class="inp" id="dgStopLoss" type="number" value="5" min="1" step="1"></div>
     </div>
-    <!-- Manual trade buttons (change based on OU/EO/MC mode) -->
-    <div id="dgTradeBtnsOU" class="trade-btn-row">
+    <!-- Manual trade buttons (change based on OU/EO mode) -->
+    <div id="dgTradeBtnsOU" class="trade-btn-row" style="flex-wrap:wrap;gap:3px">
+      <div style="display:flex;gap:3px;width:100%;margin-bottom:2px">
+        <span style="font-size:7px;color:var(--muted);align-self:center">Barrier:</span>
+        <select id="dgBarrier" class="inp inp-sm" style="width:50px;font-size:9px;padding:2px">
+          <option>0</option><option>1</option><option>2</option><option>3</option><option>4</option>
+          <option selected>5</option><option>6</option><option>7</option><option>8</option><option>9</option>
+        </select>
+      </div>
       <button class="btn btn-call" onclick="placeDigitManual('DIGITOVER')" style="flex:1">OVER</button>
       <button class="btn btn-put" onclick="placeDigitManual('DIGITUNDER')" style="flex:1">UNDER</button>
     </div>
@@ -283,18 +290,10 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
       <button class="btn btn-call" onclick="placeDigitManual('DIGITEVEN')" style="flex:1">EVEN</button>
       <button class="btn btn-put" onclick="placeDigitManual('DIGITODD')" style="flex:1">ODD</button>
     </div>
-    <div id="dgTradeBtnsMC" class="trade-btn-row" style="display:none;flex-wrap:wrap;gap:3px">
-      <button class="btn btn-ghost" onclick="placeDigitMatch(0)" style="flex:0 0 18%;padding:4px;font-size:10px">0</button>
-      <button class="btn btn-ghost" onclick="placeDigitMatch(1)" style="flex:0 0 18%;padding:4px;font-size:10px">1</button>
-      <button class="btn btn-ghost" onclick="placeDigitMatch(2)" style="flex:0 0 18%;padding:4px;font-size:10px">2</button>
-      <button class="btn btn-ghost" onclick="placeDigitMatch(3)" style="flex:0 0 18%;padding:4px;font-size:10px">3</button>
-      <button class="btn btn-ghost" onclick="placeDigitMatch(4)" style="flex:0 0 18%;padding:4px;font-size:10px">4</button>
-      <button class="btn btn-ghost" onclick="placeDigitMatch(5)" style="flex:0 0 18%;padding:4px;font-size:10px">5</button>
-      <button class="btn btn-ghost" onclick="placeDigitMatch(6)" style="flex:0 0 18%;padding:4px;font-size:10px">6</button>
-      <button class="btn btn-ghost" onclick="placeDigitMatch(7)" style="flex:0 0 18%;padding:4px;font-size:10px">7</button>
-      <button class="btn btn-ghost" onclick="placeDigitMatch(8)" style="flex:0 0 18%;padding:4px;font-size:10px">8</button>
-      <button class="btn btn-ghost" onclick="placeDigitMatch(9)" style="flex:0 0 18%;padding:4px;font-size:10px">9</button>
+    <div id="dgTradeBtnsMC" class="trade-btn-row" style="display:none">
+      <span style="font-size:8px;color:var(--muted);text-align:center;width:100%">Use AUTO engine below</span>
     </div>
+    <!-- Auto-engine toggle + Status row -->
     <!-- Auto-engine toggle + Status row -->
     <div style="display:flex;gap:4px;margin-top:5px;align-items:center">
       <span id="dgEngineStat"><span class="blink-dot gray"></span></span>
@@ -791,8 +790,8 @@ function placeDigitManual(contractType){
   const stake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
   const isOU = contractType === 'DIGITOVER' || contractType === 'DIGITUNDER';
   const label = isOU ? (contractType==='DIGITOVER'?'OVER':'UNDER') : (contractType==='DIGITEVEN'?'EVEN':'ODD');
-  const cs = digitChiSq(BotState.tickHistory);
-  const csInfo = cs > 16.9 ? ` χ²=${cs.toFixed(1)} skewed` : cs > 11.1 ? ` χ²=${cs.toFixed(1)}` : '';
+  const barrier = document.getElementById('dgBarrier')?.value || '5';
+  const csInfo = ` χ²=${digitChiSq(BotState.tickHistory).toFixed(1)} barrier=${barrier}`;
   G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
   log(`[DIGIT] Manual ${label} $${stake.toFixed(2)} ${sym}${csInfo}`,'t');
   const payload = {
@@ -800,7 +799,7 @@ function placeDigitManual(contractType){
     contract_type:contractType, currency:'USD', duration:1, duration_unit:'t',
     underlying_symbol:sym, req_id:genId()
   };
-  if(isOU) payload.barrier = '5';
+  if(isOU) payload.barrier = barrier;
   G.WS.send(JSON.stringify(payload));
   BotState.contractActive = true;
   if(G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
@@ -808,31 +807,6 @@ function placeDigitManual(contractType){
     G.ACTIVE_CONTRACTS.delete('sending');
     BotState.contractActive = false;
     log('[DIGIT] Manual trade timed out','w');
-  },15000);
-}
-
-function placeDigitMatch(digit){
-  if(!G.AUTH){ log('[DIGIT] Authorize first','e'); return; }
-  if(!G.WS || G.WS.readyState!==WebSocket.OPEN){ log('[DIGIT] WS not open','e'); return; }
-  if(G.ACTIVE_CONTRACTS.size>=1){ log('[DIGIT] Contract active — wait','w'); return; }
-  const sym = G.CURRENT_MARKET || 'R_50';
-  const stake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
-  const cs = digitChiSq(BotState.tickHistory);
-  const csInfo = cs > 16.9 ? ` χ²=${cs.toFixed(1)} skewed` : cs > 11.1 ? ` χ²=${cs.toFixed(1)}` : '';
-  log(`[DIGIT] Manual MATCH ${digit} $${stake.toFixed(2)} ${sym}${csInfo}`,'t');
-  G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
-  const payload = {
-    proposal:1, subscribe:1, amount:+stake.toFixed(2), basis:'stake',
-    contract_type:'DIGITMATCH', currency:'USD', duration:1, duration_unit:'t',
-    underlying_symbol:sym, barrier:String(digit), req_id:genId()
-  };
-  G.WS.send(JSON.stringify(payload));
-  BotState.contractActive = true;
-  if(G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
-  G.SENDING_TIMEOUT = setTimeout(()=>{
-    G.ACTIVE_CONTRACTS.delete('sending');
-    BotState.contractActive = false;
-    log('[DIGIT] Manual match timed out','w');
   },15000);
 }
 
@@ -853,57 +827,69 @@ function evaluateDigitStrategy(sym){
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
   const hist = BotState.tickHistory;
   if(hist.length < 30) return;
-  const win = hist.slice(-60);
-  const freq = Array(10).fill(0);
-  for(const d of win) freq[d]++;
-  const total = win.length;
-  const expected = total / 10;
-  let chiSq = 0;
-  for(let i=0;i<10;i++) chiSq += (freq[i]-expected)*(freq[i]-expected)/expected;
-  // Find hottest and coldest digits
-  let hotD=0, hotC=0, coldD=0, coldC=total;
-  for(let i=0;i<10;i++){
-    if(freq[i] > hotC){ hotC=freq[i]; hotD=i; }
-    if(freq[i] < coldC){ coldC=freq[i]; coldD=i; }
+  // Multi-window analysis: short-term (30), medium (60), long (all)
+  const short = hist.slice(-30);
+  const mid = hist.slice(-60);
+  const all = hist;
+  const score = Array(10).fill(0);
+  // 1) Chi-square per window — non-uniform means a digit is favored
+  const chiShort = digitChiSq(short);
+  const chiMid = digitChiSq(mid);
+  const chiAll = digitChiSq(all);
+  // 2) Frequency deviation per digit in each window
+  for(let w=0; w<3; w++){
+    const data = w===0 ? short : w===1 ? mid : all;
+    const total = data.length;
+    const exp = total/10;
+    const freq = Array(10).fill(0);
+    for(const d of data) freq[d]++;
+    const chi = w===0 ? chiShort : w===1 ? chiMid : chiAll;
+    for(let d=0; d<10; d++){
+      const dev = (freq[d] - exp) / Math.sqrt(exp); // z-score approx
+      // If distribution is biased (chi > 11.1), favor hot digits,
+      // if moderate/weak, favor mean reversion on cold digits
+      if(chi > 16.9){
+        // Strong bias → momentum: hot gets positive, cold gets negative
+        score[d] += dev * (w===0 ? 3 : w===1 ? 2 : 1);
+      } else if(chi > 11.1){
+        // Moderate → lean momentum with slight mean-reversion
+        score[d] += dev * (w===0 ? 1.5 : w===1 ? 1 : 0.5);
+      } else {
+        // Weak/uniform → mean reversion: cold gets positive, hot gets negative
+        score[d] -= dev * (w===0 ? 1 : w===1 ? 0.7 : 0.3);
+      }
+    }
   }
-  const hotPct = hotC/total*100;
-  const coldPct = coldC/total*100;
+  // 3) Recent streak bonus (last 10 ticks)
+  const last10 = hist.slice(-10);
+  const streak = Array(10).fill(0);
+  let cur = last10[0], run = 1;
+  for(let i=1; i<last10.length; i++){
+    if(last10[i] === cur){ run++; } else { cur = last10[i]; run = 1; }
+  }
+  // Boost the digit that's currently streaking
+  if(run >= 2) score[cur] += run * 2;
+  // 4) Choose digit with highest score
+  let bestD = 0, bestScore = -Infinity;
+  for(let d=0; d<10; d++){
+    if(score[d] > bestScore){ bestScore = score[d]; bestD = d; }
+  }
+  if(bestScore < 0.1){ log(`[DIGIT·AUTO] All scores low (${bestScore.toFixed(2)}) — skip`,'i'); return; }
+  // Log analysis
+  const freq60 = Array(10).fill(0); for(const d of mid) freq60[d]++;
+  const pctStr = freq60.map((f,i)=>i===bestD ? `[${i}:${(f/mid.length*100).toFixed(0)}%]` : `${i}:${(f/mid.length*100).toFixed(0)}%`).join(' ');
   const stake = BotState.baseStake;
-  // Strategy: biased distribution → bet WITH the trend (hottest digit)
-  //           moderate → bet on mean reversion (coldest digit)
-  //           uniform → bet on parity (even/odd)
-  if(chiSq > 16.9 && hotPct > 14){
-    // Strong bias: bet hottest digit
-    log(`[DIGIT·AUTO] MATCH ${hotD} (hot ${hotPct.toFixed(1)}% χ²=${chiSq.toFixed(1)})`,'t');
-    G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
-    BotState.contractActive = true;
-    const payload = {
-      proposal:1, subscribe:1, amount:+stake.toFixed(2), basis:'stake',
-      contract_type:'DIGITMATCH', currency:'USD', duration:1, duration_unit:'t',
-      underlying_symbol:sym, barrier:String(hotD), req_id:genId()
-    };
-    G.WS.send(JSON.stringify(payload));
-    if(G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
-    G.SENDING_TIMEOUT = setTimeout(()=>{ G.ACTIVE_CONTRACTS.delete('sending'); BotState.contractActive = false; log('[DIGIT] Auto match timed out','w'); },15000);
-  } else if(chiSq > 11.1 && coldPct < 7){
-    // Moderate bias: mean reversion on coldest digit
-    log(`[DIGIT·AUTO] MATCH ${coldD} (cold ${coldPct.toFixed(1)}% χ²=${chiSq.toFixed(1)})`,'t');
-    G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
-    BotState.contractActive = true;
-    const payload = {
-      proposal:1, subscribe:1, amount:+stake.toFixed(2), basis:'stake',
-      contract_type:'DIGITMATCH', currency:'USD', duration:1, duration_unit:'t',
-      underlying_symbol:sym, barrier:String(coldD), req_id:genId()
-    };
-    G.WS.send(JSON.stringify(payload));
-    if(G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
-    G.SENDING_TIMEOUT = setTimeout(()=>{ G.ACTIVE_CONTRACTS.delete('sending'); BotState.contractActive = false; log('[DIGIT] Auto match timed out','w'); },15000);
-  } else {
-    // Uniform: bet on parity based on streak
-    const last5 = hist.slice(-5);
-    const odd = last5.filter(d=>d%2===1).length;
-    log(`[DIGIT·AUTO] χ²=${chiSq.toFixed(1)} uniform — skip`,'i');
-  }
+  log(`[DIGIT·AUTO] MATCH ${bestD} (χ² ${chiShort.toFixed(1)}/${chiMid.toFixed(1)}/${chiAll.toFixed(1)} score=${bestScore.toFixed(1)} streak=${run} ${pctStr})`,'t');
+  G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
+  BotState.contractActive = true;
+  const payload = {
+    proposal:1, subscribe:1, amount:+stake.toFixed(2), basis:'stake',
+    contract_type:'DIGITMATCH', currency:'USD', duration:1, duration_unit:'t',
+    underlying_symbol:sym, barrier:String(bestD), req_id:genId()
+  };
+  G.WS.send(JSON.stringify(payload));
+  if(G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
+  G.SENDING_TIMEOUT = setTimeout(()=>{ G.ACTIVE_CONTRACTS.delete('sending'); BotState.contractActive = false; log('[DIGIT] Auto match timed out','w'); },15000);
 }
 function digitChiSq(hist){
   if(hist.length < 40) return 0;
@@ -2027,17 +2013,15 @@ function updateDigitsUI(){
     const s = BotState.contractActive ? 'amber' : BotState.isTrading ? 'green' : 'gray';
     statusEl.innerHTML = '<span class="blink-dot '+s+'"></span>';
   }
-  // === ANALYSIS (last 100 ticks for accurate frequencies) ===
+  // === ANALYSIS (full 1000-tick window) ===
   const get = (id) => document.getElementById(id);
-  const hist = BotState.tickHistory;
-  const win = hist.length > 100 ? hist.slice(-100) : hist;
-  const winLen = win.length;
+  const hist = BotState.tickHistory; // capped at 1000
   const histLen = hist.length;
-  // Digit circles (using sliding window of last 100 ticks)
+  // Digit circles
   const hfreq = Array(10).fill(0);
-  for(const d of win) hfreq[d]++;
-  const hTotal = winLen || 1;
-  let maxF=0, maxD=-1, minF=winLen, minD=-1;
+  for(const d of hist) hfreq[d]++;
+  const hTotal = histLen || 1;
+  let maxF=0, maxD=-1, minF=histLen, minD=-1;
   for(let i=0;i<10;i++){
     if(hfreq[i]>maxF){ maxF=hfreq[i]; maxD=i; }
     if(hfreq[i]<minF){ minF=hfreq[i]; minD=i; }
@@ -2053,7 +2037,8 @@ function updateDigitsUI(){
       const isNow = i===now;
       const ringColor = isMax ? 'var(--positive)' : isMin ? 'var(--negative)' : 'var(--muted)';
       const txtColor = isMax ? 'var(--positive)' : isMin ? 'var(--negative)' : 'var(--muted)';
-      const dash = pct === 0 ? '0.1 99.9' : pct.toFixed(1) + ' ' + (100-pct).toFixed(1);
+      const circ = 2 * Math.PI * 15.5; // ~97.4 — actual path length
+      const dash = pct === 0 ? '0.1 ' + circ.toFixed(1) : (pct/100*circ).toFixed(1) + ' ' + ((100-pct)/100*circ).toFixed(1);
       const nowStroke = isNow ? '4.5' : '3.5';
       const nowGlow = isNow ? 'filter:drop-shadow(0 0 4px var(--accent));' : '';
       return '<div class="dg-circle'+(isNow?' now':'')+'">'
