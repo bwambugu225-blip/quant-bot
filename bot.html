@@ -145,6 +145,13 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
 .login-card .btn-login:active{transform:translateY(0)}
 .login-card .login-error{font-size:10px;color:#ef4444;margin-top:8px;min-height:16px}
 .login-card .login-footer{font-size:9px;color:rgba(255,255,255,.25);margin-top:16px}
+@media(min-width:900px){
+  .row{flex-wrap:nowrap}
+  .col{min-width:240px;flex:1}
+  .col-2{min-width:300px;flex:1.8}
+  .sidebar{width:200px}
+  #main{max-width:calc(100% - 200px)}
+}
 </style>
 </head>
 <body style="margin:0">
@@ -255,10 +262,11 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
   <!-- DIGITS -->
   <div id="dgSection" class="card" style="display:none">
     <div class="card-title">Digits <span id="dgModeLabel" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">OVER/UNDER</span></div>
-    <!-- Mode toggle -->
+    <!-- Mode toggle: 3 modes -->
     <div style="display:flex;gap:4px;margin-bottom:6px">
       <button id="dgModeOU" class="btn btn-ghost" onclick="setDigitContract('OU')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">OVER/UNDER</button>
       <button id="dgModeEO" class="btn btn-ghost" onclick="setDigitContract('EO')" style="flex:1;padding:4px;font-size:8px">EVEN/ODD</button>
+      <button id="dgModeMC" class="btn btn-ghost" onclick="setDigitContract('MC')" style="flex:1;padding:4px;font-size:8px">MATCH</button>
     </div>
     <!-- Trade form -->
     <div style="display:flex;gap:4px;margin-bottom:4px">
@@ -266,7 +274,7 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
       <div class="field" style="flex:1"><label>Target</label><input class="inp" id="dgTakeProfit" type="number" value="10" min="1" step="1"></div>
       <div class="field" style="flex:1"><label>Stop</label><input class="inp" id="dgStopLoss" type="number" value="5" min="1" step="1"></div>
     </div>
-    <!-- Manual trade buttons (change based on OU/EO mode) -->
+    <!-- Manual trade buttons (change based on OU/EO/MC mode) -->
     <div id="dgTradeBtnsOU" class="trade-btn-row">
       <button class="btn btn-call" onclick="placeDigitManual('DIGITOVER')" style="flex:1">OVER</button>
       <button class="btn btn-put" onclick="placeDigitManual('DIGITUNDER')" style="flex:1">UNDER</button>
@@ -275,12 +283,26 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
       <button class="btn btn-call" onclick="placeDigitManual('DIGITEVEN')" style="flex:1">EVEN</button>
       <button class="btn btn-put" onclick="placeDigitManual('DIGITODD')" style="flex:1">ODD</button>
     </div>
-    <!-- Status row -->
-    <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+    <div id="dgTradeBtnsMC" class="trade-btn-row" style="display:none;flex-wrap:wrap;gap:3px">
+      <button class="btn btn-ghost" onclick="placeDigitMatch(0)" style="flex:0 0 18%;padding:4px;font-size:10px">0</button>
+      <button class="btn btn-ghost" onclick="placeDigitMatch(1)" style="flex:0 0 18%;padding:4px;font-size:10px">1</button>
+      <button class="btn btn-ghost" onclick="placeDigitMatch(2)" style="flex:0 0 18%;padding:4px;font-size:10px">2</button>
+      <button class="btn btn-ghost" onclick="placeDigitMatch(3)" style="flex:0 0 18%;padding:4px;font-size:10px">3</button>
+      <button class="btn btn-ghost" onclick="placeDigitMatch(4)" style="flex:0 0 18%;padding:4px;font-size:10px">4</button>
+      <button class="btn btn-ghost" onclick="placeDigitMatch(5)" style="flex:0 0 18%;padding:4px;font-size:10px">5</button>
+      <button class="btn btn-ghost" onclick="placeDigitMatch(6)" style="flex:0 0 18%;padding:4px;font-size:10px">6</button>
+      <button class="btn btn-ghost" onclick="placeDigitMatch(7)" style="flex:0 0 18%;padding:4px;font-size:10px">7</button>
+      <button class="btn btn-ghost" onclick="placeDigitMatch(8)" style="flex:0 0 18%;padding:4px;font-size:10px">8</button>
+      <button class="btn btn-ghost" onclick="placeDigitMatch(9)" style="flex:0 0 18%;padding:4px;font-size:10px">9</button>
+    </div>
+    <!-- Auto-engine toggle + Status row -->
+    <div style="display:flex;gap:4px;margin-top:5px;align-items:center">
+      <span id="dgEngineStat"><span class="blink-dot gray"></span></span>
       <span id="dgCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
       <span id="dgSessionPnL" style="font-size:10px;font-weight:600;color:var(--muted)">$0.00</span>
       <span id="dgWLRatio" style="font-size:9px;color:var(--muted)">0-0</span>
-      <button class="btn btn-ghost" onclick="resetDigitPnL()" style="padding:2px 6px;font-size:7px;margin-left:auto">RESET</button>
+      <button id="dgEngineBtn" class="btn btn-accent" onclick="toggleDigitEngine()" style="padding:3px 8px;font-size:7px;margin-left:auto">AUTO</button>
+      <button class="btn btn-ghost" onclick="resetDigitPnL()" style="padding:2px 6px;font-size:7px">RESET</button>
     </div>
     <!-- Analysis panel -->
     <div style="margin-top:6px">
@@ -744,23 +766,21 @@ function setDigitContract(type){
   BotState.contractType = type;
   const btnOU = document.getElementById('dgModeOU');
   const btnEO = document.getElementById('dgModeEO');
+  const btnMC = document.getElementById('dgModeMC');
   const tradesOU = document.getElementById('dgTradeBtnsOU');
   const tradesEO = document.getElementById('dgTradeBtnsEO');
+  const tradesMC = document.getElementById('dgTradeBtnsMC');
   const label = document.getElementById('dgModeLabel');
-  // Clear active styles
-  if(btnOU){ btnOU.style.background='transparent'; btnOU.style.color='var(--muted)'; btnOU.style.borderColor='var(--line)'; }
-  if(btnEO){ btnEO.style.background='transparent'; btnEO.style.color='var(--muted)'; btnEO.style.borderColor='var(--line)'; }
-  if(type==='OU'){
-    if(btnOU){ btnOU.style.background='var(--accent)'; btnOU.style.color='#fff'; btnOU.style.borderColor='var(--accent)'; }
-    if(tradesOU) tradesOU.style.display='flex';
-    if(tradesEO) tradesEO.style.display='none';
-    if(label) label.textContent = 'OVER/UNDER';
-  } else {
-    if(btnEO){ btnEO.style.background='var(--accent)'; btnEO.style.color='#fff'; btnEO.style.borderColor='var(--accent)'; }
-    if(tradesOU) tradesOU.style.display='none';
-    if(tradesEO) tradesEO.style.display='flex';
-    if(label) label.textContent = 'EVEN/ODD';
-  }
+  // Clear all
+  [btnOU,btnEO,btnMC].forEach(b=>{if(b){b.style.background='transparent';b.style.color='var(--muted)';b.style.borderColor='var(--line)';}});
+  [tradesOU,tradesEO,tradesMC].forEach(t=>{if(t)t.style.display='none';});
+  const act = (btn, lbl)=>{
+    if(btn){btn.style.background='var(--accent)';btn.style.color='#fff';btn.style.borderColor='var(--accent)';}
+    if(label)label.textContent=lbl;
+  };
+  if(type==='OU'){ act(btnOU,'OVER/UNDER'); if(tradesOU)tradesOU.style.display='flex'; }
+  else if(type==='EO'){ act(btnEO,'EVEN/ODD'); if(tradesEO)tradesEO.style.display='flex'; }
+  else { act(btnMC,'MATCH'); if(tradesMC)tradesMC.style.display='flex'; }
 }
 
 function placeDigitManual(contractType){
@@ -791,6 +811,100 @@ function placeDigitManual(contractType){
   },15000);
 }
 
+function placeDigitMatch(digit){
+  if(!G.AUTH){ log('[DIGIT] Authorize first','e'); return; }
+  if(!G.WS || G.WS.readyState!==WebSocket.OPEN){ log('[DIGIT] WS not open','e'); return; }
+  if(G.ACTIVE_CONTRACTS.size>=1){ log('[DIGIT] Contract active — wait','w'); return; }
+  const sym = G.CURRENT_MARKET || 'R_50';
+  const stake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
+  const cs = digitChiSq(BotState.tickHistory);
+  const csInfo = cs > 16.9 ? ` χ²=${cs.toFixed(1)} skewed` : cs > 11.1 ? ` χ²=${cs.toFixed(1)}` : '';
+  log(`[DIGIT] Manual MATCH ${digit} $${stake.toFixed(2)} ${sym}${csInfo}`,'t');
+  G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
+  const payload = {
+    proposal:1, subscribe:1, amount:+stake.toFixed(2), basis:'stake',
+    contract_type:'DIGITMATCH', currency:'USD', duration:1, duration_unit:'t',
+    underlying_symbol:sym, barrier:String(digit), req_id:genId()
+  };
+  G.WS.send(JSON.stringify(payload));
+  BotState.contractActive = true;
+  if(G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
+  G.SENDING_TIMEOUT = setTimeout(()=>{
+    G.ACTIVE_CONTRACTS.delete('sending');
+    BotState.contractActive = false;
+    log('[DIGIT] Manual match timed out','w');
+  },15000);
+}
+
+function toggleDigitEngine(){
+  const btn = document.getElementById('dgEngineBtn');
+  BotState.isTrading = !BotState.isTrading;
+  if(btn) btn.textContent = BotState.isTrading ? 'STOP' : 'AUTO';
+  if(BotState.isTrading){
+    BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
+    log('[DIGIT] Auto engine started','s');
+  } else {
+    log('[DIGIT] Auto engine stopped','w');
+  }
+}
+
+function evaluateDigitStrategy(sym){
+  if(!BotState.isTrading) return;
+  if(G.ACTIVE_CONTRACTS.size >= 1) return;
+  const hist = BotState.tickHistory;
+  if(hist.length < 30) return;
+  const win = hist.slice(-60);
+  const freq = Array(10).fill(0);
+  for(const d of win) freq[d]++;
+  const total = win.length;
+  const expected = total / 10;
+  let chiSq = 0;
+  for(let i=0;i<10;i++) chiSq += (freq[i]-expected)*(freq[i]-expected)/expected;
+  // Find hottest and coldest digits
+  let hotD=0, hotC=0, coldD=0, coldC=total;
+  for(let i=0;i<10;i++){
+    if(freq[i] > hotC){ hotC=freq[i]; hotD=i; }
+    if(freq[i] < coldC){ coldC=freq[i]; coldD=i; }
+  }
+  const hotPct = hotC/total*100;
+  const coldPct = coldC/total*100;
+  const stake = BotState.baseStake;
+  // Strategy: biased distribution → bet WITH the trend (hottest digit)
+  //           moderate → bet on mean reversion (coldest digit)
+  //           uniform → bet on parity (even/odd)
+  if(chiSq > 16.9 && hotPct > 14){
+    // Strong bias: bet hottest digit
+    log(`[DIGIT·AUTO] MATCH ${hotD} (hot ${hotPct.toFixed(1)}% χ²=${chiSq.toFixed(1)})`,'t');
+    G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
+    BotState.contractActive = true;
+    const payload = {
+      proposal:1, subscribe:1, amount:+stake.toFixed(2), basis:'stake',
+      contract_type:'DIGITMATCH', currency:'USD', duration:1, duration_unit:'t',
+      underlying_symbol:sym, barrier:String(hotD), req_id:genId()
+    };
+    G.WS.send(JSON.stringify(payload));
+    if(G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
+    G.SENDING_TIMEOUT = setTimeout(()=>{ G.ACTIVE_CONTRACTS.delete('sending'); BotState.contractActive = false; log('[DIGIT] Auto match timed out','w'); },15000);
+  } else if(chiSq > 11.1 && coldPct < 7){
+    // Moderate bias: mean reversion on coldest digit
+    log(`[DIGIT·AUTO] MATCH ${coldD} (cold ${coldPct.toFixed(1)}% χ²=${chiSq.toFixed(1)})`,'t');
+    G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
+    BotState.contractActive = true;
+    const payload = {
+      proposal:1, subscribe:1, amount:+stake.toFixed(2), basis:'stake',
+      contract_type:'DIGITMATCH', currency:'USD', duration:1, duration_unit:'t',
+      underlying_symbol:sym, barrier:String(coldD), req_id:genId()
+    };
+    G.WS.send(JSON.stringify(payload));
+    if(G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
+    G.SENDING_TIMEOUT = setTimeout(()=>{ G.ACTIVE_CONTRACTS.delete('sending'); BotState.contractActive = false; log('[DIGIT] Auto match timed out','w'); },15000);
+  } else {
+    // Uniform: bet on parity based on streak
+    const last5 = hist.slice(-5);
+    const odd = last5.filter(d=>d%2===1).length;
+    log(`[DIGIT·AUTO] χ²=${chiSq.toFixed(1)} uniform — skip`,'i');
+  }
+}
 function digitChiSq(hist){
   if(hist.length < 40) return 0;
   const freq=Array(10).fill(0); for(const d of hist) freq[d]++;
@@ -1258,6 +1372,7 @@ function handleTick(data){
   if(!sym || !Number.isFinite(price) || !Number.isFinite(epoch)) return;
   processDigit(sym, price);
   updateDigitsUI();
+  if(G.TRADE_MODE==='DIGITS' && BotState.isTrading && G.ACTIVE_CONTRACTS.size===0 && BotState.tickHistory.length >= 30) evaluateDigitStrategy(sym);
   if(!G.MARKET.candles[sym]) G.MARKET.candles[sym]=[];
   if(!G.MARKET.tickBuf[sym]) G.MARKET.tickBuf[sym]=[];
   if(!G.MARKET.candleOpenAt[sym]) G.MARKET.candleOpenAt[sym]=epoch*1000;
@@ -1905,28 +2020,24 @@ function updateDigitsUI(){
   // Current stake
   const csEl = document.getElementById('dgCurrentStake');
   if(csEl) csEl.textContent = '$'+(+BotState.currentStake||0).toFixed(2);
-  // Engine status
-  const statusEl = document.getElementById('dgEngineStatus');
+  // Engine status (throttled to reduce repaints)
+  const statusEl = document.getElementById('dgEngineStat');
   if(statusEl){
-    // Stale safety: if contractActive but no active contracts exist, clear it
     if(BotState.contractActive && G.ACTIVE_CONTRACTS.size === 0) BotState.contractActive = false;
-    if(BotState.contractActive){
-      statusEl.innerHTML = '<span class="blink-dot amber"></span>IN CONTRACT';
-    } else if(BotState.isTrading){
-      statusEl.innerHTML = '<span class="blink-dot green"></span>SCANNING';
-    } else {
-      statusEl.innerHTML = '<span class="blink-dot gray"></span>STOP';
-    }
+    const s = BotState.contractActive ? 'amber' : BotState.isTrading ? 'green' : 'gray';
+    statusEl.innerHTML = '<span class="blink-dot '+s+'"></span>';
   }
-  // === ANALYSIS ===
+  // === ANALYSIS (last 100 ticks for accurate frequencies) ===
   const get = (id) => document.getElementById(id);
   const hist = BotState.tickHistory;
+  const win = hist.length > 100 ? hist.slice(-100) : hist;
+  const winLen = win.length;
   const histLen = hist.length;
-  // Digit circles (using tickHistory, last 1000 ticks)
+  // Digit circles (using sliding window of last 100 ticks)
   const hfreq = Array(10).fill(0);
-  for(const d of hist) hfreq[d]++;
-  const hTotal = histLen || 1;
-  let maxF=0, maxD=-1, minF=histLen, minD=-1;
+  for(const d of win) hfreq[d]++;
+  const hTotal = winLen || 1;
+  let maxF=0, maxD=-1, minF=winLen, minD=-1;
   for(let i=0;i<10;i++){
     if(hfreq[i]>maxF){ maxF=hfreq[i]; maxD=i; }
     if(hfreq[i]<minF){ minF=hfreq[i]; minD=i; }
@@ -2018,18 +2129,6 @@ function updateDigitsUI(){
   // Risk mode display
   setText('dgWinStreak', 'W:'+BotState.winStreak);
   setText('dgLossStreak', 'L:'+BotState.lossStreak);
-  const badge = get('dgSysBadge');
-  if(badge){
-    if(BotState.riskMode === 'martingale'){
-      badge.textContent = `MARTINGALE ×${BotState.martingaleMult} · def:$${BotState.sessionDeficit.toFixed(2)}`;
-      badge.style.background = 'var(--accent)';
-      badge.style.color = '#fff';
-    } else {
-      badge.textContent = 'FLAT';
-      badge.style.background = 'var(--surface2)';
-      badge.style.color = 'var(--muted)';
-    }
-  }
   function setText(id, val){ const e=get(id); if(e) e.textContent=val; }
 }
 function updateDash(){
