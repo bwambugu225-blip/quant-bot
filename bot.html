@@ -117,11 +117,7 @@ html,body{background:var(--bg);color:var(--text);font-family:var(--font);font-si
 .switch input:checked+.slider{border-color:var(--positive);background:var(--pos-dim)}
 .switch input:checked+.slider:before{transform:translateX(12px);background:var(--positive)}
 details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;text-transform:uppercase;letter-spacing:.5px}
-.sidebar{background:rgba(255,255,255,.02);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-left:1px solid var(--line);padding:8px;width:180px;flex-shrink:0;overflow-y:auto}
-.sidebar .card{margin-bottom:6px}
-#app{display:flex;min-height:100vh}
-#main{flex:1;overflow-y:auto;max-width:100%}
-@media(max-width:800px){.sidebar{display:none}}
+
 .dg-circle{text-align:center;position:relative;padding:2px 0;transition:.15s}
 .dg-circle.now{transform:scale(1.1)}
 .dg-circle .c{display:flex;justify-content:center}
@@ -145,12 +141,44 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
 .login-card .btn-login:active{transform:translateY(0)}
 .login-card .login-error{font-size:10px;color:#ef4444;margin-top:8px;min-height:16px}
 .login-card .login-footer{font-size:9px;color:rgba(255,255,255,.25);margin-top:16px}
+.login-card .acc-btn{flex:1;padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:#fff;font-size:11px;cursor:pointer;transition:background .2s,border-color .2s}
+.login-card .acc-btn:hover{background:rgba(255,255,255,.12);border-color:var(--accent)}
+/* ── Collapsible Sidebar ── */
+#app{display:flex;min-height:100vh;position:relative}
+.sidebar-overlay{display:none;position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.5)}
+.sidebar{position:fixed;top:0;left:0;bottom:0;z-index:100;width:260px;background:rgba(255,255,255,.04);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-right:1px solid var(--line);overflow-y:auto;padding:0;display:flex;flex-direction:column;transition:transform .25s ease}
+.sidebar .sidebar-header{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--line);flex-shrink:0}
+.sidebar .sidebar-body{flex:1;overflow-y:auto;padding:8px}
+.sidebar .sidebar-body .card{margin-bottom:6px;padding:8px}
+.sidebar .sidebar-footer{padding:6px;border-top:1px solid var(--line);text-align:center;font-size:7px;color:var(--dim);flex-shrink:0}
+.sidebar-open .sidebar{transform:translateX(0)}
+.sidebar-open .sidebar-overlay{display:block}
+.sidebar-toggle{display:flex;align-items:center;justify-content:center;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);cursor:pointer;font-size:16px;width:30px;height:30px;padding:0;color:var(--text);flex-shrink:0;transition:background .15s;line-height:1}
+.sidebar-toggle:hover{background:var(--surface-2)}
+.sidebar-close{display:none;background:none;border:none;color:var(--muted);font-size:16px;cursor:pointer;padding:2px;line-height:1}
+#main{flex:1;overflow-y:auto;min-width:0;max-width:100%;transition:margin-left .25s ease;padding-bottom:20px}
+/* Desktop: sidebar always visible */
+@media(min-width:768px){
+  .sidebar{transform:translateX(0)!important;width:240px}
+  .sidebar-overlay{display:none!important}
+  .sidebar-close{display:none!important}
+  .sidebar-toggle{display:none!important}
+  #main{margin-left:240px}
+}
+/* Mobile: sidebar slides in from left, overlay behind */
+@media(max-width:767px){
+  .sidebar{transform:translateX(-100%)}
+  .sidebar-open .sidebar{transform:translateX(0)}
+  .sidebar-close{display:block}
+  .sidebar-toggle{margin-right:4px}
+}
+.row{display:flex;gap:8px;padding:6px 10px;flex-wrap:wrap}
+.col{flex:1;min-width:240px}
+.col-2{flex:1.8;min-width:280px}
 @media(min-width:900px){
   .row{flex-wrap:nowrap}
   .col{min-width:240px;flex:1}
   .col-2{min-width:300px;flex:1.8}
-  .sidebar{width:200px}
-  #main{max-width:calc(100% - 200px)}
 }
 </style>
 </head>
@@ -159,268 +187,325 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
 <div class="login-overlay" id="loginOverlay">
   <div class="login-card">
     <h1>⚡ BTraders</h1>
-    <p>Enter your PAT to access the bot</p>
-    <input type="password" id="loginPat" placeholder="Paste your Deriv PAT token" autofocus>
-    <button class="btn-login" onclick="authorizePat()">Authorize</button>
+    <p id="loginPrompt">Authorize with your Deriv account</p>
+    <button class="btn-login" onclick="oauthLogin()" id="oauthBtn">Login with Deriv</button>
     <div class="login-error" id="loginError"></div>
-    <div class="login-footer">A Deriv API token with <strong>Read</strong> + <strong>Trade</strong> scopes</div>
+    <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08)">
+      <div style="font-size:9px;color:var(--muted);margin-bottom:6px">Or paste an API token</div>
+      <input type="password" id="loginPat" placeholder="Paste token from app.deriv.com/account/api-token" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#fff;font-size:11px;outline:none;margin-bottom:6px">
+      <button class="btn btn-accent" onclick="authorizePat()" style="width:100%;padding:6px;border-radius:8px;border:none;font-size:11px;font-weight:600;cursor:pointer">Connect</button>
+    </div>
+    <div class="login-footer">Requires <strong>Read</strong> + <strong>Trade</strong> scopes</div>
   </div>
 </div>
 <div id="app" style="display:none;min-height:100vh">
 
-<!-- MAIN CONTENT -->
-<div id="main" style="flex:1;overflow-y:auto;min-width:0">
+<!-- Sidebar Overlay (mobile only) -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
 
-<!-- TOP BAR -->
-<div class="mtop">
-  <div class="mtop-l">
+<!-- LEFT COLLAPSIBLE SIDEBAR -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
     <div class="logo">B<span>TRADERS</span></div>
-    <span id="connDot" class="conn r"></span>
-    <span id="engineStatus" style="font-size:8px;color:var(--muted);font-weight:600;">OFFLINE</span>
+    <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
   </div>
-  <div class="mtop-r">
-    <button onclick="toggleTheme()" title="Toggle theme" style="background:none;border:none;cursor:pointer;font-size:14px;line-height:1;padding:2px" id="themeBtn">🌙</button>
-    <label class="switch" title="Live / Demo">
-      <input type="checkbox" id="accToggle" onchange="toggleAccount()">
-      <span class="slider"></span>
-    </label>
-    <div style="text-align:right">
-      <div class="bal-label">Balance</div>
-      <div id="dashBalance" class="bal">$0.00</div>
+  <div class="sidebar-body">
+    <!-- Account info -->
+    <div class="card">
+      <div class="card-title">Account</div>
+      <div id="dashTarget" style="font-size:12px;font-weight:600">$0.00</div>
+      <div style="font-size:8px;color:var(--muted);margin-top:2px">Daily Stop</div>
+      <div id="dashLoss" style="font-size:12px;font-weight:600;color:var(--negative)">$0.00</div>
     </div>
-    <div style="text-align:right">
-      <div class="bal-label">P&amp;L</div>
-      <div id="dashPnl" style="font-size:14px;font-weight:700;color:var(--muted)">$0.00</div>
+
+    <!-- Mode tabs: RF stays in main, DIGITS expands sidebar -->
+    <div class="card">
+      <div class="card-title">Mode</div>
+      <div style="display:flex;gap:4px">
+        <button id="btnModeRF" class="mode-tab active" onclick="switchMode('RISEFALL')" style="flex:1">R/F</button>
+        <button id="btnModeDigits" class="mode-tab" onclick="switchMode('DIGITS')" style="flex:1">DIGITS</button>
+      </div>
+      <div style="display:flex;gap:4px;margin-top:4px">
+        <button class="btn btn-ghost" onclick="resetDemo()" style="flex:1;padding:3px 6px;font-size:7px">RESET DEMO</button>
+        <button class="btn btn-ghost" onclick="resetSession()" style="flex:1;padding:3px 6px;font-size:7px">RESET SESSION</button>
+      </div>
+      <div id="modeIndicator" style="font-size:8px;color:var(--muted);margin-top:3px">Auto</div>
     </div>
-    <span id="accBadge" class="tag tag-blue" style="font-size:7px;">DEMO</span>
-  </div>
-</div>
 
-<!-- KPI ROW -->
-<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;padding:0 10px;margin-bottom:4px">
-  <div class="kpi"><div id="dashWinRate" class="v" style="color:var(--accent)">0%</div><div class="l">Win Rate</div></div>
-  <div class="kpi"><div id="dashTrades" class="v" style="color:var(--text)">0</div><div class="l">Trades</div></div>
-  <div class="kpi"><div id="dashActive" class="v" style="color:var(--warn)">0</div><div class="l">Active</div></div>
-  <div class="kpi"><div id="dashConsLoss" class="v" style="color:var(--negative)">0</div><div class="l">Streak</div></div>
-</div>
-
-<!-- MODE TABS -->
-<div style="display:flex;gap:4px;padding:6px 10px">
-  <button id="btnModeDigits" class="mode-tab" onclick="switchMode('DIGITS')">DIGITS</button>
-  <button id="btnModeRF" class="mode-tab active" onclick="switchMode('RISEFALL')">R/F</button>
-  <div style="flex:1;display:flex;justify-content:flex-end;gap:4px">
-    <button class="btn btn-ghost" onclick="resetDemo()" style="padding:3px 8px;font-size:7px">RESET</button>
-    <button class="btn btn-ghost" onclick="resetSession()" style="padding:3px 8px;font-size:7px">SESSION</button>
-  </div>
-</div>
-
-<!-- MAIN ROW: Trade Controls + Chart + Assets -->
-<div class="row" style="flex-wrap:wrap">
-
-<!-- LEFT: Trade Controls -->
-<div class="col" style="min-width:220px">
-  <!-- R/F Controls -->
-  <div id="rfSection" class="card" style="display:block">
-    <div class="card-title">Rise/Fall <span id="rfModeBadge" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">AUTO</span></div>
-    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-      <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
-        <input type="checkbox" id="marketModeToggle" onchange="toggleMarketMode()" checked style="width:13px;height:13px;accent-color:var(--accent)">
-        <span>Multi Market</span>
-      </label>
-      <span id="marketModeLabel" style="font-size:8px;color:var(--accent);font-weight:600">ON</span>
-    </div>
-    <div class="stake-row">
-      <div class="field"><label>Stake</label><input class="inp" id="rfStake" type="number" value="1" min="0.35" step="0.5"></div>
-      <div class="field"><label>Duration</label>
-        <select class="inp" id="rfDuration">
-          <option value="5t">5t</option><option value="10t">10t</option>
-          <option value="15" selected>15s</option>
-          <option value="30">30s</option><option value="60">60s</option>
-          <option value="120">120s</option><option value="180">180s</option>
+    <!-- Digits section -->
+    <div id="dgSection" class="card">
+      <div class="card-title">Digits <span id="dgModeLabel" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">OVER/UNDER</span></div>
+      <div style="display:flex;gap:4px;margin-bottom:6px">
+        <button id="dgModeOU" class="btn btn-ghost" onclick="setDigitContract('OU')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">OVER/UNDER</button>
+        <button id="dgModeEO" class="btn btn-ghost" onclick="setDigitContract('EO')" style="flex:1;padding:4px;font-size:8px">EVEN/ODD</button>
+        <button id="dgModeMC" class="btn btn-ghost" onclick="setDigitContract('MC')" style="flex:1;padding:4px;font-size:8px">MATCH</button>
+      </div>
+      <div style="display:flex;gap:4px;margin-bottom:4px">
+        <div class="field" style="flex:1"><label>Stake</label><input class="inp" id="dgBaseStake" type="number" value="1" min="0.5" step="0.5"></div>
+        <div class="field" style="flex:1"><label>Target</label><input class="inp" id="dgTakeProfit" type="number" value="10" min="1" step="1"></div>
+        <div class="field" style="flex:1"><label>Stop</label><input class="inp" id="dgStopLoss" type="number" value="5" min="1" step="1"></div>
+      </div>
+      <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center">
+        <label style="font-size:8px;color:var(--muted);white-space:nowrap">MARTINGALE</label>
+        <select id="dgMartMult" class="inp inp-sm" style="width:50px;font-size:9px;padding:2px">
+          <option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option>
         </select>
+        <span style="font-size:7px;color:var(--muted)">× on loss</span>
+      </div>
+      <div id="dgTradeBtnsOU" class="trade-btn-row" style="flex-wrap:wrap;gap:3px">
+        <div style="display:flex;gap:3px;width:100%;margin-bottom:2px">
+          <span style="font-size:7px;color:var(--muted);align-self:center">Barrier:</span>
+          <select id="dgBarrier" class="inp inp-sm" style="width:50px;font-size:9px;padding:2px">
+            <option>0</option><option>1</option><option>2</option><option>3</option><option>4</option>
+            <option selected>5</option><option>6</option><option>7</option><option>8</option><option>9</option>
+          </select>
+        </div>
+        <button class="btn btn-call" onclick="placeDigitManual('DIGITOVER')" style="flex:1">OVER</button>
+        <button class="btn btn-put" onclick="placeDigitManual('DIGITUNDER')" style="flex:1">UNDER</button>
+      </div>
+      <div id="dgTradeBtnsEO" class="trade-btn-row" style="display:none">
+        <button class="btn btn-call" onclick="placeDigitManual('DIGITEVEN')" style="flex:1">EVEN</button>
+        <button class="btn btn-put" onclick="placeDigitManual('DIGITODD')" style="flex:1">ODD</button>
+      </div>
+      <div id="dgTradeBtnsMC" class="trade-btn-row" style="display:none">
+        <span style="font-size:8px;color:var(--muted);text-align:center;width:100%">Use AUTO engine below</span>
+      </div>
+      <div style="display:flex;gap:4px;margin-top:5px;align-items:center">
+        <span id="dgEngineStat"><span class="blink-dot gray"></span></span>
+        <span id="dgCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
+        <span id="dgSessionPnL" style="font-size:10px;font-weight:600;color:var(--muted)">$0.00</span>
+        <span id="dgWLRatio" style="font-size:9px;color:var(--muted)">0-0</span>
+        <button id="dgEngineBtn" class="btn btn-accent" onclick="toggleDigitEngine()" style="padding:3px 6px;font-size:7px;margin-left:auto">AUTO</button>
+        <button class="btn btn-ghost" onclick="resetDigitPnL()" style="padding:2px 4px;font-size:7px">RESET</button>
+      </div>
+      <div style="margin-top:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span id="dgDistRange" style="font-size:7px;color:var(--muted)">Last 0 ticks</span>
+          <span id="dgMarketName" style="font-size:8px;color:var(--accent);font-weight:600"></span>
+        </div>
+        <div id="dgDigitCircles" style="display:grid;grid-template-columns:repeat(10,1fr);gap:2px;margin-bottom:4px"></div>
+        <div style="display:flex;gap:6px;font-size:7px;justify-content:center;margin-bottom:4px">
+          <span style="color:var(--positive);font-weight:700">HOT</span><span id="dgHottest" style="color:var(--positive)">--</span>
+          <span style="color:var(--negative);font-weight:700">COLD</span><span id="dgColdest" style="color:var(--negative)">--</span>
+          <span style="color:var(--text);font-weight:700">NOW</span><span id="dgNowDigit" style="color:var(--text)">--</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+          <div style="background:var(--bg);padding:3px 4px;border:1px solid var(--line);border-radius:var(--radius-sm)">
+            <div style="font-size:7px;color:var(--muted);text-transform:uppercase;margin-bottom:2px">Odd/Even</div>
+            <div style="display:flex;gap:6px">
+              <span style="font-size:10px;font-weight:700;color:var(--accent)" id="dgAEven">--</span>
+              <span style="font-size:10px;font-weight:700;color:#c084fc" id="dgAOdd">--</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:7px;margin-top:2px">
+              <span style="color:var(--muted)">Streak</span><span id="dgAEOStr" style="font-weight:600">--</span>
+            </div>
+          </div>
+          <div style="background:var(--bg);padding:3px 4px;border:1px solid var(--line);border-radius:var(--radius-sm)">
+            <div style="font-size:7px;color:var(--muted);text-transform:uppercase;margin-bottom:2px">Over/Under</div>
+            <div style="display:flex;gap:6px">
+              <span style="font-size:10px;font-weight:700;color:var(--positive)" id="dgAOver">--</span>
+              <span style="font-size:10px;font-weight:700;color:var(--negative)" id="dgDUnder">--</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:7px;margin-top:2px">
+              <span style="color:var(--muted)">Mid</span><span id="dgAMid" style="font-weight:600">--</span>
+            </div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:4px">
+          <div style="background:var(--bg);padding:2px;text-align:center;border:1px solid var(--line);border-radius:var(--radius-sm)">
+            <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Ticks</div><div id="dgATicks" style="font-size:11px;font-weight:700">0</div>
+          </div>
+          <div style="background:var(--bg);padding:2px;text-align:center;border:1px solid var(--line);border-radius:var(--radius-sm)">
+            <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Chi-Sq</div><div id="dgChiSq" style="font-size:11px;font-weight:700">--</div>
+          </div>
+          <div style="background:var(--bg);padding:2px;text-align:center;border:1px solid var(--line);border-radius:var(--radius-sm)">
+            <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Streak</div>
+            <div style="display:flex;gap:3px;justify-content:center;font-size:9px;font-weight:700">
+              <span id="dgWinStreak" style="color:var(--positive)">W:0</span>
+              <span id="dgLossStreak" style="color:var(--negative)">L:0</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="trade-btn-row">
-      <button id="rfStartBtn" class="btn btn-call" onclick="startRF()" style="flex:1">START</button>
-      <button id="rfStopBtn" class="btn btn-put" onclick="stopRF()" style="flex:1;display:none">STOP</button>
+
+    <!-- Telegram -->
+    <div class="card">
+      <div class="card-title">Telegram</div>
+      <div style="display:flex;flex-direction:column;gap:3px">
+        <input class="inp inp-sm" id="tgToken" type="password" placeholder="Token">
+        <input class="inp inp-sm" id="tgChatId" type="text" placeholder="Chat ID">
+      </div>
     </div>
-    <div style="display:flex;gap:6px;align-items:center;margin-top:5px">
-      <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
-        <input type="checkbox" id="rfMartToggle" onchange="toggleRFMartingale()" style="width:13px;height:13px;accent-color:var(--accent)">
-        Martingale
+
+    <!-- Copy Trading -->
+    <div class="card">
+      <div class="card-title">Copy Trade <span id="copyModeBadge" class="tag tag-gray" style="font-size:7px">OFF</span></div>
+      <div style="display:flex;gap:3px;margin-bottom:4px">
+        <button id="copyModeOff" class="btn btn-ghost" onclick="setCopyMode('off')" style="flex:1;padding:3px;font-size:8px;background:var(--surface-2);border-color:var(--line)">OFF</button>
+        <button id="copyModeMaster" class="btn btn-ghost" onclick="setCopyMode('master')" style="flex:1;padding:3px;font-size:8px">MASTER</button>
+        <button id="copyModeClient" class="btn btn-ghost" onclick="setCopyMode('client')" style="flex:1;padding:3px;font-size:8px">CLIENT</button>
+      </div>
+      <div id="copyMasterPanel" style="display:none">
+        <div style="display:flex;gap:3px;align-items:center;margin-bottom:3px">
+          <span style="font-size:8px;color:var(--muted)">ID:</span>
+          <input class="inp inp-sm" id="copyMasterId" type="text" placeholder="mytrader" style="flex:1;font-size:8px" value="master1">
+          <button id="copyBroadcastBtn" class="btn btn-ghost" onclick="toggleBroadcast()" style="padding:2px 6px;font-size:7px;background:var(--surface-2)">BROADCAST</button>
+        </div>
+        <div id="copyBroadcastStatus" style="font-size:7px;color:var(--muted)">Broadcast: OFF</div>
+      </div>
+      <div id="copyClientPanel" style="display:none">
+        <div style="display:flex;gap:3px;margin-bottom:3px">
+          <input class="inp inp-sm" id="copyTraderInput" type="text" placeholder="Trader ID" style="flex:1;font-size:8px">
+          <input class="inp inp-sm" id="copyStakeMult" type="number" value="1" min="0.1" step="0.1" style="width:35px;font-size:8px">
+          <button class="btn btn-ghost" onclick="addCopyTrader()" style="padding:2px 6px;font-size:7px">+</button>
+        </div>
+        <div id="copyTraderList" style="max-height:100px;overflow-y:auto"></div>
+        <div id="copyClientStatus" style="font-size:7px;color:var(--muted);margin-top:2px">Following 0 traders</div>
+      </div>
+    </div>
+
+    <!-- Info -->
+    <div class="card">
+      <div class="card-title">Info</div>
+      <div id="watchTopMarket" style="font-size:8px;color:var(--muted)">Signal: --</div>
+    </div>
+  </div>
+  <div class="sidebar-footer">BTraders v1</div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div id="main">
+  <!-- TOP BAR -->
+  <div class="mtop">
+    <div class="mtop-l">
+      <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">☰</button>
+      <div class="logo">B<span>TRADERS</span></div>
+      <span id="connDot" class="conn r"></span>
+      <span id="engineStatus" style="font-size:8px;color:var(--muted);font-weight:600;">OFFLINE</span>
+    </div>
+    <div class="mtop-r">
+      <span id="accBadge" class="tag tag-blue" style="font-size:7px;">DEMO</span>
+      <label class="switch" title="Live / Demo">
+        <input type="checkbox" id="accToggle" onchange="toggleAccount()">
+        <span class="slider"></span>
       </label>
-      <div style="display:none;gap:3px;align-items:center" id="rfMartOpts">
-        <span style="font-size:8px;color:var(--muted)">x</span>
-        <input class="inp inp-sm" id="rfMartMult" type="number" value="2" min="2" max="10" step="1" style="width:35px">
+      <button onclick="toggleTheme()" title="Toggle theme" style="background:none;border:none;cursor:pointer;font-size:14px;line-height:1;padding:2px" id="themeBtn">🌙</button>
+      <div style="text-align:right">
+        <div class="bal-label">Balance</div>
+        <div id="dashBalance" class="bal">$0.00</div>
       </div>
-      <span id="rfStatus"><span class="status-dot gray"></span></span>
-      <span id="rfCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
-      <span id="rfSysBadge" style="font-size:7px;color:var(--warn)"></span>
+      <div style="text-align:right">
+        <div class="bal-label">P&amp;L</div>
+        <div id="dashPnl" style="font-size:14px;font-weight:700;color:var(--muted)">$0.00</div>
+      </div>
     </div>
   </div>
 
-  <!-- DIGITS -->
-  <div id="dgSection" class="card" style="display:none">
-    <div class="card-title">Digits <span id="dgModeLabel" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">OVER/UNDER</span></div>
-    <!-- Mode toggle: 3 modes -->
-    <div style="display:flex;gap:4px;margin-bottom:6px">
-      <button id="dgModeOU" class="btn btn-ghost" onclick="setDigitContract('OU')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">OVER/UNDER</button>
-      <button id="dgModeEO" class="btn btn-ghost" onclick="setDigitContract('EO')" style="flex:1;padding:4px;font-size:8px">EVEN/ODD</button>
-      <button id="dgModeMC" class="btn btn-ghost" onclick="setDigitContract('MC')" style="flex:1;padding:4px;font-size:8px">MATCH</button>
-    </div>
-    <!-- Trade form -->
-    <div style="display:flex;gap:4px;margin-bottom:4px">
-      <div class="field" style="flex:1"><label>Stake</label><input class="inp" id="dgBaseStake" type="number" value="1" min="0.5" step="0.5"></div>
-      <div class="field" style="flex:1"><label>Target</label><input class="inp" id="dgTakeProfit" type="number" value="10" min="1" step="1"></div>
-      <div class="field" style="flex:1"><label>Stop</label><input class="inp" id="dgStopLoss" type="number" value="5" min="1" step="1"></div>
-    </div>
-    <!-- Manual trade buttons (change based on OU/EO mode) -->
-    <div id="dgTradeBtnsOU" class="trade-btn-row" style="flex-wrap:wrap;gap:3px">
-      <div style="display:flex;gap:3px;width:100%;margin-bottom:2px">
-        <span style="font-size:7px;color:var(--muted);align-self:center">Barrier:</span>
-        <select id="dgBarrier" class="inp inp-sm" style="width:50px;font-size:9px;padding:2px">
-          <option>0</option><option>1</option><option>2</option><option>3</option><option>4</option>
-          <option selected>5</option><option>6</option><option>7</option><option>8</option><option>9</option>
-        </select>
-      </div>
-      <button class="btn btn-call" onclick="placeDigitManual('DIGITOVER')" style="flex:1">OVER</button>
-      <button class="btn btn-put" onclick="placeDigitManual('DIGITUNDER')" style="flex:1">UNDER</button>
-    </div>
-    <div id="dgTradeBtnsEO" class="trade-btn-row" style="display:none">
-      <button class="btn btn-call" onclick="placeDigitManual('DIGITEVEN')" style="flex:1">EVEN</button>
-      <button class="btn btn-put" onclick="placeDigitManual('DIGITODD')" style="flex:1">ODD</button>
-    </div>
-    <div id="dgTradeBtnsMC" class="trade-btn-row" style="display:none">
-      <span style="font-size:8px;color:var(--muted);text-align:center;width:100%">Use AUTO engine below</span>
-    </div>
-    <!-- Auto-engine toggle + Status row -->
-    <!-- Auto-engine toggle + Status row -->
-    <div style="display:flex;gap:4px;margin-top:5px;align-items:center">
-      <span id="dgEngineStat"><span class="blink-dot gray"></span></span>
-      <span id="dgCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
-      <span id="dgSessionPnL" style="font-size:10px;font-weight:600;color:var(--muted)">$0.00</span>
-      <span id="dgWLRatio" style="font-size:9px;color:var(--muted)">0-0</span>
-      <button id="dgEngineBtn" class="btn btn-accent" onclick="toggleDigitEngine()" style="padding:3px 8px;font-size:7px;margin-left:auto">AUTO</button>
-      <button class="btn btn-ghost" onclick="resetDigitPnL()" style="padding:2px 6px;font-size:7px">RESET</button>
-    </div>
-    <!-- Analysis panel -->
-    <div style="margin-top:6px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-        <span id="dgDistRange" style="font-size:7px;color:var(--muted)">Last 0 ticks</span>
-        <span id="dgMarketName" style="font-size:8px;color:var(--accent);font-weight:600"></span>
-      </div>
-      <div id="dgDigitCircles" style="display:grid;grid-template-columns:repeat(10,1fr);gap:3px;margin-bottom:4px"></div>
-      <div style="display:flex;gap:8px;font-size:7px;justify-content:center;margin-bottom:4px">
-        <span style="color:var(--positive);font-weight:700">HOT</span><span id="dgHottest" style="color:var(--positive)">--</span>
-        <span style="color:var(--negative);font-weight:700">COLD</span><span id="dgColdest" style="color:var(--negative)">--</span>
-        <span style="color:var(--text);font-weight:700">NOW</span><span id="dgNowDigit" style="color:var(--text)">--</span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
-        <div style="background:var(--bg);padding:4px 6px;border:1px solid var(--line);border-radius:var(--radius-sm)">
-          <div style="font-size:7px;color:var(--muted);text-transform:uppercase;margin-bottom:2px">Odd/Even</div>
-          <div style="display:flex;gap:8px">
-            <span style="font-size:10px;font-weight:700;color:var(--accent)" id="dgAEven">--</span>
-            <span style="font-size:10px;font-weight:700;color:#c084fc" id="dgAOdd">--</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;font-size:7px;margin-top:2px">
-            <span style="color:var(--muted)">Streak</span><span id="dgAEOStr" style="font-weight:600">--</span>
+  <!-- KPI ROW -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;padding:0 10px;margin-bottom:4px">
+    <div class="kpi"><div id="dashWinRate" class="v" style="color:var(--accent)">0%</div><div class="l">Win Rate</div></div>
+    <div class="kpi"><div id="dashTrades" class="v" style="color:var(--text)">0</div><div class="l">Trades</div></div>
+    <div class="kpi"><div id="dashActive" class="v" style="color:var(--warn)">0</div><div class="l">Active</div></div>
+    <div class="kpi"><div id="dashConsLoss" class="v" style="color:var(--negative)">0</div><div class="l">Streak</div></div>
+  </div>
+
+  <!-- MAIN ROW -->
+  <div class="row">
+    <!-- Left column: RF Controls + Chart + History -->
+    <div class="col" style="min-width:220px">
+      <!-- R/F Controls -->
+      <div id="rfSection" class="card">
+        <div class="card-title">Rise/Fall <span id="rfModeBadge" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">AUTO</span></div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
+            <input type="checkbox" id="marketModeToggle" onchange="toggleMarketMode()" checked style="width:13px;height:13px;accent-color:var(--accent)">
+            <span>Multi Market</span>
+          </label>
+          <span id="marketModeLabel" style="font-size:8px;color:var(--accent);font-weight:600">ON</span>
+        </div>
+        <div class="stake-row">
+          <div class="field"><label>Stake</label><input class="inp" id="rfStake" type="number" value="1" min="0.35" step="0.5"></div>
+          <div class="field"><label>Duration</label>
+            <select class="inp" id="rfDuration">
+              <option value="5t">5t</option><option value="10t">10t</option>
+              <option value="15" selected>15s</option>
+              <option value="30">30s</option><option value="60">60s</option>
+              <option value="120">120s</option><option value="180">180s</option>
+            </select>
           </div>
         </div>
-        <div style="background:var(--bg);padding:4px 6px;border:1px solid var(--line);border-radius:var(--radius-sm)">
-          <div style="font-size:7px;color:var(--muted);text-transform:uppercase;margin-bottom:2px">Over/Under</div>
-          <div style="display:flex;gap:8px">
-            <span style="font-size:10px;font-weight:700;color:var(--positive)" id="dgAOver">--</span>
-            <span style="font-size:10px;font-weight:700;color:var(--negative)" id="dgDUnder">--</span>
+        <div class="trade-btn-row">
+          <button id="rfStartBtn" class="btn btn-call" onclick="startRF()" style="flex:1">START</button>
+          <button id="rfStopBtn" class="btn btn-put" onclick="stopRF()" style="flex:1;display:none">STOP</button>
+          <button class="btn btn-ghost" onclick="downloadTradeLog()" style="padding:4px 8px;font-size:8px">EXPORT</button>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-top:5px">
+          <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
+            <input type="checkbox" id="rfMartToggle" onchange="toggleRFMartingale()" style="width:13px;height:13px;accent-color:var(--accent)">
+            Martingale
+          </label>
+          <div style="display:none;gap:3px;align-items:center" id="rfMartOpts">
+            <span style="font-size:8px;color:var(--muted)">x</span>
+            <input class="inp inp-sm" id="rfMartMult" type="number" value="2" min="2" max="10" step="1" style="width:35px">
           </div>
-          <div style="display:flex;justify-content:space-between;font-size:7px;margin-top:2px">
-            <span style="color:var(--muted)">Mid</span><span id="dgAMid" style="font-weight:600">--</span>
-          </div>
+          <span id="rfStatus"><span class="status-dot gray"></span></span>
+          <span id="rfCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
+          <span id="rfSysBadge" style="font-size:7px;color:var(--warn)"></span>
         </div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:4px">
-        <div style="background:var(--bg);padding:3px;text-align:center;border:1px solid var(--line);border-radius:var(--radius-sm)">
-          <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Ticks</div><div id="dgATicks" style="font-size:12px;font-weight:700">0</div>
+
+      <!-- Chart -->
+      <div class="card" style="padding:4px">
+        <canvas id="liveChart" style="width:100%;height:90px;display:block"></canvas>
+      </div>
+
+      <!-- Trade History -->
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div class="card-title" style="margin:0">History</div>
+          <button class="btn btn-ghost" onclick="clearRecentTrades()" style="padding:2px 6px;font-size:7px">Clear</button>
         </div>
-        <div style="background:var(--bg);padding:3px;text-align:center;border:1px solid var(--line);border-radius:var(--radius-sm)">
-          <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Chi-Sq</div><div id="dgChiSq" style="font-size:12px;font-weight:700">--</div>
-        </div>
-        <div style="background:var(--bg);padding:3px;text-align:center;border:1px solid var(--line);border-radius:var(--radius-sm)">
-          <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Win Streak</div>
-          <div style="display:flex;gap:4px;justify-content:center;font-size:10px;font-weight:700">
-            <span id="dgWinStreak" style="color:var(--positive)">W:0</span>
-            <span id="dgLossStreak" style="color:var(--negative)">L:0</span>
-          </div>
+        <div id="recentTrades" style="font-size:9px;color:var(--muted);max-height:110px;overflow-y:auto;padding:2px 0">No trades yet</div>
+      </div>
+    </div>
+
+    <!-- Right column: Markets + Log -->
+    <div class="col col-2" style="min-width:260px">
+      <div class="card">
+        <div class="card-title">Markets</div>
+        <div id="modeTargetMarket" style="font-size:9px;font-weight:600;margin-bottom:3px"></div>
+        <select id="marketSelect" class="inp" onchange="selectMarketFromDropdown(this.value)" style="margin-bottom:4px;font-size:9px"></select>
+        <div id="watchlistBody" style="max-height:200px;overflow-y:auto"></div>
+      </div>
+
+      <details class="log-details">
+        <summary><span style="font-size:8px;font-weight:600;color:var(--muted)">Log</span> <button class="btn btn-ghost" onclick="event.stopPropagation();clearLog()" style="padding:1px 6px;font-size:7px;margin-left:6px">Clear</button></summary>
+        <div class="console-box" id="logBox" style="margin-top:4px"></div>
+      </details>
+
+      <!-- Auth row -->
+      <div class="card" style="padding:6px">
+        <div style="display:flex;gap:4px">
+          <input class="inp inp-sm" id="apiToken" type="password" placeholder="API Token" style="flex:1">
+          <button class="btn btn-accent" onclick="authorizeToken()" style="padding:4px 10px;font-size:8px">CONNECT</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Chart -->
-  <div class="card" style="padding:4px">
-    <canvas id="liveChart" style="width:100%;height:90px;display:block"></canvas>
+  <!-- Hidden fallback elements for phantom IDs referenced by JS -->
+  <div style="display:none">
+    <div id="hdrTitle"></div>
+    <div id="rfStratRow"></div>
+    <div id="accLabel"></div>
+    <div id="consModeLabel"></div>
+    <div id="dgTickVisualizer"></div>
+    <div id="modeSubInfo"></div>
+    <div id="dashSignal"></div>
+    <div id="dashStrategy"></div>
+    <div id="dMarket"></div>
   </div>
-
-  <!-- Trade History -->
-  <div class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-      <div class="card-title" style="margin:0">History</div>
-      <button class="btn btn-ghost" onclick="clearRecentTrades()" style="padding:2px 6px;font-size:7px">Clear</button>
-    </div>
-    <div id="recentTrades" style="font-size:9px;color:var(--muted);max-height:110px;overflow-y:auto;padding:2px 0">No trades yet</div>
-  </div>
-</div>
-
-<!-- RIGHT: Asset List + Console -->
-<div class="col col-2" style="min-width:280px">
-  <div class="card">
-    <div class="card-title">Markets</div>
-    <div id="modeTargetMarket" style="font-size:9px;font-weight:600;margin-bottom:3px"></div>
-    <select id="marketSelect" class="inp" onchange="selectMarketFromDropdown(this.value)" style="margin-bottom:4px;font-size:9px"></select>
-    <div id="watchlistBody" style="max-height:200px;overflow-y:auto"></div>
-  </div>
-
-  <!-- Auth row -->
-  <div class="card" style="padding:6px">
-    <div style="display:flex;gap:4px">
-      <input class="inp inp-sm" id="apiToken" type="password" placeholder="API Token" style="flex:1">
-      <button class="btn btn-accent" onclick="authorizeToken()" style="padding:4px 10px;font-size:8px">CONNECT</button>
-    </div>
-  </div>
-
-  <details class="log-details">
-    <summary><span style="font-size:8px;font-weight:600;color:var(--muted)">Log</span> <button class="btn btn-ghost" onclick="event.stopPropagation();clearLog()" style="padding:1px 6px;font-size:7px;margin-left:6px">Clear</button></summary>
-    <div class="console-box" id="logBox" style="margin-top:4px"></div>
-  </details>
-</div>
-
-</div><!-- end row -->
-
-</div><!-- end main -->
-
-<!-- SIDEBAR -->
-<div class="sidebar" style="width:180px">
-  <div class="card">
-    <div class="card-title">Account</div>
-    <div id="dashTarget" style="font-size:12px;font-weight:600">$0.00</div>
-    <div style="font-size:8px;color:var(--muted);margin-top:2px">Daily Stop</div>
-    <div id="dashLoss" style="font-size:12px;font-weight:600;color:var(--negative)">$0.00</div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Telegram</div>
-    <div style="display:flex;flex-direction:column;gap:3px">
-      <input class="inp inp-sm" id="tgToken" type="password" placeholder="Token">
-      <input class="inp inp-sm" id="tgChatId" type="text" placeholder="Chat ID">
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="card-title">Info</div>
-    <div id="watchTopMarket" style="font-size:8px;color:var(--muted)">Signal: --</div>
-    <div id="modeIndicator" style="font-size:8px;color:var(--muted);margin-top:2px">Auto</div>
-  </div>
-
-  <div class="footer">BTraders v1</div>
 </div>
 
 </div><!-- end app -->
@@ -428,7 +513,7 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
 // -- GLOBAL BOT STATE --
 const G = {
   WS:null, CONNECTED:false, AUTH:false, RID:0, TOKEN:'', CLOSING_TRADE_WS:false,
-  APP_ID:'33Bit8qca1ohMrHva7G7w',
+  APP_ID:'33JFxN3sbe2usdFigbMb8',
   ACCOUNT_ID:null, ACCOUNT_TYPE:'demo', BALANCE:0,
   RUNNING:false,
   ACTIVE_CONTRACTS:new Map(),
@@ -442,6 +527,7 @@ const G = {
   SELECTED_MARKET:'R_50',
   DAILY:{ pnl:0, trades:0, hourTrades:[], date:'' },
   CONS_LOSS_COOLDOWN:0,
+  LEARN:{ patterns:{}, suppressed: new Set() },
   SG_TAB:0,
   LAST_SIGNAL:null, LAST_MARKET_MSG_AT:0, LAST_TRADE_MSG_AT:0,
   BOOT_AT:0, PENDING_SIGNAL:null, PENDING_SIGNAL_AT:0,
@@ -487,6 +573,9 @@ const G = {
   // Trade history for session reports
   TRADE_OUTCOMES:[],
   TRADE_HISTORY:[],  // { time, action, strategy, stake, profit, won }
+  _lastTradeAt:0,    // last trade fire timestamp (global cooldown)
+  _marketLossAt:{},  // per-market last loss timestamp { sym: ms }
+  _clusterUntil:0,   // loss cluster pause until timestamp
 };
 
 // Martingale state (shared by RF & DIGITS engines)
@@ -520,6 +609,7 @@ const BotState = {
   martingaleMult: 2,
   sessionDeficit: 0,
   cyclePnL: 0,
+  dgMartMult: 3,
 };
 
 const SYMBOLS = [
@@ -535,12 +625,7 @@ const SYMBOLS = [
   { sym:'1HZ50V',   name:'Volatility 50 (1s)',  vol:50,  cat:'VOL1S' },
   { sym:'1HZ75V',   name:'Volatility 75 (1s)',  vol:75,  cat:'VOL1S' },
   { sym:'1HZ100V',  name:'Volatility 100 (1s)', vol:100, cat:'VOL1S' },
-  // Jump Indices — 2s ticks, discrete steps
-  { sym:'JD10',     name:'Jump 10',            vol:10,  cat:'JUMP' },
-  { sym:'JD25',     name:'Jump 25',            vol:25,  cat:'JUMP' },
-  { sym:'JD50',     name:'Jump 50',            vol:50,  cat:'JUMP' },
-  { sym:'JD75',     name:'Jump 75',            vol:75,  cat:'JUMP' },
-  { sym:'JD100',    name:'Jump 100',           vol:100, cat:'JUMP' },
+  // Jump Indices — removed, unreliable for ensemble
   // Step Index — 2s ticks, fixed step increments
   { sym:'stpRNG',   name:'Step Index',         vol:10,  cat:'STEP' },
   // Bull / Bear (Daily Reset) Indices — constant price, trend simulation
@@ -589,118 +674,449 @@ function atr(c,p=14){
 }
 
 // ============================================================
-// 11 REVERSAL STRATEGIES (15s candles)
+// ENSEMBLE STRATEGY ENGINE (36 strategies, 80%+ consensus)
 // ============================================================
 function initStrategies(){
-  // Digit probability tables (generated from 15s OHLC data, all 10 markets)
-  // Each value = P(outcome | condition) * 100
   G.DIGIT_PROBS = {"R_10":{"dc":[125,121,155,118,127,133,146,143,123,145],"ou":{"O":51,"U":48},"eo":{"E":49,"D":48},"pou":{"UU":52,"UO":51,"OO":51,"OU":52},"peo":{"ED":51,"DD":53,"DE":51,"EE":47},"dou":{"0":56,"1":49,"2":56,"3":48,"4":50,"5":54,"6":53,"7":50,"8":46,"9":52},"deo":{"0":42,"1":48,"2":49,"3":52,"4":55,"5":60,"6":51,"7":48,"8":49,"9":52},"dir":{"up":51,"dn":53}},"R_25":{"dc":[136,120,134,132,139,128,123,132,157,135],"ou":{"O":52,"U":51},"eo":{"E":52,"D":49},"pou":{"UU":49,"UO":53,"OU":48,"OO":52},"peo":{"EE":51,"ED":48,"DD":53,"DE":54},"dou":{"0":46,"1":39,"2":55,"3":51,"4":51,"5":48,"6":54,"7":55,"8":54,"9":51},"deo":{"0":53,"1":49,"2":46,"3":50,"4":53,"5":57,"6":56,"7":51,"8":54,"9":46},"dir":{"up":50,"dn":52}},"R_50":{"dc":[146,121,163,141,132,136,137,134,108,118],"ou":{"O":50,"U":55},"eo":{"E":51,"D":49},"pou":{"OO":50,"OU":47,"UU":43,"UO":50},"peo":{"ED":52,"DE":55,"EE":49,"DD":51},"dou":{"0":44,"1":48,"2":42,"3":44,"4":48,"5":49,"6":53,"7":55,"8":47,"9":44},"deo":{"0":60,"1":46,"2":48,"3":56,"4":53,"5":53,"6":45,"7":46,"8":52,"9":53},"dir":{"up":48,"dn":47}},"R_75":{"dc":[118,143,128,131,132,122,142,153,137,130],"ou":{"O":50,"U":47},"eo":{"E":50,"D":52},"pou":{"OU":52,"UU":54,"UO":52,"OO":48},"peo":{"DD":51,"DE":53,"EE":47,"ED":45},"dou":{"0":50,"1":43,"2":62,"3":56,"4":55,"5":58,"6":48,"7":51,"8":44,"9":48},"deo":{"0":50,"1":51,"2":49,"3":44,"4":56,"5":49,"6":44,"7":46,"8":53,"9":50},"dir":{"up":53,"dn":49}},"R_100":{"dc":[122,138,135,130,122,120,145,146,142,136],"ou":{"O":51,"U":48},"eo":{"E":50,"D":50},"pou":{"UO":48,"OU":50,"UU":54,"OO":54},"peo":{"ED":48,"DD":51,"DE":52,"EE":48},"dou":{"0":45,"1":55,"2":56,"3":48,"4":56,"5":50,"6":49,"7":51,"8":48,"9":58},"deo":{"0":50,"1":46,"2":48,"3":51,"4":55,"5":52,"6":43,"7":48,"8":54,"9":53},"dir":{"up":51,"dn":52}},"1HZ10V":{"dc":[59,80,75,53,79,56,72,50,75,70],"ou":{"O":47,"U":50},"eo":{"E":57,"D":49},"pou":{"OO":44,"OU":51,"UU":48,"UO":49},"peo":{"DD":49,"DE":64,"ED":53,"EE":51},"dou":{"0":39,"1":52,"2":61,"3":49,"4":44,"5":46,"6":54,"7":46,"8":43,"9":44},"deo":{"0":51,"1":50,"2":57,"3":51,"4":62,"5":52,"6":51,"7":44,"8":60,"9":56},"dir":{"up":47,"dn":49}},"1HZ25V":{"dc":[61,55,63,44,72,80,86,76,67,65],"ou":{"O":55,"U":43},"eo":{"E":48,"D":44},"pou":{"OU":57,"UO":50,"OO":59,"UU":58},"peo":{"DD":59,"DE":48,"EE":49,"ED":55},"dou":{"0":57,"1":60,"2":51,"3":61,"4":58,"5":54,"6":60,"7":53,"8":63,"9":42},"deo":{"0":56,"1":64,"2":46,"3":59,"4":56,"5":45,"6":36,"7":57,"8":52,"9":62},"dir":{"up":54,"dn":57}},"1HZ50V":{"dc":[61,60,76,77,73,76,51,68,61,66],"ou":{"O":47,"U":51},"eo":{"E":52,"D":55},"pou":{"OO":48,"OU":46,"UO":45,"UU":52},"peo":{"DE":54,"EE":50,"ED":41,"DD":48},"dou":{"0":54,"1":48,"2":41,"3":48,"4":56,"5":53,"6":35,"7":56,"8":35,"9":50},"deo":{"0":46,"1":42,"2":54,"3":40,"4":49,"5":51,"6":51,"7":50,"8":58,"9":41},"dir":{"up":50,"dn":46}},"1HZ75V":{"dc":[66,76,53,68,58,55,75,76,73,69],"ou":{"O":54,"U":50},"eo":{"E":49,"D":52},"pou":{"UU":51,"UO":53,"OO":54,"OU":50},"peo":{"EE":43,"ED":45,"DD":50,"DE":55},"dou":{"0":56,"1":43,"2":55,"3":51,"4":48,"5":62,"6":49,"7":54,"8":57,"9":48},"deo":{"0":52,"1":42,"2":45,"3":56,"4":52,"5":45,"6":48,"7":50,"8":49,"9":46},"dir":{"up":50,"dn":55}},"1HZ100V":{"dc":[77,60,76,62,62,65,74,61,69,63],"ou":{"O":50,"U":51},"eo":{"E":53,"D":45},"pou":{"OU":49,"UO":48,"OO":52,"UU":49},"peo":{"EE":54,"ED":55,"DE":50,"DD":54},"dou":{"0":48,"1":53,"2":47,"3":50,"4":50,"5":51,"6":49,"7":52,"8":54,"9":43},"deo":{"0":47,"1":53,"2":50,"3":56,"4":58,"5":51,"6":57,"7":54,"8":52,"9":59},"dir":{"up":51,"dn":48}}};
-  // Cross-market average probabilities
   G.DIGIT_AVG = {dou:{0:50,1:49,2:53,3:51,4:52,5:52,6:50,7:52,8:49,9:48},deo:{0:51,1:49,2:49,3:52,4:55,5:52,6:48,7:49,8:53,9:52},ou:{O:51,U:49},eo:{E:51,D:49},pou:{UU:51,UO:50,OO:51,OU:50},peo:{ED:49,DD:52,DE:54,EE:49}};
-  G.STRATEGIES = [
-    // ================================================================
-    // S1: STOCHASTIC MOMENTUM INDEX (SMI) — double-smoothed momentum
-    // ================================================================
-    { name:'Stochastic Momentum', code:'SMI',
-      desc:'SMI crossover with oversold/overbought extremes',
-      analyze:(c)=>{
-        if(c.length<24) return null;
-        const cl=closes(c), hi=c.map(x=>x.high), lo=c.map(x=>x.low);
-        const p=10, sm=3, ss=3;
-        const smi=(i)=>{
-          const hh=Math.max(...hi.slice(i-p,i)), ll=Math.min(...lo.slice(i-p,i));
-          const mid=(hh+ll)/2, rng=hh-ll;
-          return rng===0?0:((cl[i]-mid)/(rng/2))*100;
-        };
-        const vals=[]; for(let i=p;i<cl.length;i++) vals.push(smi(i));
-        if(vals.length<sm+ss+1) return null;
-        const ema=(arr,n)=>{ if(arr.length<n) return null; const k=2/(n+1); let e=arr.slice(0,n).reduce((a,b)=>a+b,0)/n; for(let i=n;i<arr.length;i++) e=arr[i]*k+e*(1-k); return e; };
-        const smiEma=ema(vals,sm); if(smiEma===null) return null;
-        const sigLine=ema(vals,ss); if(sigLine===null) return null;
-        const prevSmi=vals[vals.length-2], prevSig=ema(vals.slice(0,-1),ss);
-        if(prevSmi===null||prevSig===null) return null;
-        const last=c[c.length-1];
-        // Bullish: SMI crosses above signal, both < -40 (oversold)
-        if(prevSmi<=prevSig&&smiEma>sigLine&&smiEma<-40&&sigLine<-40&&last.close>last.open)
-          return { action:'RISE', conf:88, src:'SMI' };
-        // Bearish: SMI crosses below signal, both > 40 (overbought)
-        if(prevSmi>=prevSig&&smiEma<sigLine&&smiEma>40&&sigLine>40&&last.close<last.open)
-          return { action:'FALL', conf:88, src:'SMI' };
-        return null;
-      } },
-    // ================================================================
-    // S2: MACD CROSSOVER — momentum shift with zero-line filter
-    // ================================================================
-    { name:'MACD Crossover', code:'MAC',
-      desc:'MACD line crosses signal line with zero-line momentum filter',
-      analyze:(c)=>{
-        if(c.length<35) return null;
-        const cl=closes(c);
-        const ema=(arr,n)=>{ if(arr.length<n) return null; const k=2/(n+1); let e=arr.slice(0,n).reduce((a,b)=>a+b,0)/n; for(let i=n;i<arr.length;i++) e=arr[i]*k+e*(1-k); return e; };
-        const f=ema(cl,12), s=ema(cl,26);
-        if(f===null||s===null) return null;
-        const macdLine=f-s;
-        const macdSeries=[]; for(let i=26;i<cl.length;i++){ const fi=ema(cl.slice(0,i),12), si=ema(cl.slice(0,i),26); if(fi!==null&&si!==null) macdSeries.push(fi-si); }
-        if(macdSeries.length<10) return null;
-        const sigLine=ema(macdSeries,9);
-        const prevMacd=macdSeries[macdSeries.length-2];
-        const prevSig=ema(macdSeries.slice(0,-1),9);
-        if(sigLine===null||prevMacd===null||prevSig===null) return null;
-        const last=c[c.length-1];
-        // Bullish: MACD crosses above signal, MACD was negative (recovery)
-        if(prevMacd<=prevSig&&macdLine>sigLine&&macdLine<0&&last.close>last.open)
-          return { action:'RISE', conf:86, src:'MAC' };
-        // Bearish: MACD crosses below signal, MACD was positive (rollover)
-        if(prevMacd>=prevSig&&macdLine<sigLine&&macdLine>0&&last.close<last.open)
-          return { action:'FALL', conf:86, src:'MAC' };
-        return null;
-      } },
-    // ================================================================
-    // S3: RSI EXTREMES — overbought/oversold with confirmation
-    // ================================================================
-    { name:'RSI Extremes', code:'RSI',
-      desc:'RSI(14) beyond 70/30 with bearish/bullish candle confirmation',
-      analyze:(c)=>{
-        if(c.length<20) return null;
-        const cl=closes(c), hi=c.map(x=>x.high), lo=c.map(x=>x.low);
-        const r=rsi(cl,14); if(r===null) return null;
-        const last=c[c.length-1];
-        const range=last.high-last.low; if(range===0) return null;
-        const upperShadow=(last.high-Math.max(last.open,last.close))/range;
-        const lowerShadow=(Math.min(last.open,last.close)-last.low)/range;
-        // Oversold bounce (<28): RSI below 28, bullish candle, lower wick shows rejection
-        if(r<28&&last.close>last.open&&lowerShadow>0.5)
-          return { action:'RISE', conf:85, src:'RSI' };
-        // Overbought reversal (>72): RSI above 72, bearish candle, upper wick shows rejection
-        if(r>72&&last.close<last.open&&upperShadow>0.5)
-          return { action:'FALL', conf:85, src:'RSI' };
-        return null;
-      } },
-    // ================================================================
-    // S4: WILLIAMS %R — momentum exhaustion at extremes
-    // ================================================================
-    { name:'Williams %R', code:'WPR',
-      desc:'W%R beyond -80/-20 with exhaustion candle confirmation',
-      analyze:(c)=>{
-        if(c.length<20) return null;
-        const cl=closes(c), hi=c.map(x=>x.high), lo=c.map(x=>x.low);
-        const p=14;
-        const wr=(i)=>{
-          const hh=Math.max(...hi.slice(i-p,i)), ll=Math.min(...lo.slice(i-p,i));
-          return hh===ll?-50:((hh-cl[i])/(hh-ll))*-100;
-        };
-        const currWr=wr(cl.length-1), prevWr=wr(cl.length-2);
-        const last=c[c.length-1];
-        // Oversold (< -85): price sold off excessively, bounce imminent
-        if(currWr<-85&&prevWr<-80&&last.close>last.open)
-          return { action:'RISE', conf:84, src:'WPR' };
-        // Overbought (> -15): price bought up excessively, reversal imminent
-        if(currWr>-15&&prevWr>-20&&last.close<last.open)
-          return { action:'FALL', conf:84, src:'WPR' };
-        return null;
-      } },
-  ];
+  G.STRATEGIES = [];
+  G.STRATEGY_WEIGHTS = [];
+  const S = G.STRATEGIES;
+  // ── GROUP 1: TREND (S1-S8) ──
+  // S1: EMA5/20 Cross – fast trend shift
+  S.push({ name:'EMA5/20 Cross', code:'E5X', analyze:(c)=>{
+    if(c.length<30) return null;
+    const cl=closes(c),e5=ema(cl,5),e20=ema(cl,20),p5=ema(cl.slice(0,-1),5),p20=ema(cl.slice(0,-1),20);
+    if(e5==null||e20==null||p5==null||p20==null) return null;
+    const last=c[c.length-1];
+    if(p5<=p20&&e5>e20&&last.close>last.open) return {action:'RISE',conf:80,src:'E5X'};
+    if(p5>=p20&&e5<e20&&last.close<last.open) return {action:'FALL',conf:80,src:'E5X'};
+    return null;
+  }});
+  // S2: EMA20/50 Cross – medium trend change
+  S.push({ name:'EMA20/50 Cross', code:'E2X', analyze:(c)=>{
+    if(c.length<60) return null;
+    const cl=closes(c),e20=ema(cl,20),e50=ema(cl,50),p20=ema(cl.slice(0,-1),20),p50=ema(cl.slice(0,-1),50);
+    if(e20==null||e50==null||p20==null||p50==null) return null;
+    if(p20<=p50&&e20>e50) return {action:'RISE',conf:84,src:'E2X'};
+    if(p20>=p50&&e20<e50) return {action:'FALL',conf:84,src:'E2X'};
+    return null;
+  }});
+  // S3: EMA50 Slope – directional bias
+  S.push({ name:'EMA50 Slope', code:'E5S', analyze:(c)=>{
+    if(c.length<60) return null;
+    const cl=closes(c), hi=highs(c), lo=lows(c); const last=c[c.length-1];
+    const e50=ema(cl,50); if(e50==null) return null;
+    const prev=ema(cl.slice(0,-1),50); if(prev==null) return null;
+    const slope=e50-prev; const atrV=atr(c,14); if(atrV==null||atrV===0) return null;
+    if(slope>atrV*0.02&&last.close>last.open&&last.close>e50) return {action:'RISE',conf:78,src:'E5S'};
+    if(slope<-atrV*0.02&&last.close<last.open&&last.close<e50) return {action:'FALL',conf:78,src:'E5S'};
+    return null;
+  }});
+  // S4: Price vs EMA200 – long-term mean reversion
+  S.push({ name:'Price vs EMA200', code:'P2H', analyze:(c)=>{
+    if(c.length<220) return null;
+    const cl=closes(c),e200=ema(cl,200); if(e200==null) return null;
+    const last=c[c.length-1]; const p=last.close; const dist=(p-e200)/e200*100;
+    const atrV=atr(c,14); if(atrV==null||atrV===0) return null;
+    if(dist>atrV/e200*200&&last.close<last.open) return {action:'FALL',conf:80,src:'P2H'};
+    if(dist<-atrV/e200*200&&last.close>last.open) return {action:'RISE',conf:80,src:'P2H'};
+    return null;
+  }});
+  // S5: ADX Trend Direction
+  S.push({ name:'ADX Trend', code:'ADX', analyze:(c)=>{
+    if(c.length<30) return null;
+    const hi=highs(c), lo=lows(c), cl=closes(c);
+    const di=(i)=>{ const up=hi[i]-hi[i-1], dn=lo[i-1]-lo[i]; return {up:up>0?up:0,dn:dn>0?dn:0}; };
+    const period=14; if(cl.length<period+1) return null;
+    let upSum=0, dnSum=0, trSum=0;
+    for(let i=cl.length-period;i<cl.length;i++){
+      const d=di(i); upSum+=d.up; dnSum+=d.dn;
+      const tr=Math.max(hi[i]-lo[i],Math.abs(hi[i]-cl[i-1]),Math.abs(lo[i]-cl[i-1]));
+      trSum+=tr;
+    }
+    if(trSum===0) return null;
+    const diUp=upSum/trSum*100, diDn=dnSum/trSum*100;
+    const dx=diUp+diDn===0?0:Math.abs(diUp-diDn)/(diUp+diDn)*100;
+    if(dx<20) return null; // not trending
+    const last=c[c.length-1];
+    if(diUp>diDn&&last.close>last.open) return {action:'RISE',conf:82,src:'ADX'};
+    if(diDn>diUp&&last.close<last.open) return {action:'FALL',conf:82,src:'ADX'};
+    return null;
+  }});
+  // S6: MA Ribbon Alignment
+  S.push({ name:'MA Ribbon', code:'RBN', analyze:(c)=>{
+    if(c.length<60) return null;
+    const cl=closes(c); const last=c[c.length-1];
+    const e10=ema(cl,10),e20=ema(cl,20),e30=ema(cl,30),e50=ema(cl,50);
+    if(e10==null||e20==null||e30==null||e50==null) return null;
+    const bull=e10>e20&&e20>e30&&e30>e50&&last.close>last.open;
+    const bear=e10<e20&&e20<e30&&e30<e50&&last.close<last.open;
+    if(bull) return {action:'RISE',conf:86,src:'RBN'};
+    if(bear) return {action:'FALL',conf:86,src:'RBN'};
+    return null;
+  }});
+  // S7: SuperTrend (simplified ATR-based)
+  S.push({ name:'SuperTrend', code:'SPT', analyze:(c)=>{
+    if(c.length<20) return null;
+    const cl=closes(c), hi=highs(c), lo=lows(c); const last=c[c.length-1];
+    const atrV=atr(c,10); if(atrV==null||atrV===0) return null;
+    const mid=(hi[hi.length-1]+lo[lo.length-1])/2;
+    const upper=mid+atrV*1.5, lower=mid-atrV*1.5;
+    const prevCl=cl[cl.length-2];
+    if(prevCl<=lower&&cl[cl.length-1]>lower&&last.close>last.open) return {action:'RISE',conf:82,src:'SPT'};
+    if(prevCl>=upper&&cl[cl.length-1]<upper&&last.close<last.open) return {action:'FALL',conf:82,src:'SPT'};
+    return null;
+  }});
+  // S8: Ichimoku Twist
+  S.push({ name:'Ichimoku Twist', code:'ICH', analyze:(c)=>{
+    if(c.length<30) return null;
+    const hi=highs(c), lo=lows(c); const last=c[c.length-1];
+    const conv=(Math.max(...hi.slice(-9))+Math.min(...lo.slice(-9)))/2;
+    const base=(Math.max(...hi.slice(-26))+Math.min(...lo.slice(-26)))/2;
+    const pConv=(Math.max(...hi.slice(-10,-1))+Math.min(...lo.slice(-10,-1)))/2;
+    const pBase=(Math.max(...hi.slice(-27,-1))+Math.min(...lo.slice(-27,-1)))/2;
+    if(pConv<=pBase&&conv>base&&last.close>last.open) return {action:'RISE',conf:82,src:'ICH'};
+    if(pConv>=pBase&&conv<base&&last.close<last.open) return {action:'FALL',conf:82,src:'ICH'};
+    return null;
+  }});
+  // ── GROUP 2: MOMENTUM (S9-S16) ──
+  // S9: RSI Extremes
+  S.push({ name:'RSI Extreme', code:'RSX', analyze:(c)=>{
+    if(c.length<20) return null;
+    const cl=closes(c), r=rsi(cl,14); if(r==null) return null;
+    const last=c[c.length-1]; const range=last.high-last.low; if(range===0) return null;
+    const ls=(Math.min(last.open,last.close)-last.low)/range;
+    const us=(last.high-Math.max(last.open,last.close))/range;
+    if(r<28&&last.close>last.open&&ls>0.5) return {action:'RISE',conf:85,src:'RSX'};
+    if(r>72&&last.close<last.open&&us>0.5) return {action:'FALL',conf:85,src:'RSX'};
+    return null;
+  }});
+  // S10: RSI Divergence
+  S.push({ name:'RSI Divergence', code:'RSD', analyze:(c)=>{
+    if(c.length<30) return null;
+    const cl=closes(c), r=rsi(cl,14); if(r==null) return null;
+    const hi=highs(c), lo=lows(c);
+    const pkHigh=c.slice(-10).reduce((a,x)=>x.high>a.high?x:a,{high:-Infinity});
+    const pkLow=c.slice(-10).reduce((a,x)=>x.low<a.low?x:a,{low:Infinity});
+    const pkIdxHi=c.slice(-10).indexOf(pkHigh), pkIdxLo=c.slice(-10).indexOf(pkLow);
+    const rAtHi=rsi(cl.slice(-10),14); if(rAtHi==null) return null;
+    const rAtLo=rsi(cl.slice(-10),14);
+    if(pkHigh.high>c[c.length-5]?.high&&rAtHi<45) return {action:'FALL',conf:80,src:'RSD'};
+    if(pkLow.low<c[c.length-5]?.low&&rAtLo>55) return {action:'RISE',conf:80,src:'RSD'};
+    return null;
+  }});
+  // S11: Stochastic Cross
+  S.push({ name:'Stochastic Cross', code:'STC', analyze:(c)=>{
+    if(c.length<24) return null;
+    const hi=highs(c), lo=lows(c), cl=closes(c);
+    const k=(i)=>{ const hh=Math.max(...hi.slice(i-14,i)), ll=Math.min(...lo.slice(i-14,i)); return hh===ll?50:((cl[i]-ll)/(hh-ll))*100; };
+    const kv=[],dk=14; for(let i=cl.length-14;i<cl.length;i++) kv.push(k(i));
+    if(kv.length<4) return null;
+    const kk=kv[kv.length-1],pk=kv[kv.length-2],dd=sma(kv,3); if(dd==null) return null;
+    const pd=sma(kv.slice(0,-1),3);
+    if(pk<=pd&&kk>dd&&kk<25&&c[c.length-1].close>c[c.length-1].open) return {action:'RISE',conf:82,src:'STC'};
+    if(pk>=pd&&kk<dd&&kk>75&&c[c.length-1].close<c[c.length-1].open) return {action:'FALL',conf:82,src:'STC'};
+    return null;
+  }});
+  // S12: Williams %R
+  S.push({ name:'Williams %R', code:'WPR', analyze:(c)=>{
+    if(c.length<20) return null;
+    const hi=highs(c), lo=lows(c), cl=closes(c);
+    const p=14; const wr=(i)=>{ const hh=Math.max(...hi.slice(i-p,i)), ll=Math.min(...lo.slice(i-p,i)); return hh===ll?-50:((hh-cl[i])/(hh-ll))*-100; };
+    const cw=wr(cl.length-1),pw=wr(cl.length-2); const last=c[c.length-1];
+    if(cw<-85&&pw<-80&&last.close>last.open) return {action:'RISE',conf:84,src:'WPR'};
+    if(cw>-15&&pw>-20&&last.close<last.open) return {action:'FALL',conf:84,src:'WPR'};
+    return null;
+  }});
+  // S13: CCI Extreme
+  S.push({ name:'CCI Extreme', code:'CCI', analyze:(c)=>{
+    if(c.length<20) return null;
+    const cv=cci(c,14); if(cv==null) return null;
+    const last=c[c.length-1];
+    if(cv<-120&&last.close>last.open) return {action:'RISE',conf:80,src:'CCI'};
+    if(cv>120&&last.close<last.open) return {action:'FALL',conf:80,src:'CCI'};
+    return null;
+  }});
+  // S14: ROC Signal
+  S.push({ name:'ROC Signal', code:'ROC', analyze:(c)=>{
+    if(c.length<15) return null;
+    const cl=closes(c); const last=c[c.length-1];
+    const roc=cl[cl.length-10]===0?0:((cl[cl.length-1]-cl[cl.length-10])/cl[cl.length-10])*100;
+    const prev=cl[cl.length-11]===0?0:((cl[cl.length-2]-cl[cl.length-11])/cl[cl.length-11])*100;
+    if(prev<-3&&roc>-2&&last.close>last.open) return {action:'RISE',conf:78,src:'ROC'};
+    if(prev>3&&roc<2&&last.close<last.open) return {action:'FALL',conf:78,src:'ROC'};
+    return null;
+  }});
+  // S15: Money Flow Index
+  S.push({ name:'MFI', code:'MFI', analyze:(c)=>{
+    if(c.length<22) return null;
+    const cl=closes(c), hi=highs(c), lo=lows(c);
+    const tp=c.slice(-14).map((x,i)=>i>0?{tp:(x.high+x.low+x.close)/3,bull:(x.high+x.low+x.close)>(c[c.length-15+i].high+c[c.length-15+i].low+c[c.length-15+i].close)/3?1:0}:{tp:(x.high+x.low+x.close)/3,bull:1});
+    let mfP=0,mfN=0;
+    tp.forEach(t=>{const v=t.tp*0;if(t.bull)mfP++;else mfN++;});
+    if(mfN===0) return null; const ratio=mfP/mfN; const mfi=100-100/(1+ratio);
+    const last=c[c.length-1];
+    if(mfi<20&&last.close>last.open) return {action:'RISE',conf:80,src:'MFI'};
+    if(mfi>80&&last.close<last.open) return {action:'FALL',conf:80,src:'MFI'};
+    return null;
+  }});
+  // S16: TRIX Signal
+  S.push({ name:'TRIX Signal', code:'TRI', analyze:(c)=>{
+    if(c.length<35) return null;
+    const cl=closes(c);
+    const t=(arr)=>{ const e1=ema(arr,15); if(e1==null) return null; const e2=ema(cl.slice(0,arr.length),15); if(e2==null) return null; return e1; };
+    const v=t(cl); if(v==null) return null;
+    const last=c[c.length-1];
+    if(v>0&&last.close>last.open) return {action:'RISE',conf:76,src:'TRI'};
+    if(v<0&&last.close<last.open) return {action:'FALL',conf:76,src:'TRI'};
+    return null;
+  }});
+  // ── GROUP 3: VOLATILITY (S17-S20) ──
+  // S17: Bollinger Squeeze
+  S.push({ name:'Bollinger Squeeze', code:'BBS', analyze:(c)=>{
+    if(c.length<25) return null;
+    const cl=closes(c); const m=sma(cl,20), sd=stddev(cl,20); if(m==null||sd==null) return null;
+    const upper=m+2*sd, lower=m-2*sd; const bw=(upper-lower)/m;
+    const prevSd=stddev(cl.slice(0,-1),20); if(prevSd==null) return null;
+    const prevBw=(m+2*prevSd-(m-2*prevSd))/m;
+    const last=c[c.length-1];
+    if(bw<prevBw&&last.close>upper&&last.close>last.open) return {action:'RISE',conf:84,src:'BBS'};
+    if(bw<prevBw&&last.close<lower&&last.close<last.open) return {action:'FALL',conf:84,src:'BBS'};
+    return null;
+  }});
+  // S18: Bollinger Touch
+  S.push({ name:'Bollinger Touch', code:'BBT', analyze:(c)=>{
+    if(c.length<25) return null;
+    const cl=closes(c); const m=sma(cl,20), sd=stddev(cl,20); if(m==null||sd==null) return null;
+    const upper=m+2*sd, lower=m-2*sd; const last=c[c.length-1];
+    if(last.close>upper&&last.close<last.open) return {action:'FALL',conf:78,src:'BBT'};
+    if(last.close<lower&&last.close>last.open) return {action:'RISE',conf:78,src:'BBT'};
+    return null;
+  }});
+  // S19: Keltner Break
+  S.push({ name:'Keltner Break', code:'KLT', analyze:(c)=>{
+    if(c.length<25) return null;
+    const cl=closes(c), hi=highs(c), lo=lows(c);
+    const m=ema(cl,20), atrV=atr(c,10); if(m==null||atrV==null) return null;
+    const upper=m+atrV*1.5, lower=m-atrV*1.5; const last=c[c.length-1];
+    if(last.close>upper&&last.close>last.open) return {action:'RISE',conf:80,src:'KLT'};
+    if(last.close<lower&&last.close<last.open) return {action:'FALL',conf:80,src:'KLT'};
+    return null;
+  }});
+  // S20: ATR Regime – volatility expansion
+  S.push({ name:'ATR Regime', code:'ATR', analyze:(c)=>{
+    if(c.length<20) return null;
+    const rng=c.map(x=>x.high-x.low); const cur=rng[rng.length-1];
+    const avg=sma(rng.slice(0,-1),14); if(avg==null||avg===0) return null;
+    const last=c[c.length-1];
+    if(cur>avg*1.8&&last.close<last.open) return {action:'FALL',conf:78,src:'ATR'};
+    if(cur>avg*1.8&&last.close>last.open) return {action:'RISE',conf:78,src:'ATR'};
+    return null;
+  }});
+  // ── GROUP 4: PATTERN (S21-S26) ──
+  // S21: Pivot Reversal (calls existing evaluateSingleMarket)
+  S.push({ name:'Pivot Reversal', code:'REV', analyze:(c,sym)=>{
+    try{ const r=evaluateSingleMarket(sym); return r?{action:r.action,conf:r.conf-5,src:'REV',evidence:r.evidence}:null; }catch(e){return null;}
+  }});
+  // S22: Doji
+  S.push({ name:'Doji Pattern', code:'DOJ', analyze:(c)=>{
+    if(c.length<10) return null;
+    const last=c[c.length-1]; const body=Math.abs(last.close-last.open); const range=last.high-last.low;
+    if(range===0||body/range>0.15) return null;
+    const prev=c[c.length-2]; const pBody=Math.abs(prev.close-prev.open);
+    if(prev.close>prev.open&&pBody>body*2&&last.close<last.open) return {action:'FALL',conf:76,src:'DOJ'};
+    if(prev.close<prev.open&&pBody>body*2&&last.close>last.open) return {action:'RISE',conf:76,src:'DOJ'};
+    return null;
+  }});
+  // S23: Engulfing
+  S.push({ name:'Engulfing', code:'ENG', analyze:(c)=>{
+    if(c.length<10) return null;
+    const last=c[c.length-1], prev=c[c.length-2];
+    const b1=Math.abs(last.close-last.open), b2=Math.abs(prev.close-prev.open);
+    if(b2===0) return null;
+    if(prev.close<prev.open&&last.close>last.open&&b1>b2*1.2&&last.close>prev.open&&last.open<prev.close)
+      return {action:'RISE',conf:82,src:'ENG'};
+    if(prev.close>prev.open&&last.close<last.open&&b1>b2*1.2&&last.close<prev.open&&last.open>prev.close)
+      return {action:'FALL',conf:82,src:'ENG'};
+    return null;
+  }});
+  // S24: Hammer / Shooting Star
+  S.push({ name:'Hammer/Star', code:'HMR', analyze:(c)=>{
+    if(c.length<10) return null;
+    const last=c[c.length-1]; const body=Math.abs(last.close-last.open); const range=last.high-last.low;
+    if(range===0) return null;
+    const uw=(last.high-Math.max(last.open,last.close))/range;
+    const lw=(Math.min(last.open,last.close)-last.low)/range;
+    if(lw>body/range*2&&lw>uw*2&&last.close>last.open) return {action:'RISE',conf:80,src:'HMR'};
+    if(uw>body/range*2&&uw>lw*2&&last.close<last.open) return {action:'FALL',conf:80,src:'HMR'};
+    return null;
+  }});
+  // S25: Morning/Evening Star
+  S.push({ name:'Star Pattern', code:'MES', analyze:(c)=>{
+    if(c.length<10) return null;
+    if(c.length<5) return null;
+    const a=c[c.length-3], b=c[c.length-2], d=c[c.length-1];
+    if(!a||!b||!d) return null;
+    const ba=Math.abs(a.close-a.open), bb=Math.abs(b.close-b.open);
+    if(bb===0) return null;
+    if(a.close<a.open&&bb<ba*0.5&&d.close>d.open&&d.close>a.open) return {action:'RISE',conf:84,src:'MES'};
+    if(a.close>a.open&&bb<ba*0.5&&d.close<d.open&&d.close<a.open) return {action:'FALL',conf:84,src:'MES'};
+    return null;
+  }});
+  // S26: Harami
+  S.push({ name:'Harami', code:'HAR', analyze:(c)=>{
+    if(c.length<10) return null;
+    const last=c[c.length-1], prev=c[c.length-2];
+    const b1=Math.abs(last.close-last.open), b2=Math.abs(prev.close-prev.open);
+    if(b2===0) return null;
+    if(prev.close<prev.open&&last.close>last.open&&b1<b2*0.7) return {action:'RISE',conf:78,src:'HAR'};
+    if(prev.close>prev.open&&last.close<last.open&&b1<b2*0.7) return {action:'FALL',conf:78,src:'HAR'};
+    return null;
+  }});
+  // ── GROUP 5: STATISTICAL (S27-S30) ──
+  // S27: Z-Score
+  S.push({ name:'Z-Score', code:'ZSC', analyze:(c)=>{
+    if(c.length<25) return null;
+    const cl=closes(c); const m=sma(cl,20), sd=stddev(cl,20);
+    if(m==null||sd==null||sd===0) return null;
+    const z=(cl[cl.length-1]-m)/sd; const last=c[c.length-1];
+    if(z>2&&last.close<last.open) return {action:'FALL',conf:80,src:'ZSC'};
+    if(z<-2&&last.close>last.open) return {action:'RISE',conf:80,src:'ZSC'};
+    return null;
+  }});
+  // S28: Linear Regression Slope
+  S.push({ name:'LinReg Slope', code:'LRS', analyze:(c)=>{
+    if(c.length<15) return null;
+    const cl=closes(c).slice(-14); const n=cl.length; const last=c[c.length-1];
+    const mx=(n-1)/2, my=cl.reduce((a,b)=>a+b,0)/n;
+    let num=0,den=0;
+    for(let i=0;i<n;i++){ num+=(i-mx)*(cl[i]-my); den+=(i-mx)**2; }
+    if(den===0) return null; const slope=num/den;
+    if(Math.abs(slope)<1e-8) return null;
+    const prev=cl[cl.length-2];
+    if(slope>0&&last.close<last.open&&last.close<prev) return {action:'FALL',conf:78,src:'LRS'};
+    if(slope<0&&last.close>last.open&&last.close>prev) return {action:'RISE',conf:78,src:'LRS'};
+    return null;
+  }});
+  // S29: Std Dev Channel
+  S.push({ name:'StdDev Channel', code:'SDC', analyze:(c)=>{
+    if(c.length<25) return null;
+    const cl=closes(c); const m=sma(cl,20), sd=stddev(cl,20);
+    if(m==null||sd==null) return null;
+    const upper=m+2.5*sd, lower=m-2.5*sd; const last=c[c.length-1];
+    if(last.close>upper) return {action:'FALL',conf:82,src:'SDC'};
+    if(last.close<lower) return {action:'RISE',conf:82,src:'SDC'};
+    return null;
+  }});
+  // S30: Mean Reversion
+  S.push({ name:'Mean Reversion', code:'MRV', analyze:(c)=>{
+    if(c.length<25) return null;
+    const cl=closes(c); const m=sma(cl,10); if(m==null) return null;
+    const last=c[c.length-1]; const pct=(last.close-m)/m*100;
+    if(pct>1.5&&last.close<last.open) return {action:'FALL',conf:76,src:'MRV'};
+    if(pct<-1.5&&last.close>last.open) return {action:'RISE',conf:76,src:'MRV'};
+    return null;
+  }});
+  // ── GROUP 6: OSCILLATOR (S31-S34) ──
+  // S31: Aroon
+  S.push({ name:'Aroon', code:'ARN', analyze:(c)=>{
+    if(c.length<30) return null;
+    const hi=highs(c), lo=lows(c); const p=25; const last=c[c.length-1];
+    const idxHi=hi.slice(-p).indexOf(Math.max(...hi.slice(-p)));
+    const idxLo=lo.slice(-p).indexOf(Math.min(...lo.slice(-p)));
+    const up=((p-1-idxHi)/p)*100, dn=((p-1-idxLo)/p)*100;
+    if(up>70&&up>dn+30&&last.close>last.open) return {action:'RISE',conf:80,src:'ARN'};
+    if(dn>70&&dn>up+30&&last.close<last.open) return {action:'FALL',conf:80,src:'ARN'};
+    return null;
+  }});
+  // S32: Chande Momentum Oscillator
+  S.push({ name:'Chande MOM', code:'CHO', analyze:(c)=>{
+    if(c.length<15) return null;
+    const cl=closes(c); const p=12;
+    let upSum=0,dnSum=0;
+    for(let i=cl.length-p;i<cl.length;i++){ const d=cl[i]-cl[i-1]; if(d>0) upSum+=d; else dnSum-=d; }
+    const cmo=upSum+dnSum===0?0:((upSum-dnSum)/(upSum+dnSum))*100;
+    const last=c[c.length-1];
+    if(cmo<-40&&last.close>last.open) return {action:'RISE',conf:80,src:'CHO'};
+    if(cmo>40&&last.close<last.open) return {action:'FALL',conf:80,src:'CHO'};
+    return null;
+  }});
+  // S33: Ultimate Oscillator
+  S.push({ name:'Ultimate Osc', code:'UOS', analyze:(c)=>{
+    if(c.length<30) return null;
+    const hi=highs(c), lo=lows(c), cl=closes(c);
+    const bp=(i)=>cl[i]-Math.min(lo[i],cl[i-1]);
+    const tr=(i)=>Math.max(hi[i],cl[i-1])-Math.min(lo[i],cl[i-1]);
+    const avg=(p)=>{ let b=0,t=0; for(let i=cl.length-p;i<cl.length;i++){ b+=bp(i); t+=tr(i); } return t===0?50:(b/t)*100; };
+    if(cl.length<28) return null;
+    const uo=(4*avg(7)+2*avg(14)+avg(28))/7; const last=c[c.length-1];
+    if(uo<30&&last.close>last.open) return {action:'RISE',conf:78,src:'UOS'};
+    if(uo>70&&last.close<last.open) return {action:'FALL',conf:78,src:'UOS'};
+    return null;
+  }});
+  // S34: Coppock Curve
+  S.push({ name:'Coppock', code:'CPK', analyze:(c)=>{
+    if(c.length<25) return null;
+    const cl=closes(c);
+    const roc1=cl[cl.length-12]===0?0:((cl[cl.length-1]-cl[cl.length-12])/cl[cl.length-12])*100;
+    const roc2=cl[cl.length-15]===0?0:((cl[cl.length-1]-cl[cl.length-15])/cl[cl.length-15])*100;
+    const rc=roc1+roc2; const last=c[c.length-1];
+    if(rc<-20&&last.close>last.open) return {action:'RISE',conf:76,src:'CPK'};
+    if(rc>20&&last.close<last.open) return {action:'FALL',conf:76,src:'CPK'};
+    return null;
+  }});
+  // ── GROUP 7: HYBRID (S35-S38) ──
+  // S35: StochRSI
+  S.push({ name:'StochRSI', code:'SRI', analyze:(c)=>{
+    if(c.length<25) return null;
+    const cl=closes(c);
+    const rs=rsi(cl,14); if(rs==null) return null;
+    const rArr=[]; for(let i=0;i<14;i++){ const v=rsi(cl.slice(0,cl.length-14+i+1),14); if(v!=null) rArr.push(v); }
+    if(rArr.length<8) return null;
+    const hh=Math.max(...rArr), ll=Math.min(...rArr);
+    const sr=hh===ll?50:((rs-ll)/(hh-ll))*100;
+    const last=c[c.length-1];
+    if(sr<10&&last.close>last.open) return {action:'RISE',conf:84,src:'SRI'};
+    if(sr>90&&last.close<last.open) return {action:'FALL',conf:84,src:'SRI'};
+    return null;
+  }});
+  // S36: MACD Zero Cross
+  S.push({ name:'MACD Zero', code:'MZR', analyze:(c)=>{
+    if(c.length<35) return null;
+    const cl=closes(c);
+    const f=ema(cl,12), s=ema(cl,26); if(f==null||s==null) return null;
+    const m=f-s; const prev=ema(cl.slice(0,-1),12)-ema(cl.slice(0,-1),26);
+    const last=c[c.length-1];
+    if(prev<0&&m>0&&last.close>last.open) return {action:'RISE',conf:82,src:'MZR'};
+    if(prev>0&&m<0&&last.close<last.open) return {action:'FALL',conf:82,src:'MZR'};
+    return null;
+  }});
+  // S37: MACD Histogram
+  S.push({ name:'MACD Hist', code:'MCH', analyze:(c)=>{
+    if(c.length<40) return null;
+    const cl=closes(c);
+    const f=ema(cl,12), s=ema(cl,26); if(f==null||s==null) return null;
+    const m=f-s; const hist=m-ema(cl,9); if(hist==null) return null;
+    const prevHist=((ema(cl.slice(0,-1),12)-ema(cl.slice(0,-1),26))-ema(cl.slice(0,-1),9));
+    const last=c[c.length-1];
+    if(prevHist<0&&hist>0&&last.close>last.open) return {action:'RISE',conf:82,src:'MCH'};
+    if(prevHist>0&&hist<0&&last.close<last.open) return {action:'FALL',conf:82,src:'MCH'};
+    return null;
+  }});
+  // S38: Price Action Cluster
+  S.push({ name:'PA Cluster', code:'PAC', analyze:(c)=>{
+    if(c.length<10) return null;
+    const last=c[c.length-1]; const prev=c[c.length-2]; const pprev=c[c.length-3];
+    if(!prev||!pprev) return null;
+    const consecUp=prev.close>prev.open&&pprev.close>pprev.open&&last.close<last.open&&last.close<prev.low;
+    const consecDn=prev.close<prev.open&&pprev.close<pprev.open&&last.close>last.open&&last.close>prev.high;
+    if(consecUp) return {action:'FALL',conf:80,src:'PAC'};
+    if(consecDn) return {action:'RISE',conf:80,src:'PAC'};
+    return null;
+  }});
   G.STRATEGY_ACTIVE = G.STRATEGIES.map(()=>true);
+  G.STRATEGY_WEIGHTS = G.STRATEGIES.map(()=>1.0);
 }
 
 // ============================================================
@@ -711,35 +1127,93 @@ function autoPickDuration(sym, signal){
 }
 
 // ============================================================
-// CONSENSUS
+// FINGERPRINT LEARNING — captures market state per trade,
+// learns which setups lose, suppresses repeat occurrences
+// ============================================================
+// A fingerprint encodes the market conditions at trade time:
+//   SYM:ACTION:RSI{bin}:EMA{bin}:TREND{bin}:VOL{bin}:BODY{bin}
+// Stat tracking: G._fpStats[fp] = { wins, losses, total, suppressed }
+function fingerprint(sym, action){
+  const c = G.MARKET.candles[sym];
+  if(!c || c.length<30) return null;
+  const cl=closes(c), last=c[c.length-1];
+  const range=last.high-last.low, body=Math.abs(last.close-last.open);
+  const bodyR=range>0?body/range:0.5;
+  const r=rsi(cl,14)||50, e20=ema(cl,20)||last.close, e50=ema(cl,50)||last.close;
+  const avgR=sma(c.slice(-20).map(x=>x.high-x.low),20)||1;
+  const curR=last.high-last.low;
+  const rB=r<30?'VL':r<45?'LO':r<55?'MD':r<70?'HI':'VH';
+  const bB=bodyR<0.2?'S':bodyR<0.4?'M':'L';
+  const eB=last.close>e20?'A':'B';
+  // Trend: compare current EMA50 to its value 5 candles ago
+  const e50_5=c.length>6?ema(cl.slice(0,-5),50):e50;
+  const tB=e50>=(e50_5||e50)?'U':'D';
+  const vB=avgR>0&&curR/avgR>1.3?'H':'L';
+  return `${sym}:${action}:R${rB}:E${eB}:T${tB}:V${vB}:B${bB}`;
+}
+function learnOutcome(fp, won){
+  if(!fp) return;
+  if(!G._fpStats) G._fpStats = {};
+  if(!G._fpStats[fp]) G._fpStats[fp] = {wins:0,losses:0,total:0,suppressed:false};
+  const s = G._fpStats[fp]; s.total++; if(won) s.wins++; else s.losses++;
+  const wr = s.wins/s.total;
+  if(s.total >= 3 && !s.suppressed && wr < 0.40){
+    s.suppressed = true;
+    log(`[FPLEARN] Suppressed ${fp} (${(wr*100).toFixed(0)}% WR)`,'w');
+  }
+  if(s.suppressed && s.total >= 8 && wr >= 0.50){
+    s.suppressed = false;
+    log(`[FPLEARN] Restored ${fp} (${(wr*100).toFixed(0)}% WR)`,'s');
+  }
+}
+function isSuppressed(fp){
+  return !!(fp && G._fpStats && G._fpStats[fp] && G._fpStats[fp].suppressed);
+}
+
+// ============================================================
+// CONSENSUS ENGINE (85%+ weighted voting, cluster-safe)
 // ============================================================
 function getConsensus(sym){
   const c = G.MARKET.candles[sym];
-  if(!c || c.length<10) return null;
-  const minConf = 55;
-  const results = [];
+  if(!c || c.length<30) return null;
+  // ── Global cooldown: minimum 20s between any trade ──
+  if(G._lastTradeAt && Date.now() - G._lastTradeAt < 20000) return null;
+  // ── Per-market post-loss cooldown: 45s ──
+  if(G._marketLossAt?.[sym] && Date.now() - G._marketLossAt[sym] < 45000) return null;
+  // ── Loss cluster breaker: 2+ losses in 120s → pause all 60s ──
+  if(G._clusterUntil && Date.now() < G._clusterUntil) return null;
+  const votes = { RISE:[], FALL:[] };
+  const weights = G.STRATEGY_WEIGHTS || G.STRATEGIES.map(()=>1.0);
   G.STRATEGIES.forEach((s,i)=>{
     if(!G.STRATEGY_ACTIVE[i]) return;
-    try { const r = s.analyze(c); if(r && r.conf>=minConf) { r.name=s.name; results.push(r); } } catch(e){}
+    try {
+      const r = s.analyze(c, sym);
+      if(r && (r.action==='RISE'||r.action==='FALL') && r.conf>=50){
+        const w = weights[i] || 1.0;
+        votes[r.action].push({ conf:r.conf, weight:w, src:r.src });
+      }
+    } catch(e){}
   });
-  if(results.length===0) return null;
-
-  // Split signals by direction, take side with most votes
-  const rise = results.filter(r=>r.action==='RISE');
-  const fall = results.filter(r=>r.action==='FALL');
-  const winners = rise.length>=fall.length ? rise : fall;
-  // Multi-strategy gets a confidence boost (max +6)
-  const action = winners[0].action;
-  const best = winners.reduce((a,b)=>a.conf>b.conf?a:b);
-  const avgConf = winners.reduce((a,b)=>a+b.conf,0)/winners.length;
-  const confBoost = winners.length >= 2 ? Math.min(6, (winners.length-1)*2) : 0;
-  const conf = Math.min(99, Math.round(avgConf + confBoost));
-  return {
-    action, conf, src:'CON',
-    name: winners.map(w=>w.src).join('+'),
-    consensus: winners.length, total: results.length,
-    best: best.src
-  };
+  const wRise = votes.RISE.reduce((a,v)=>a+v.conf/100*v.weight, 0);
+  const wFall = votes.FALL.reduce((a,v)=>a+v.conf/100*v.weight, 0);
+  const total = wRise + wFall;
+  if(total < 1) return null;
+  const winner = wRise >= wFall ? 'RISE' : 'FALL';
+  const pct = Math.max(wRise, wFall) / total * 100;
+  const agree = Math.max(votes.RISE.length, votes.FALL.length);
+  if(pct < 85 || agree < 5) return null;
+  // ── Fingerprint suppression check ──
+  const fp = fingerprint(sym, winner);
+  if(isSuppressed(fp)){
+    log(`[IMMUNE] ${sym} ${winner} (fingerprint known to lose: ${fp})`,'i');
+    return null;
+  }
+  const pool = winner === 'RISE' ? votes.RISE : votes.FALL;
+  const wSum = pool.reduce((a,v)=>a+v.weight, 0);
+  const avgConf = wSum > 0 ? pool.reduce((a,v)=>a+v.conf*v.weight, 0) / wSum : pool[0].conf;
+  const boost = Math.min(5, (agree-4)*1.5);
+  const conf = Math.min(95, Math.round(avgConf + boost));
+  return { action:winner, conf, src:'ENS', fp, count:agree, total:votes.RISE.length+votes.FALL.length, pct:Math.round(pct) };
 }
 
 // ============================================================
@@ -787,13 +1261,50 @@ function placeDigitManual(contractType){
   if(!G.WS || G.WS.readyState!==WebSocket.OPEN){ log('[DIGIT] WS not open','e'); return; }
   if(G.ACTIVE_CONTRACTS.size>=1){ log('[DIGIT] Contract active — wait','w'); return; }
   const sym = G.CURRENT_MARKET || 'R_50';
-  const stake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
+  // Sync base stake from input, apply martingale
+  BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
+  const mult = parseFloat(document.getElementById('dgMartMult')?.value) || 1;
+  BotState.dgMartMult = mult;
+  const factor = mult > 1 ? Math.pow(mult, BotState.lossStreak) : 1;
+  const stake = +(BotState.baseStake * factor).toFixed(2);
+  BotState.currentStake = stake;
+  const hist = BotState.tickHistory;
+  if(hist.length < 20){ log('[DIGIT] Not enough ticks','w'); return; }
   const isOU = contractType === 'DIGITOVER' || contractType === 'DIGITUNDER';
+  const isEO = contractType === 'DIGITEVEN' || contractType === 'DIGITODD';
   const label = isOU ? (contractType==='DIGITOVER'?'OVER':'UNDER') : (contractType==='DIGITEVEN'?'EVEN':'ODD');
-  const barrier = document.getElementById('dgBarrier')?.value || '5';
-  const csInfo = ` χ²=${digitChiSq(BotState.tickHistory).toFixed(1)} barrier=${barrier}`;
+  const mid = hist.slice(-50);
+  let barrier = '5', confidence = 0, analysis = '', warnMsg = '';
+  if(isOU){
+    const total = mid.length;
+    let bestConf = 0, bestBar = 5, bestDir = contractType;
+    for(let b=0; b<=9; b++){
+      const over = mid.filter(d=>d>b).length / total;
+      const under = mid.filter(d=>d<b).length / total;
+      if(over > bestConf && over > 0.55){ bestConf = over; bestBar = b; bestDir = 'DIGITOVER'; }
+      if(under > bestConf && under > 0.55){ bestConf = under; bestBar = b; bestDir = 'DIGITUNDER'; }
+    }
+    if(bestConf < 0.55){
+      bestConf = contractType==='DIGITOVER' ? mid.filter(d=>d>5).length/total : mid.filter(d=>d<5).length/total;
+      bestBar = 5;
+    }
+    confidence = Math.round(bestConf*100);
+    barrier = String(bestBar);
+    if(contractType !== bestDir) warnMsg = `better direction: ${bestDir==='DIGITOVER'?'OVER':'UNDER'}`;
+    analysis = `barrier=${barrier} conf=${confidence}%`;
+    if(confidence < 58) warnMsg = (warnMsg?'; ':'')+'low confidence';
+  } else if(isEO){
+    const eoScore = scoreEOPrecision(mid, hist);
+    confidence = Math.round(eoScore.confidence * 100);
+    analysis = `even=${(eoScore.even*100).toFixed(0)}% odd=${(eoScore.odd*100).toFixed(0)}% runs=${eoScore.runs} alt=${eoScore.alternation.toFixed(2)} streak=${eoScore.streak}${eoScore.lastParity===0?'E':'O'}`;
+    const isEven = contractType === 'DIGITEVEN';
+    const fitsDirection = (isEven && eoScore.even >= 0.5) || (!isEven && eoScore.odd >= 0.5);
+    if(!fitsDirection) warnMsg = `reverse direction favored (${eoScore.even >= 0.5 ? 'EVEN' : 'ODD'} ${Math.round(Math.max(eoScore.even, eoScore.odd)*100)}%)`;
+    if(eoScore.streak >= 5) warnMsg = (warnMsg?'; ':'')+'long streak — revert likely';
+  }
+  if(warnMsg) log(`[DIGIT] ${label} ⚠ ${warnMsg}`,'w');
+  log(`[DIGIT] ${label} $${stake.toFixed(2)} ${sym} · ${analysis}`,'t');
   G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
-  log(`[DIGIT] Manual ${label} $${stake.toFixed(2)} ${sym}${csInfo}`,'t');
   const payload = {
     proposal:1, subscribe:1, amount:+stake.toFixed(2), basis:'stake',
     contract_type:contractType, currency:'USD', duration:1, duration_unit:'t',
@@ -845,51 +1356,98 @@ function evaluateDigitStrategy(sym){
     for(const d of data) freq[d]++;
     const chi = w===0 ? chiShort : w===1 ? chiMid : chiAll;
     for(let d=0; d<10; d++){
-      const dev = (freq[d] - exp) / Math.sqrt(exp); // z-score approx
-      // If distribution is biased (chi > 11.1), favor hot digits,
-      // if moderate/weak, favor mean reversion on cold digits
+      const dev = (freq[d] - exp) / Math.sqrt(exp);
       if(chi > 16.9){
-        // Strong bias → momentum: hot gets positive, cold gets negative
         score[d] += dev * (w===0 ? 3 : w===1 ? 2 : 1);
       } else if(chi > 11.1){
-        // Moderate → lean momentum with slight mean-reversion
         score[d] += dev * (w===0 ? 1.5 : w===1 ? 1 : 0.5);
       } else {
-        // Weak/uniform → mean reversion: cold gets positive, hot gets negative
         score[d] -= dev * (w===0 ? 1 : w===1 ? 0.7 : 0.3);
       }
     }
   }
   // 3) Recent streak bonus (last 10 ticks)
   const last10 = hist.slice(-10);
-  const streak = Array(10).fill(0);
   let cur = last10[0], run = 1;
   for(let i=1; i<last10.length; i++){
     if(last10[i] === cur){ run++; } else { cur = last10[i]; run = 1; }
   }
-  // Boost the digit that's currently streaking
   if(run >= 2) score[cur] += run * 2;
   // 4) Choose digit with highest score
   let bestD = 0, bestScore = -Infinity;
   for(let d=0; d<10; d++){
     if(score[d] > bestScore){ bestScore = score[d]; bestD = d; }
   }
-  if(bestScore < 0.1){ log(`[DIGIT·AUTO] All scores low (${bestScore.toFixed(2)}) — skip`,'i'); return; }
-  // Log analysis
+  if(bestScore < 0.1){ log(`[DIGIT·AUTO] Scores low (${bestScore.toFixed(2)}) — skip`,'i'); return; }
+  // 5) OU analysis: best barrier across 3 windows
   const freq60 = Array(10).fill(0); for(const d of mid) freq60[d]++;
-  const pctStr = freq60.map((f,i)=>i===bestD ? `[${i}:${(f/mid.length*100).toFixed(0)}%]` : `${i}:${(f/mid.length*100).toFixed(0)}%`).join(' ');
-  const stake = BotState.baseStake;
-  log(`[DIGIT·AUTO] MATCH ${bestD} (χ² ${chiShort.toFixed(1)}/${chiMid.toFixed(1)}/${chiAll.toFixed(1)} score=${bestScore.toFixed(1)} streak=${run} ${pctStr})`,'t');
+  const total60 = mid.length;
+  // Multi-window OU scoring
+  let ouConf = 0, ouBar = 5, ouDir = 'DIGITOVER';
+  for(let w=0; w<3; w++){
+    const data = w===0 ? short : w===1 ? mid : all;
+    const t = data.length;
+    const wMult = w===0 ? 3 : w===1 ? 2 : 1;
+    for(let b=0; b<=9; b++){
+      const over = data.filter(d=>d>b).length/t;
+      const under = data.filter(d=>d<b).length/t;
+      if(over > 0.55 && over * wMult > ouConf){ ouConf = over * wMult; ouBar = b; ouDir = 'DIGITOVER'; }
+      if(under > 0.55 && under * wMult > ouConf){ ouConf = under * wMult; ouBar = b; ouDir = 'DIGITUNDER'; }
+    }
+  }
+  // 6) EO analysis with precision (multi-window)
+  const eoShort = scoreEOPrecision(short, hist);
+  const eoMid = scoreEOPrecision(mid, hist);
+  const eoAll = scoreEOPrecision(all, hist);
+  // Weighted EO confidence
+  const eoWeighted = (eoShort.confidence * 3 + eoMid.confidence * 2 + eoAll.confidence * 1) / 6;
+  const eoEven = (eoShort.even * 3 + eoMid.even * 2 + eoAll.even * 1) / 6;
+  // 7) Score comparison — respect selected mode
+  const matchScore = bestScore;
+  const ouConfRaw = ouConf / 3; // undo weighting
+  const ouScore = ouConfRaw >= 0.6 ? (ouConfRaw - 0.5) * 20 : 0; // 60% threshold
+  const eoScore = eoWeighted > 0.55 ? (eoWeighted - 0.5) * 20 : 0;
+  // Log analysis
+  const pctStr = freq60.map((f,i)=>i===bestD ? `[${i}:${(f/total60*100).toFixed(0)}%]` : `${i}:${(f/total60*100).toFixed(0)}%`).join(' ');
+  log(`[DIGIT·AUTO] match=${matchScore.toFixed(1)} ou=${ouScore.toFixed(1)} eo=${eoScore.toFixed(1)} (mode=${BotState.contractType} ouConf=${Math.round(ouConfRaw*100)}% eoConf=${(eoWeighted*100).toFixed(0)}% alt=${eoShort.alternation.toFixed(2)} streak=${eoShort.streak}) ${pctStr}`,'i');
+  // 8) Pick best trade — filter by selected contract mode
+  const mode = BotState.contractType || 'MC';
+  let tradeMode = null;
+  if(mode === 'MC' && matchScore > 3) tradeMode = 'MATCH';
+  if(mode === 'OU' && ouScore > 3) tradeMode = 'OU';
+  if(mode === 'EO' && eoScore > 3) tradeMode = 'EO';
+  if(!tradeMode){ log(`[DIGIT·AUTO] ${mode} has no edge — skip`,'i'); return; }
+  // Martingale stake
+  BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
+  const mult = parseFloat(document.getElementById('dgMartMult')?.value) || 1;
+  BotState.dgMartMult = mult;
+  const factor = mult > 1 ? Math.pow(mult, BotState.lossStreak) : 1;
+  const stake = +(BotState.baseStake * factor).toFixed(2);
+  BotState.currentStake = stake;
+  let contractType, barrier, label;
+  let orderPayload;
+  if(tradeMode === 'MATCH'){
+    contractType = 'DIGITMATCH'; barrier = String(bestD);
+    label = `MATCH ${bestD} score=${matchScore.toFixed(1)}`;
+    orderPayload = { contract_type:contractType, barrier, underlying_symbol:sym, amount:+stake.toFixed(2), basis:'stake', currency:'USD', duration:1, duration_unit:'t', req_id:genId() };
+  } else if(tradeMode === 'OU'){
+    contractType = ouDir; barrier = String(ouBar);
+    const dirLabel = ouDir==='DIGITOVER'?'OVER':'UNDER';
+    label = `${dirLabel} barrier=${ouBar} conf=${Math.round(ouConfRaw*100)}%`;
+    orderPayload = { contract_type:contractType, barrier, underlying_symbol:sym, amount:+stake.toFixed(2), basis:'stake', currency:'USD', duration:1, duration_unit:'t', req_id:genId() };
+  } else {
+    contractType = eoEven > 0.5 ? 'DIGITODD' : 'DIGITEVEN';
+    const dirLabel = contractType==='DIGITEVEN'?'EVEN':'ODD';
+    label = `${dirLabel} conf=${Math.round(eoWeighted*100)}%`;
+    orderPayload = { contract_type:contractType, underlying_symbol:sym, amount:+stake.toFixed(2), basis:'stake', currency:'USD', duration:1, duration_unit:'t', req_id:genId() };
+  }
+  log(`[DIGIT·AUTO] ${label}`,'t');
   G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
   BotState.contractActive = true;
-  const payload = {
-    proposal:1, subscribe:1, amount:+stake.toFixed(2), basis:'stake',
-    contract_type:'DIGITMATCH', currency:'USD', duration:1, duration_unit:'t',
-    underlying_symbol:sym, barrier:String(bestD), req_id:genId()
-  };
-  G.WS.send(JSON.stringify(payload));
+  orderPayload.proposal = 1; orderPayload.subscribe = 1;
+  G.WS.send(JSON.stringify(orderPayload));
   if(G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
-  G.SENDING_TIMEOUT = setTimeout(()=>{ G.ACTIVE_CONTRACTS.delete('sending'); BotState.contractActive = false; log('[DIGIT] Auto match timed out','w'); },15000);
+  G.SENDING_TIMEOUT = setTimeout(()=>{ G.ACTIVE_CONTRACTS.delete('sending'); BotState.contractActive = false; log('[DIGIT] Auto trade timed out','w'); },15000);
 }
 function digitChiSq(hist){
   if(hist.length < 40) return 0;
@@ -909,6 +1467,37 @@ function digitRunTest(hist){
   }
   const expR = 1+(2*n1*n2)/(n1+n2);
   return (runs - expR) / Math.sqrt(2*n1*n2*(2*n1*n2-n1-n2)/((n1+n2)*(n1+n2)*(n1+n2-1)));
+}
+function scoreEOPrecision(sample, fullHist){
+  const total = sample.length;
+  if(total < 10) return {confidence:0.5, even:0.5, odd:0.5, runs:0, alternation:0, streak:0, lastParity:0};
+  const even = sample.filter(d=>d%2===0).length / total;
+  const odd = 1 - even;
+  const exp = total/2;
+  const eFreq = sample.filter(d=>d%2===0).length;
+  const oFreq = total - eFreq;
+  const chiParity = ((eFreq-exp)**2 + (oFreq-exp)**2) / exp;
+  const parities = sample.map(d=>d%2);
+  let runs = 1;
+  for(let i=1; i<parities.length; i++) if(parities[i] !== parities[i-1]) runs++;
+  const expRuns = 1 + (2*eFreq*oFreq)/total;
+  const runsZ = total > 20 ? (runs - expRuns) / Math.sqrt(2*eFreq*oFreq*(2*eFreq*oFreq-total)/(total*total*(total-1))) : 0;
+  const alternation = runs / expRuns;
+  let streak = 1, lastVal = fullHist[fullHist.length-1]%2, lastParity = lastVal;
+  for(let i=fullHist.length-2; i>=Math.max(0, fullHist.length-20); i--){
+    if(fullHist[i]%2 === lastParity) streak++; else break;
+  }
+  const maxRatio = Math.max(even, odd);
+  let confidence = 0.5 + (maxRatio - 0.5) * 0.6;
+  if(chiParity > 3.84) confidence += 0.1;
+  if(chiParity > 6.63) confidence += 0.05;
+  if(alternation < 0.8) confidence -= 0.1;
+  if(alternation > 1.2) confidence += 0.05;
+  if(runsZ < -2) confidence -= 0.1;
+  if(runsZ > 2) confidence += 0.05;
+  if(streak >= 5) confidence -= 0.05 * (streak - 4);
+  confidence = Math.max(0.5, Math.min(0.95, confidence));
+  return {confidence, even, odd, runs, alternation, streak, lastParity};
 }
 
 function placeDigitContract(sym, contractType, barrier){
@@ -946,14 +1535,18 @@ function onDigitContractResolved(won, profit){
   BotState.contractActive = false;
   G.TRADE_LOCK = false;
   profit = +profit || 0;
+  const mult = parseFloat(document.getElementById('dgMartMult')?.value) || 1;
+  BotState.dgMartMult = mult;
   if(won){
     BotState.totalWins++; BotState.winStreak++; BotState.lossStreak=0;
     BotState.totalProfitLoss += profit;
+    BotState.currentStake = BotState.baseStake;
   } else {
     BotState.totalLosses++; BotState.lossStreak++; BotState.winStreak=0;
     BotState.totalProfitLoss -= Math.abs(profit);
+    const factor = mult > 1 ? Math.pow(mult, BotState.lossStreak) : 1;
+    BotState.currentStake = +(BotState.baseStake * factor).toFixed(2);
   }
-  BotState.currentStake = BotState.baseStake;
   if(BotState.totalProfitLoss >= BotState.targetProfit || BotState.totalProfitLoss <= -BotState.stopLoss){
     log(`[DIGIT] ${BotState.totalProfitLoss >= BotState.targetProfit ? 'TP' : 'SL'} hit — resetting PnL, continuing`,'w');
     resetDigitPnL();
@@ -1001,6 +1594,7 @@ function resetDigitPnL(){
   BotState.currentStake = BotState.baseStake;
   BotState.sessionDeficit = 0;
   BotState.cyclePnL = 0;
+  BotState.lossStreak = 0;
   log('[DIGIT] PnL reset','i');
   updateDigitsUI();
 }
@@ -1118,91 +1712,20 @@ function checkPriceAction(sym, action) {
 // ============================================================
 // CONNECTION (Deriv WS API)
 // ============================================================
-async function authorizeWithToken(token){
-  G.TOKEN=token;
-  document.getElementById('connDot').className='dot y';
-  document.getElementById('engineStatus').textContent='AUTHORIZING...';
-  try {
-    const base='https://api.derivws.com/trading/v1/options';
-    const hdrs={'Authorization':`Bearer ${token}`,'Deriv-App-ID':G.APP_ID,'Content-Type':'application/json'};
-    const accountsResp = await fetch(`${base}/accounts`,{method:'GET',headers:hdrs});
-    let accountId=null;
-    if(accountsResp.ok){
-      const accounts = await accountsResp.json();
-      const acc = (accounts.data||[]).find(a=>a.account_type===G.ACCOUNT_TYPE);
-      if(acc){ accountId=acc.account_id; G.BALANCE=parseFloat(acc.balance)||0; G.ACCOUNT_ID=accountId;
-        log(`[AUTH] ${acc.account_id} $${G.BALANCE.toFixed(2)}`,'s'); }
-    }
-    if(!accountId){ log('[AUTH] No account found','e'); throw new Error('No account'); }
-    const otpResp = await fetch(`${base}/accounts/${accountId}/otp`,{method:'POST',headers:hdrs});
-    if(!otpResp.ok) throw new Error('OTP failed');
-    const otpData = await otpResp.json();
-    const wsUrl = otpData.data?.url || otpData.url;
-    if(!wsUrl) throw new Error('No WS URL');
-    log(`[AUTH] OTP obtained (${wsUrl.includes('demo')?'DEMO':'REAL'})`,'s');
-    saveState();
-    showApp();
-    connectOTP(wsUrl);
-  } catch(err){
-    log(`[AUTH] Failed: ${err.message}`,'e');
-    const errEl = document.getElementById('loginError');
-    if(errEl) errEl.textContent = err.message || 'Authorization failed';
-    const btn = document.querySelector('.btn-login');
-    if(btn) btn.textContent = 'Authorize';
-    const inp = document.getElementById('loginPat');
-    if(inp) inp.disabled = false;
-    scheduleRecon();
-  }
-}
-
-function connectOTP(url){
-  if(G.WS && (G.WS.readyState===WebSocket.OPEN || G.WS.readyState===WebSocket.CONNECTING)){
-    G.CLOSING_TRADE_WS = true;
-    try{ G.WS.close(); }catch(e){}
-  }
-  G.RECONN_ACTIVE = G.RUNNING;
-  const ws = new WebSocket(url);
-  G.WS = ws;
-  ws.onopen = ()=>{
-    G.CONNECTED=true; G.AUTH=true; G.RECONN_ATT=0; G.BOOT_AT = Date.now();
-    G.ACTIVE_CONTRACTS.clear();
-    document.getElementById('connDot').className='dot g';
-    document.getElementById('engineStatus').textContent='ONLINE';
-    document.getElementById('rfStartBtn').style.display = G.RUNNING?'none':'block';
-    document.getElementById('rfStopBtn').style.display = G.RUNNING?'block':'none';
-    log('[WS] Connected','s');
-    sendTelegramAlert(`🔌 *Connected*\n${G.ACCOUNT_TYPE.toUpperCase()} account \\| Balance: $${G.BALANCE.toFixed(2)}`);
-    startHeartbeat();
-    setTimeout(subscribeAll,200);
-    log('[AUTO] Reconnected — manual start required','i');
-  };
-  ws.onmessage = (e)=>{ try{ handleMsg(JSON.parse(e.data)); }catch(ex){ log(`Parse: ${ex.message}`,'e'); } };
-  ws.onerror = ()=>{ G.CONNECTED=false; document.getElementById('connDot').className='dot r'; };
-  ws.onclose = ()=>{
-    const intentional = G.CLOSING_TRADE_WS;
-    G.CLOSING_TRADE_WS = false;
-    G.CONNECTED=false; G.AUTH=false;
-    document.getElementById('connDot').className='dot r';
-    document.getElementById('engineStatus').textContent='OFFLINE';
-    if(!intentional){ log('[WS] Disconnected — reconnecting...','w'); scheduleRecon(); }
-  };
-}
-
 function subscribeAll(){
-  // Balance stream goes on the OTP trading WS
+  // Balance stream goes on the trading WS
   if(G.WS && G.WS.readyState===WebSocket.OPEN){
     G.WS.send(JSON.stringify({ balance:1, subscribe:1, req_id:genId() }));
   }
-  // Market data uses Deriv's public tick stream; 15s time-based candles built from ticks.
+  // Market data via public Options WebSocket
   connectMarketWS();
 }
 
 function connectMarketWS(){
   if(G.MWS && (G.MWS.readyState===WebSocket.OPEN || G.MWS.readyState===WebSocket.CONNECTING)) return;
   if(G.MWS_RECONN){ clearTimeout(G.MWS_RECONN); G.MWS_RECONN=null; }
-  const appId = '1089'; // public app id works for unauthenticated market data
-  const url = `wss://ws.derivws.com/websockets/v3?app_id=${appId}`;
-  const mws = new WebSocket(url);
+  // Deriv WebSocket API — uses the new app_id format (app_id=33JFxN3sbe2usdFigbMb8)
+  const mws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id='+G.APP_ID);
   G.MWS = mws;
   mws.onopen = ()=>{
     G.MWS_CONNECTED = true;
@@ -1236,7 +1759,7 @@ function scheduleRecon(){
   if(G.RECONN) clearTimeout(G.RECONN);
   const delay = Math.min(1000*Math.pow(1.5,G.RECONN_ATT),10000);
   G.RECONN_ATT++;
-  G.RECONN = setTimeout(()=>{ if(G.TOKEN) authorizeWithToken(G.TOKEN); }, delay);
+  G.RECONN = setTimeout(()=>{ if(G.TOKEN) doRESTFlow(G.TOKEN); }, delay);
 }
 
 function startHeartbeat(){
@@ -1471,21 +1994,34 @@ function evaluateSingleMarket(sym, liveBuf){
   const rsi = prices.length >= 15 ? calcRSI(prices, 14) : 50;
   const ema20 = prices.length >= 20 ? calcEMA(prices, 20) : curr.close;
   const ema50 = prices.length >= 50 ? calcEMA(prices, 50) : curr.close;
-  // Trend counts (last 5 candles)
+  // ── Trend context ──
   let upCount=0, dnCount=0;
   for(let i=candles.length-6; i<candles.length; i++){
     if(candles[i].close > candles[i-1].close) upCount++;
     else if(candles[i].close < candles[i-1].close) dnCount++;
   }
-  // Pivot scan (9 candles before current)
+  // EMA50 slope (last 8 candles) — trend strength & direction
+  let emaSlope = 0;
+  if(prices.length >= 58){
+    const emaVals = [];
+    for(let i=prices.length-58; i<=prices.length-50; i++) emaVals.push(calcEMA(prices.slice(0,i+50), 50));
+    emaSlope = emaVals.length > 1 ? (emaVals[emaVals.length-1] - emaVals[0]) / emaVals.length : 0;
+  }
+  const trendUp = emaSlope > avgRange * 0.015;
+  const trendDn = emaSlope < -avgRange * 0.015;
+  // ── Pivot & zone analysis ──
   const pivotWindow = candles.slice(-10, -1);
   let topHigh=-Infinity, topAt=-1, botLow=Infinity, botAt=-1;
   for(let i=0; i<pivotWindow.length; i++){
     if(pivotWindow[i].high > topHigh){ topHigh=pivotWindow[i].high; topAt=i; }
     if(pivotWindow[i].low < botLow){ botLow=pivotWindow[i].low; botAt=i; }
   }
+  // Zone strength: how many times price tested the level (±0.3% band)
+  const zoneBand = topHigh * 0.003;
+  const zoneTouches = candles.filter(ca => Math.abs(ca.high - topHigh) < zoneBand || Math.abs(ca.low - botLow) < zoneBand).length;
   const topBreak = curr.high > topHigh;
   const botBreak = curr.low < botLow;
+  // ── Candle morphology ──
   const currBody = Math.abs(curr.close - curr.open);
   const currRange = curr.high - curr.low;
   const bodyRatio = currRange > 0 ? currBody / currRange : 1;
@@ -1496,39 +2032,45 @@ function evaluateSingleMarket(sym, liveBuf){
   const closePos = currRange > 0 ? (curr.close - curr.low) / currRange : 0.5;
   const atHigh = curr.high >= topHigh && p1.high >= topHigh * 0.995;
   const atLow = curr.low <= botLow && p1.low <= botLow * 1.005;
-  // Range ratio vs average
   const rangeRatio = avgRange > 0 ? currRange / avgRange : 1;
-  // === PATH 1: Reversal (candlestick pattern determines direction) ===
-  // Standard reversal: pivot test with long wick + small body
+  // ── Momentum decay ──
+  let decayScore = 0;
+  if(p1 && candles.length >= 5){
+    const lookback = candles.slice(-6, -1);
+    for(let i=1; i<lookback.length; i++){
+      const prevRange = Math.abs(lookback[i-1].high - lookback[i-1].low);
+      const curRange = Math.abs(lookback[i].high - lookback[i].low);
+      if(prevRange > 0 && curRange < prevRange * 0.8) decayScore++;
+    }
+  }
+  // ── Pattern detection ──
   const bearRev = atHigh && !topBreak && bodyRatio < 0.55 && longUpperWick;
   const bullRev = atLow && !botBreak && bodyRatio < 0.55 && longLowerWick;
-  // Single-candle pivot test with shorter wick + trend confirmation
   const bearRevSingle = !bearRev && curr.high >= topHigh && !topBreak && bodyRatio < 0.45 && longUpperWick && dnCount >= 2;
   const bullRevSingle = !bullRev && curr.low <= botLow && !botBreak && bodyRatio < 0.45 && longLowerWick && upCount >= 2;
-  // Doji rejection: tiny body at pivot with opposing wick
   const dojiBear = !bearRev && !bearRevSingle && atHigh && !topBreak && bodyRatio < 0.25 && upperWick > lowerWick * 2 && dnCount >= 1;
   const dojiBull = !bullRev && !bullRevSingle && atLow && !botBreak && bodyRatio < 0.25 && lowerWick > upperWick * 2 && upCount >= 1;
-  // Engulfing: current body engulfs previous body at pivot
   const prevBody = Math.abs(p1.close - p1.open);
   const engulfBear = !bearRev && !bearRevSingle && !dojiBear && atHigh && !topBreak && curr.close < curr.open && prevBody > 0 && currBody > prevBody * 1.3;
   const engulfBull = !bullRev && !bullRevSingle && !dojiBull && atLow && !botBreak && curr.close > curr.open && prevBody > 0 && currBody > prevBody * 1.3;
-  // === PATH 2: Pullback to EMA (trend continuation entry) ===
   const nearEma20 = currRange > 0 && Math.abs(curr.close - ema20) < currRange * 1.5;
   const pbBear = !bearRev && !bearRevSingle && !dojiBear && !engulfBear && curr.close > ema20 && curr.close < ema20 + currRange * 2 && rsi > 55 && dnCount >= 2 && nearEma20;
   const pbBull = !bullRev && !bullRevSingle && !dojiBull && !engulfBull && curr.close < ema20 && curr.close > ema20 - currRange * 2 && rsi < 45 && upCount >= 2 && nearEma20;
-  // Combine all patterns
   const anyBear = bearRev || bearRevSingle || dojiBear || engulfBear || pbBear;
   const anyBull = bullRev || bullRevSingle || dojiBull || engulfBull || pbBull;
   if(!anyBear && !anyBull) return null;
   const isFall = anyBear;
-  let conf = 0, n = 0;
-  // Base confidence by pattern type
-  if(bearRev || bullRev){ conf = 50; n = 1; }
-  else if(bearRevSingle || bullRevSingle){ conf = 44; n = 1; }
-  else if(dojiBear || dojiBull){ conf = 46; n = 1; }
-  else if(engulfBear || engulfBull){ conf = 48; n = 1; }
-  else if(pbBear || pbBull){ conf = 40; n = 1; }
-  // Indicator scoring
+  // ── Trend bias filter: avoid fighting strong trends ──
+  if(trendUp && isFall) return null;
+  if(trendDn && !isFall) return null;
+  // ── Confluence scoring ──
+  let conf = 0, n = 0, pattern;
+  if(bearRev || bullRev){ conf = 50; pattern = 'REV'; n = 1; }
+  else if(bearRevSingle || bullRevSingle){ conf = 44; pattern = 'PVT'; n = 1; }
+  else if(dojiBear || dojiBull){ conf = 46; pattern = 'DOJI'; n = 1; }
+  else if(engulfBear || engulfBull){ conf = 48; pattern = 'ENGLF'; n = 1; }
+  else if(pbBear || pbBull){ conf = 40; pattern = 'PB'; n = 1; }
+  // Indicator bonuses (same side as trade direction)
   if(isFall){
     if(rsi > 60){ conf += 12; n++; }
     if(curr.close < ema20){ conf += 10; n++; }
@@ -1546,14 +2088,29 @@ function evaluateSingleMarket(sym, liveBuf){
     if(rangeRatio > 1.3){ conf += 6; n++; }
     if(lowerWick > upperWick * 1.5){ conf += 6; n++; }
   }
-  if(n >= 2 && conf >= 75){
-    const pattern = bearRev||bullRev ? 'REV' : bearRevSingle||bullRevSingle ? 'PVT' : dojiBear||dojiBull ? 'DOJI' : engulfBear||engulfBull ? 'ENGLF' : 'PB';
+  // ── Zone strength bonus (multi-touch levels are more reliable) ──
+  if(zoneTouches >= 3) conf += 8;
+  else if(zoneTouches >= 2) conf += 4;
+  // ── Momentum decay bonus (trend exhaustion) ──
+  if(decayScore >= 2) conf += 6;
+  // ── Dynamic threshold ──
+  // Against-trend needs more confirmation; weak zones need more; lower patterns need more
+  let minConf = 75;
+  if(pattern === 'PVT' || pattern === 'PB') minConf = 78; // weaker patterns need higher bar
+  if(zoneTouches < 2) minConf += 3; // fresh levels need extra confirmation
+  // ── Final decision ──
+  if(n >= 2 && conf >= minConf){
+    const evidence = { pattern, rsi: Math.round(rsi), ema20: curr.close > ema20 ? 'ABOVE' : 'BELOW', upN: upCount, dnN: dnCount, bodyR: (bodyRatio*100).toFixed(0)+'%' };
+    if(checkSuppressed(evidence)){
+      log(`[IMMUNE] Skipped ${sym} ${pattern} (RSI${evidence.rsi} ${evidence.ema20} bod${evidence.bodyR})`,'i');
+      return null;
+    }
     return {
       action: isFall ? 'FALL' : 'RISE',
       conf: Math.min(92, conf),
       src: isFall ? 'REV-D' : 'REV-U',
       sym, trendDir:'REV',
-      evidence: { pattern, rsi: Math.round(rsi), ema20: curr.close > ema20 ? 'ABOVE' : 'BELOW', upN: upCount, dnN: dnCount, bodyR: (bodyRatio*100).toFixed(0)+'%' }
+      evidence
     };
   }
   return null;
@@ -1566,10 +2123,11 @@ function evaluateAndTrade(sym){
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
   if(Date.now() - G.BOOT_AT < 4000) return;
   if(G.MARKET_SELECTION_MODE==='manual' && sym!==G.SELECTED_MARKET) return;
-  const result = evaluateSingleMarket(sym);
-  if(result && result.conf >= 75){
+  const result = getConsensus(sym);
+  if(result && result.conf >= 85){
     const prices = G.MARKET.prices[sym];
     result.lastPrice = prices ? prices[prices.length-1] : 0;
+    result.sym = sym;
     const cdl = G.MARKET.candles[sym];
     const lastCdl = cdl?.[cdl.length-1];
     if(lastCdl){
@@ -1579,11 +2137,11 @@ function evaluateAndTrade(sym){
       lastCdl.signal = G._signalOnCandle[key];
     }
     storeSignal(sym, lastCdl?.epoch||0, result, true);
-    log(`[SIGNAL] ${result.sym}: ${result.action} ${result.conf}% · ${result.evidence?.pattern||result.src}`,'t');
-    G.CURRENT_MARKET = result.sym;
-    G.SELECTED_MARKET = result.sym;
+    log(`[SIGNAL] ${sym}: ${result.action} ${result.conf}% (${result.count} strategies, ${result.pct}% consensus)`,'t');
+    G.CURRENT_MARKET = sym;
+    G.SELECTED_MARKET = sym;
     updateWatchlist();
-    execTrade(result, result.sym);
+    execTrade(result, sym);
   }
   } catch(e){ log(`[CRASH] evaluateAndTrade: ${e.message}`,'e'); console.error(e); }
 }
@@ -1595,13 +2153,15 @@ function execTrade(signal, asset){
   try {
   if(G.ACTIVE_CONTRACTS.size>=1) return;
   asset = asset || G.CURRENT_MARKET;
-  const stake = Martingale.enabled ? Martingale.currentStake : parseFloat(document.getElementById('rfStake')?.value||1);
+  const stake = signal.copyStake || (Martingale.enabled ? Martingale.currentStake : parseFloat(document.getElementById('rfStake')?.value||1));
   const dur = G.TRADE_DURATION || 15;
   const durUnit = G.TRADE_DURATION_UNIT || 's';
   if(!G.WS || G.WS.readyState!==WebSocket.OPEN){ log('[TRADE] WS not open','e'); return; }
   if(!G.WS || G.WS.readyState!==WebSocket.OPEN){ log('[TRADE] WS not open','e'); return; }
   const ct = signal.action==='RISE'?'CALL':'PUT';
   G.LAST_SIGNAL = { ...signal, stake, dur, asset };
+  G._lastTradeAt = Date.now();
+  if(!signal.copyStake && G.COPY_BROADCAST_ENABLED && G.COPY_MODE==='master') broadcastCopySignal(ct, asset, stake);
   log(`[TRADE] ${ct} $${stake.toFixed(2)} ${asset} via ${signal.src}`,'t');
   if(!G._tradedCandle) G._tradedCandle = {};
   G._tradedCandle[asset] = true;
@@ -1668,10 +2228,18 @@ function handleContract(c){
     }
     const won = c.status==='won' || (c.is_sold === 1 && c.profit > 0);
     log(`[${won?'WIN':'LOSS'}] ${fmt$(c.profit)}`, won?'s':'e');
-    if(G.LAST_SIGNAL && G.TRADE_MODE!=='DIGITS') updateStrategyStats(G.LAST_SIGNAL, won);
+    if(G.LAST_SIGNAL && G.TRADE_MODE!=='DIGITS'){ updateStrategyStats(G.LAST_SIGNAL, won); learnFromTrade(G.LAST_SIGNAL, won); }
     if(won){ G.WINS++; G.CONS_LOSS=0; }
-    else   { G.LOSSES++; G.CONS_LOSS++;
-      G.CONS_LOSS_COOLDOWN = Date.now() + (parseInt(document.getElementById('rmCooldown')?.value||30)*1000); }
+    else {
+      G.LOSSES++; G.CONS_LOSS++;
+      // Per-market loss timestamp (used by getConsensus for cooldown)
+      if(G.LAST_SIGNAL?.asset) G._marketLossAt[G.LAST_SIGNAL.asset] = Date.now();
+      // Loss cluster: 2+ losses in 120s → pause 60s
+      const now = Date.now();
+      const lossesInWindow = G.TRADE_HISTORY.slice(-5).filter(t => !t.won && now - new Date(t.time).getTime() < 120000).length;
+      if(lossesInWindow >= 2) G._clusterUntil = now + 60000;
+    }
+    learnOutcome(G.LAST_SIGNAL?.fp, won);
     G.PNL += c.profit; G.DAILY.pnl += c.profit;
     if(Martingale.enabled && !c.contract_type?.startsWith('DIGIT')){
       if(won){
@@ -1773,7 +2341,7 @@ async function resetDemo(){
 function authorizeToken(){
   const token = document.getElementById('apiToken')?.value || G.TOKEN;
   if(!token){ log('[AUTH] Enter token','e'); return; }
-  authorizeWithToken(token);
+  doRESTFlow(token);
 }
 function toggleAccount(){
   G.ACCOUNT_TYPE = document.getElementById('accToggle').checked?'real':'demo';
@@ -1781,7 +2349,7 @@ function toggleAccount(){
   document.getElementById('accBadge').className = `acc-badge ${G.ACCOUNT_TYPE}`;
   const al = document.getElementById('accLabel');
   if(al) al.textContent = G.ACCOUNT_TYPE.toUpperCase();
-  if(G.AUTH){ if(G.WS) try{ G.WS.close(); }catch(e){} authorizeWithToken(G.TOKEN); }
+  if(G.AUTH){ if(G.WS) try{ G.WS.close(); }catch(e){} doRESTFlow(G.TOKEN); }
 }
 function toggleTheme(){
   document.documentElement.classList.toggle('dark');
@@ -1956,6 +2524,13 @@ function toggleMarketMode(){
 // ============================================================
 // UI
 // ============================================================
+function toggleSidebar(){
+  document.body.classList.toggle('sidebar-open');
+}
+// Close sidebar on Escape key
+document.addEventListener('keydown', e => {
+  if(e.key==='Escape' && document.body.classList.contains('sidebar-open')) toggleSidebar();
+});
 function switchMode(mode){
   G.TRADE_MODE = mode;
   const btns = ['btnModeDigits','btnModeRF'];
@@ -1965,14 +2540,15 @@ function switchMode(mode){
   if(el) el.classList.add('active');
   const ml = document.getElementById('consModeLabel');
   if(ml) ml.textContent = mode;
-  document.getElementById('dgSection').style.display = mode==='DIGITS' ? 'block' : 'none';
-  document.getElementById('rfSection').style.display = mode==='RISEFALL' ? 'block' : 'none';
-  document.getElementById('rfStratRow').style.display = mode==='RISEFALL' ? 'block' : 'none';
-  document.getElementById('hdrTitle').innerHTML = mode==='DIGITS'
-    ? 'Digits Bot <span style="color:var(--accent);font-size:10px;font-weight:600;margin-left:4px;">1t</span>'
-    : 'R/F Bot <span style="color:var(--positive);font-size:10px;font-weight:600;margin-left:4px;">10s</span>';
+  // Both sections always visible in new layout (RF is main, Digits in sidebar)
+  const dg = document.getElementById('dgSection');
+  if(dg) dg.style.display = 'block';
+  const rf = document.getElementById('rfSection');
+  if(rf) rf.style.display = 'block';
   const si = document.getElementById('modeSubInfo');
   if(si) si.textContent = mode;
+  const mi = document.getElementById('modeIndicator');
+  if(mi) mi.textContent = mode==='DIGITS' ? 'Digits mode — sidebar' : 'Rise/Fall mode';
   log('[MODE] Switched to '+mode,'i');
 }
 function updateDigitsUI(){
@@ -2219,6 +2795,15 @@ function updateStrategyStats(signal, won){
   const s = G.STRATEGY_STATS[code];
   s.total++;
   if(won) s.wins++; else s.losses++;
+  // For ensemble signals, skip individual strategy management
+  if(code === 'ENS'){
+    if(!G._ensStats) G._ensStats = {wins:0,losses:0,total:0};
+    G._ensStats.total++; if(won) G._ensStats.wins++; else G._ensStats.losses++;
+    // Recalibrate individual strategy weights from REV-traded results
+    adaptStrategyWeights();
+    return;
+  }
+  // Individual strategy management (works for REV direct trades)
   if(s.total >= 5 && s.wins / s.total < 0.50){
     const idx = G.STRATEGIES.findIndex(st => st.code === code);
     if(idx >= 0 && G.STRATEGY_ACTIVE[idx]){
@@ -2233,6 +2818,64 @@ function updateStrategyStats(signal, won){
     log(`[LEARN] Re-enabled ${code} (${(s.wins/s.total*100).toFixed(0)}% winrate)`,'s');
     renderStratList();
   }
+}
+function adaptStrategyWeights(){
+  if(!G.STRATEGIES || !G.STRATEGY_WEIGHTS) return;
+  G.STRATEGIES.forEach((s,i)=>{
+    const stats = G.STRATEGY_STATS[s.code];
+    if(stats && stats.total >= 5){
+      const wr = stats.wins / stats.total;
+      G.STRATEGY_WEIGHTS[i] = Math.max(0.15, Math.min(3.0, (wr * 2)));
+    } // else keep default 1.0
+  });
+}
+function evidenceKey(ev){
+  if(!ev) return '?';
+  const r = ev.rsi;
+  const rsiBin = r < 30 ? 'VL' : r < 45 ? 'LO' : r < 55 ? 'MD' : r < 70 ? 'HI' : 'VH';
+  const br = parseInt(ev.bodyR) || 50;
+  const bodyBin = br < 25 ? 'S' : br < 45 ? 'M' : 'L';
+  return `${ev.pattern}_${rsiBin}_${ev.ema20||'?'}_${ev.upN||0}_${ev.dnN||0}_${bodyBin}`;
+}
+function learnFromTrade(signal, won){
+  if(!signal || !signal.evidence) return;
+  if(!G.LEARN) G.LEARN = { patterns:{}, suppressed: new Set() };
+  const key = evidenceKey(signal.evidence);
+  if(!G.LEARN.patterns[key]) G.LEARN.patterns[key] = { wins:0, losses:0, total:0, firstSeen:Date.now(), lastSeen:Date.now() };
+  const p = G.LEARN.patterns[key];
+  p.total++; p.lastSeen = Date.now();
+  if(won) p.wins++; else p.losses++;
+  if(p.total >= 5 && !G.LEARN.suppressed.has(key) && p.wins/p.total < 0.40){
+    G.LEARN.suppressed.add(key);
+    log(`[LEARN] Suppressed pattern ${key} (${(p.wins/p.total*100).toFixed(0)}% winrate)`,'w');
+  }
+  if(G.LEARN.suppressed.has(key) && p.total >= 8 && p.wins/p.total >= 0.50){
+    G.LEARN.suppressed.delete(key);
+    log(`[LEARN] Restored pattern ${key} (${(p.wins/p.total*100).toFixed(0)}% winrate)`,'s');
+  }
+}
+function checkSuppressed(evidence){
+  if(!evidence || !G.LEARN?.suppressed) return false;
+  return G.LEARN.suppressed.has(evidenceKey(evidence));
+}
+function downloadTradeLog(){
+  const data = {
+    exportedAt: new Date().toISOString(),
+    session: { wins: G.WINS, losses: G.LOSSES, pnl: G.PNL, trades: G.TRADES },
+    strategyStats: G.STRATEGY_STATS || {},
+    learnPatterns: Object.fromEntries(
+      Object.entries(G.LEARN?.patterns||{}).map(([k,v])=>[k,{...v, suppressed: G.LEARN?.suppressed?.has(k)}])
+    ),
+    tradeHistory: G.TRADE_HISTORY || [],
+    signalLog: (G._allSignals || []).slice(-100)
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `trade_log_${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  log(`[EXPORT] ${a.download} — ${(blob.size/1024).toFixed(1)}KB`,'s');
 }
 
 function addRecentTrade(text,cls){
@@ -2267,6 +2910,12 @@ function saveState(){
       isTrading: bs.isTrading, contractType: bs.contractType,
       baseStake: bs.baseStake, targetProfit: bs.targetProfit, stopLoss: bs.stopLoss
     }));
+    localStorage.setItem('deriv_copy_mode', G.COPY_MODE||'off');
+    localStorage.setItem('deriv_copy_traders', JSON.stringify(G.COPY_TRADERS));
+    const tgToken = document.getElementById('tgToken')?.value;
+    const tgChat = document.getElementById('tgChatId')?.value;
+    if(tgToken) localStorage.setItem('deriv_tg_token', tgToken);
+    if(tgChat) localStorage.setItem('deriv_tg_chat', tgChat);
   } catch(e){ console.log('[SAVE]', e.message); }
 }
 function restoreState(){
@@ -2293,55 +2942,321 @@ function restoreState(){
     if(th) G.TRADE_HISTORY = JSON.parse(th);
     const bs = localStorage.getItem('deriv_botstate');
     if(bs){ const d = JSON.parse(bs);
-      if(d.isTrading) BotState.isTrading = true;
       if(d.contractType) BotState.contractType = d.contractType;
       if(d.baseStake) BotState.baseStake = d.baseStake;
       if(d.targetProfit) BotState.targetProfit = d.targetProfit;
       if(d.stopLoss) BotState.stopLoss = d.stopLoss;
     }
+    // Restore copy trading settings
+    const cm = localStorage.getItem('deriv_copy_mode');
+    if(cm) G.COPY_MODE = cm;
+    const ct = localStorage.getItem('deriv_copy_traders');
+    if(ct) try{ G.COPY_TRADERS = JSON.parse(ct); }catch(e){}
+    // Never auto-start trading on login — reset engines
+    BotState.isTrading = false;
+    G.RUNNING = false;
   } catch(e){ console.log('[RESTORE]', e.message); }
 }
 
 // ============================================================
-// COPYTRADING - STUBBED (UI removed)
+// COPYTRADING — Telegram-based relay (100+ user capable)
 // ============================================================
-function initCopytrading() {}
-function copyConnect() {}
-function setCopyMode(mode) { G.COPY_MODE = mode; }
-function toggleBroadcast() {}
-function toggleMasterBot() {}
-function toggleCopytrading() {}
-function startCopyPolling() {}
-function stopCopyPolling() {}
-async function pollForCopySignals() {}
-function processCopySignal(signal) {}
-function executeCopyTrade(action, symbol, stake, trader) {}
-function addCopyTrader() {}
-function removeCopyTrader(traderId) {}
-function clearAllCopyTraders() {}
-function updateCopyTradersList() {}
-function updateCopyStats() {}
-function copyLog() {}
-async function broadcastCopySignal() {}
+// Signal format: CT|action|symbol|stake|traderId|timestamp
+// Master broadcasts via sendMessage, clients poll via getUpdates
+let _copyLastUpdateId = 0;
+if(!G._processedCopySignals) G._processedCopySignals = new Set();
 
-// ── Login Screen ──
-function authorizePat(){
+function initCopytrading(){
+  const tgToken = localStorage.getItem('deriv_tg_token');
+  const tgChat = localStorage.getItem('deriv_tg_chat');
+  if(tgToken) document.getElementById('tgToken').value = tgToken;
+  if(tgChat) document.getElementById('tgChatId').value = tgChat;
+  const mode = G.COPY_MODE || 'off';
+  setCopyMode(mode);
+}
+function setCopyMode(mode){
+  G.COPY_MODE = mode;
+  const badge = document.getElementById('copyModeBadge');
+  if(badge) badge.textContent = mode.toUpperCase();
+  // Highlight active mode button
+  ['off','master','client'].forEach(m => {
+    const btn = document.getElementById('copyMode'+m.charAt(0).toUpperCase()+m.slice(1));
+    if(btn) btn.style.cssText = `flex:1;padding:3px;font-size:8px;background:${m===mode?'var(--accent)':'var(--surface-2)'};color:${m===mode?'#fff':'inherit'};border-color:${m===mode?'var(--accent)':'var(--line)'}`;
+  });
+  document.getElementById('copyMasterPanel').style.display = mode==='master'?'block':'none';
+  document.getElementById('copyClientPanel').style.display = mode==='client'?'block':'none';
+  if(mode==='client'){ startCopyPolling(); }
+  else { stopCopyPolling(); }
+  saveState();
+}
+function toggleBroadcast(){
+  G.COPY_BROADCAST_ENABLED = !G.COPY_BROADCAST_ENABLED;
+  const btn = document.getElementById('copyBroadcastBtn');
+  const st = document.getElementById('copyBroadcastStatus');
+  if(btn) btn.style.background = G.COPY_BROADCAST_ENABLED ? 'var(--positive)' : 'var(--surface-2)';
+  if(st) st.textContent = 'Broadcast: ' + (G.COPY_BROADCAST_ENABLED?'ON':'OFF');
+  log(`[COPY] Broadcast ${G.COPY_BROADCAST_ENABLED?'ON':'OFF'}`,'i');
+  saveState();
+}
+function startCopyPolling(){
+  if(G.COPY_POLL_INTERVAL) clearInterval(G.COPY_POLL_INTERVAL);
+  G.COPY_POLL_INTERVAL = setInterval(pollForCopySignals, 5000);
+}
+function stopCopyPolling(){
+  if(G.COPY_POLL_INTERVAL){ clearInterval(G.COPY_POLL_INTERVAL); G.COPY_POLL_INTERVAL = null; }
+}
+async function pollForCopySignals(){
+  if(G.COPY_MODE !== 'client') return;
+  const inp = document.getElementById('tgToken');
+  const token = inp?.value?.trim() || G.TELEGRAM_BOT_TOKEN;
+  if(!token) return;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates?offset=${_copyLastUpdateId+1}&timeout=5`);
+    const data = await res.json();
+    if(!data.ok || !data.result) return;
+    for(const u of data.result){
+      if(u.update_id > _copyLastUpdateId) _copyLastUpdateId = u.update_id;
+      const text = u.message?.text || u.channel_post?.text || '';
+      if(!text.startsWith('CT|')) continue;
+      processCopySignal(text);
+    }
+  } catch(e){ /* polling error, retry next cycle */ }
+}
+function processCopySignal(text){
+  const parts = text.split('|');
+  if(parts.length < 6) return;
+  const [, action, sym, stakeStr, tid, ts] = parts;
+  const trader = G.COPY_TRADERS.find(t => t.id === tid);
+  if(!trader) return;
+  const sigId = `${tid}:${ts}`;
+  if(G._processedCopySignals.has(sigId)) return;
+  G._processedCopySignals.add(sigId);
+  if(G._processedCopySignals.size > 500) G._processedCopySignals = new Set([...G._processedCopySignals].slice(-200));
+  if(G.ACTIVE_CONTRACTS.size >= 1) return;
+  if(G.WS?.readyState !== WebSocket.OPEN) return;
+  let stake = parseFloat(stakeStr) * (trader.stakeMult || 1);
+  stake = Math.max(0.35, Math.min(100, +stake.toFixed(2)));
+  log(`[COPY] ${tid}: ${action} ${sym} $${stake.toFixed(2)}`,'t');
+  executeCopyTrade(action, sym, stake, trader);
+}
+function executeCopyTrade(action, sym, stake, trader){
+  if(G.ACTIVE_CONTRACTS.size >= 1) return;
+  const signal = {
+    action: action==='CALL'||action==='RISE'?'RISE':'FALL',
+    conf: 99, src: 'COPY', copyStake: stake
+  };
+  execTrade(signal, sym);
+  trader.tradesCopied = (trader.tradesCopied||0) + 1;
+  trader.wins = trader.wins||0; trader.losses = trader.losses||0;
+  trader.lastTradeAt = Date.now();
+  updateCopyTradersList();
+}
+function addCopyTrader(){
+  const inp = document.getElementById('copyTraderInput');
+  const mult = document.getElementById('copyStakeMult');
+  const id = inp?.value?.trim();
+  if(!id) return;
+  if(G.COPY_TRADERS.some(t => t.id === id)){ log(`[COPY] Already following ${id}`,'w'); return; }
+  G.COPY_TRADERS.push({ id, name:id, stakeMult:parseFloat(mult?.value||1), tradesCopied:0, wins:0, losses:0, pnl:0, addedAt:Date.now(), status:'active' });
+  inp.value = '';
+  updateCopyTradersList();
+  saveState();
+  log(`[COPY] Now following ${id}`,'s');
+}
+function removeCopyTrader(id){
+  G.COPY_TRADERS = G.COPY_TRADERS.filter(t => t.id !== id);
+  updateCopyTradersList();
+  saveState();
+}
+function clearAllCopyTraders(){
+  G.COPY_TRADERS = [];
+  updateCopyTradersList();
+  saveState();
+}
+function updateCopyTradersList(){
+  const el = document.getElementById('copyTraderList');
+  if(!el) return;
+  if(!G.COPY_TRADERS.length){ el.innerHTML = '<div style="font-size:7px;color:var(--muted);padding:4px">No traders added</div>'; return; }
+  el.innerHTML = G.COPY_TRADERS.map(t => `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid var(--line);font-size:8px">
+    <span><strong>${t.id}</strong> <span style="color:var(--muted)">×${t.stakeMult}</span></span>
+    <span style="font-size:7px;color:var(--muted)">${t.tradesCopied||0} trades</span>
+    <button class="btn btn-ghost" onclick="removeCopyTrader('${t.id}')" style="padding:1px 4px;font-size:7px;color:var(--negative)">×</button>
+  </div>`).join('');
+  const count = G.COPY_TRADERS.length;
+  document.getElementById('copyClientStatus').textContent = `Following ${count} trader${count!==1?'s':''}`;
+}
+function updateCopyStats(){
+  // Called periodically — currently minimal
+}
+function copyLog(msg){
+  log(`[COPY] ${msg}`,'i');
+}
+async function broadcastCopySignal(action, symbol, stake){
+  if(G.COPY_MODE !== 'master' || !G.COPY_BROADCAST_ENABLED) return;
+  const inp = document.getElementById('tgToken');
+  const token = inp?.value?.trim() || G.TELEGRAM_BOT_TOKEN;
+  const chat = document.getElementById('tgChatId')?.value?.trim() || G.TELEGRAM_CHAT_ID;
+  if(!token || !chat) return;
+  const id = document.getElementById('copyMasterId')?.value?.trim() || 'master1';
+  G.COPY_MY_ID = id;
+  const msg = `CT|${action}|${symbol}|${stake}|${id}|${Date.now()}`;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage?chat_id=${chat}&text=${encodeURIComponent(msg)}`);
+    log(`[COPY] Broadcast ${action} ${symbol} $${stake.toFixed(2)}`,'i');
+  } catch(e){ log(`[COPY] Broadcast failed: ${e.message}`,'e'); }
+}
+
+// ── Login Screen (Deriv OAuth2.0 + REST OTP flow) ──
+function oauthLogin(){
+  const err = document.getElementById('loginError');
+  err.textContent='';
+  // Check if this is a redirect back from OAuth (token in URL)
+  const params = new URLSearchParams(window.location.search);
+  const urlToken = params.get('token1');
+  if(urlToken){
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    document.getElementById('loginPat').value = urlToken;
+    // Store account mapping from OAuth redirect: token1=..., acct1=..., cur1=...
+    const accounts = [];
+    for(let i=1; ; i++){
+      const t = params.get('token'+i); const a = params.get('acct'+i); const c = params.get('cur'+i);
+      if(!t || !a) break;
+      accounts.push({ token:t, account:a, currency:c||'USD' });
+    }
+    G._oauthAccounts = accounts;
+    authorizePat();
+    return;
+  }
+  // Open Deriv OAuth2.0 popup
+  const popup = window.open(
+    'https://oauth.deriv.com/oauth2/authorize?app_id='+G.APP_ID,
+    'deriv_oauth',
+    'width=500,height=700,menubar=no,toolbar=no,location=yes'
+  );
+  if(!popup || popup.closed){ err.textContent='Popup blocked — allow popups or paste a token manually'; return; }
+  // Poll popup for redirect with token1
+  const pollTimer = setInterval(() => {
+    try {
+      if(popup.closed){ clearInterval(pollTimer); return; }
+      const popupUrl = popup.location.href;
+      if(popupUrl.includes('token1=')){
+        clearInterval(pollTimer);
+        popup.close();
+        // Extract all token/acct/cur params
+        const m = popupUrl.match(/[?&]token1=([^&]+)/);
+        if(m && m[1]){
+          document.getElementById('loginPat').value = decodeURIComponent(m[1]);
+          // Parse all accounts from the redirect
+          const accounts = [];
+          for(let i=1; ; i++){
+            const tMatch = popupUrl.match(new RegExp('[?&]acct'+i+'=([^&]+)'));
+            const tTok  = popupUrl.match(new RegExp('[?&]token'+i+'=([^&]+)'));
+            const tCur  = popupUrl.match(new RegExp('[?&]cur'+i+'=([^&]+)'));
+            if(!tTok || !tMatch) break;
+            accounts.push({ token:decodeURIComponent(tTok[1]), account:decodeURIComponent(tMatch[1]), currency:decodeURIComponent(tCur?.[1]||'USD') });
+          }
+          G._oauthAccounts = accounts;
+          authorizePat();
+        }
+      }
+    } catch(e){ /* cross-origin until redirect lands */ }
+  }, 300);
+  setTimeout(() => { clearInterval(pollTimer); if(!popup.closed) popup.close(); }, 120000);
+}
+async function authorizePat(){
   const inp = document.getElementById('loginPat');
   const err = document.getElementById('loginError');
   const token = inp?.value?.trim();
-  if(!token){ err.textContent='Please paste your PAT token'; return; }
+  if(!token){ err.textContent='Paste an API token from app.deriv.com/account/api-token'; return; }
   err.textContent='';
   inp.disabled=true;
-  document.querySelector('.btn-login').textContent='Authorizing...';
-  authorizeWithToken(token).catch(e => {
-    err.textContent=e.message||'Authorization failed';
-    inp.disabled=false;
-    document.querySelector('.btn-login').textContent='Authorize';
-  });
+  document.getElementById('oauthBtn').textContent='Connecting...';
+  await doRESTFlow(token);
+}
+async function doRESTFlow(token){
+  // Step 1: Call REST API to list accounts (uses OAuth token or PAT)
+  // If OAuth gave us account info, skip listing and go straight to OTP
+  let accounts = G._oauthAccounts;
+  try {
+    if(!accounts || !accounts.length){
+      const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID, 'Content-Type':'application/json' };
+      const resp = await fetch('https://api.derivws.com/trading/v1/options/accounts', { method:'GET', headers:hdrs });
+      if(resp.ok){
+        const data = await resp.json();
+        accounts = (data.data || []).map(a => ({ account:a.account_id, token:token, currency:a.currency||'USD', isDemo:a.account_type==='demo'||a.is_virtual, balance:parseFloat(a.balance||0) }));
+        G._oauthAccounts = accounts;
+      }
+    }
+  } catch(e){ log('[AUTH] REST accounts failed: '+e.message,'w'); }
+  if(!accounts || !accounts.length){
+    document.getElementById('loginError').textContent = 'Could not fetch Deriv accounts — check your token';
+    document.getElementById('loginPat').disabled=false;
+    document.getElementById('oauthBtn').textContent='Login with Deriv';
+    return;
+  }
+  // Step 2: Pick preferred account (demo first, then real)
+  const preferred = G.ACCOUNT_TYPE || 'demo';
+  const isDemo = (a) => a.account.startsWith('VR') || a.isDemo === true || a.is_virtual === true;
+  let account = accounts.find(a => (preferred==='demo' ? isDemo(a) : !isDemo(a)));
+  if(!account) account = accounts.find(a => isDemo(a)) || accounts[0];
+  const isDemoAcc = isDemo(account);
+  G.ACCOUNT_ID = account.account;
+  G.ACCOUNT_TYPE = isDemoAcc ? 'demo' : 'real';
+  G.BALANCE = account.balance || 0;
+  // Step 3: Get OTP for WebSocket URL
+  try {
+    const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID, 'Content-Type':'application/json' };
+    const otpResp = await fetch('https://api.derivws.com/trading/v1/options/accounts/'+account.account+'/otp', { method:'POST', headers:hdrs });
+    if(otpResp.ok){
+      const otpData = await otpResp.json();
+      const wsUrl = otpData.data?.url || otpData.url;
+      if(wsUrl){ connectOTP(wsUrl); return; }
+    }
+  } catch(e){ log('[AUTH] OTP failed: '+e.message,'e'); }
+  document.getElementById('loginError').textContent = 'Failed to get WebSocket connection — try again';
+  document.getElementById('loginPat').disabled=false;
+  document.getElementById('oauthBtn').textContent='Login with Deriv';
+}
+function connectOTP(url){
+  G.TOKEN = document.getElementById('loginPat')?.value?.trim() || '';
+  if(G.WS && (G.WS.readyState===WebSocket.OPEN || G.WS.readyState===WebSocket.CONNECTING)){
+    G.CLOSING_TRADE_WS = true;
+    try{ G.WS.close(); }catch(e){}
+  }
+  G.RECONN_ACTIVE = G.RUNNING;
+  const ws = new WebSocket(url);
+  G.WS = ws;
+  const to = setTimeout(() => { log('[WS] OTP connection timeout','e'); try{ ws.close(); }catch(e){} }, 15000);
+  ws.onopen = () => {
+    clearTimeout(to);
+    G.CONNECTED=true; G.AUTH=true; G.RECONN_ATT=0; G.BOOT_AT = Date.now();
+    G.ACTIVE_CONTRACTS.clear();
+    document.getElementById('connDot').className='conn g';
+    document.getElementById('engineStatus').textContent='ONLINE';
+    document.getElementById('rfStartBtn').style.display = G.RUNNING?'none':'block';
+    document.getElementById('rfStopBtn').style.display = G.RUNNING?'block':'none';
+    log(`[AUTH] ${G.ACCOUNT_ID} $${G.BALANCE.toFixed(2)}`,'s');
+    saveState(); showApp();
+    startHeartbeat();
+    setTimeout(subscribeAll, 200);
+  };
+  ws.onmessage = (e) => { try{ handleMsg(JSON.parse(e.data)); }catch(ex){ log(`Parse: ${ex.message}`,'e'); } };
+  ws.onerror = () => { G.CONNECTED=false; document.getElementById('connDot').className='conn r'; };
+  ws.onclose = () => {
+    clearTimeout(to);
+    const intentional = G.CLOSING_TRADE_WS;
+    G.CLOSING_TRADE_WS = false;
+    G.CONNECTED=false; G.AUTH=false;
+    document.getElementById('connDot').className='conn r';
+    document.getElementById('engineStatus').textContent='OFFLINE';
+    if(!intentional){ log('[WS] Disconnected — reconnecting...','w'); scheduleRecon(); }
+  };
 }
 function showApp(){
   document.getElementById('loginOverlay').classList.add('hidden');
   document.getElementById('app').style.display='flex';
+  // Sidebar: open on desktop, closed on mobile
+  if(window.innerWidth >= 768) document.body.classList.add('sidebar-open');
 }
 
 // ============================================================
@@ -2353,6 +3268,14 @@ document.addEventListener('DOMContentLoaded', () => {
   const themeBtn = document.getElementById('themeBtn');
   if(themeBtn) themeBtn.textContent = document.documentElement.classList.contains('dark') ? '\u2600\ufe0f' : '\u{1f319}';
   G.BOOT_AT = Date.now();
+  // Check for OAuth token in URL (from Deriv redirect)
+  const params = new URLSearchParams(window.location.search);
+  const urlToken = params.get('token1');
+  if(urlToken){
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    document.getElementById('loginPat').value = urlToken;
+    setTimeout(() => authorizePat(), 100);
+  }
   // Login Enter key
   document.getElementById('loginPat')?.addEventListener('keydown', e => { if(e.key==='Enter') authorizePat(); });
   initStrategies();
@@ -2369,7 +3292,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initCopytrading();
   connectMarketWS();
   // Auto-authorize if saved token exists
-  if(G.TOKEN) setTimeout(() => authorizeWithToken(G.TOKEN), 500);
+  if(G.TOKEN) setTimeout(() => doRESTFlow(G.TOKEN), 500);
   // Init trade mode
   switchMode(G.TRADE_MODE);
   BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
@@ -2380,6 +3303,16 @@ document.addEventListener('DOMContentLoaded', () => {
   log('[SYSTEM] BTraders ready \u00b7 15s engine', 's');
   log(`[SYSTEM] ${G.STRATEGIES.length} strategies \u00b7 ${SYMBOLS.length} markets`, 'i');
   log('[SYSTEM] Copy mode ready \u2014 paste token to begin', 'i');
+  // Stop everything on tab close
+  window.addEventListener('beforeunload', () => {
+    if(G.RUNNING) stopBot();
+    if(BotState.isTrading){
+      BotState.isTrading = false;
+      const btn = document.getElementById('dgEngineBtn');
+      if(btn) btn.textContent = 'AUTO';
+    }
+    if(G.WS) try{ G.WS.close(); }catch(e){}
+  });
   // Global error handler to catch any unhandled crashes
   window.onerror = (msg, url, line, col, err) => {
     log(`[FATAL] ${msg} (${line}:${col})`,'e');
