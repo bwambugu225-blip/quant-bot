@@ -3260,8 +3260,7 @@ async function oauthLogin(){
       scope: 'trade',
       state: state,
       code_challenge: codeChallenge,
-      code_challenge_method: 'S256',
-      prompt: 'login'
+      code_challenge_method: 'S256'
     }).toString();
     // 6. Full-page redirect — works with file:// origins because the
     //    top-level navigation from Deriv back to our page is permitted
