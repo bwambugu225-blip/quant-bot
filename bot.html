@@ -3308,9 +3308,17 @@ async function exchangeOAuthCode(code){
     });
     const data = await resp.json();
     if(data.access_token){
-      document.getElementById('loginPat').value = data.access_token;
-      err.textContent='';
-      authorizePat();
+      // If this is the popup (window.opener exists), pass token to main window
+      if(window.opener && !window.opener.closed){
+        window.opener.document.getElementById('loginPat').value = data.access_token;
+        window.opener.document.getElementById('loginError').textContent='';
+        window.opener.authorizePat();
+        setTimeout(()=>window.close(), 500);
+      } else {
+        document.getElementById('loginPat').value = data.access_token;
+        err.textContent='';
+        authorizePat();
+      }
     } else {
       err.textContent='Token exchange failed: '+(data.error_description||data.error||'unknown');
     }
