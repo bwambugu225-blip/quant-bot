@@ -2635,6 +2635,7 @@ function updateDigitsUI(){
   G[throttleKey]++;
   const fullRebuild = G[throttleKey] % 5 === 0;
   // Digit circles
+  const hfreq = Array(10).fill(0);
   for(const d of hist) hfreq[d]++;
   const hTotal = histLen || 1;
   let maxF=0, maxD=-1, minF=histLen, minD=-1;
