@@ -1127,6 +1127,9 @@ function initStrategies(){
   }});
   G.STRATEGY_ACTIVE = G.STRATEGIES.map(()=>true);
   G.STRATEGY_WEIGHTS = G.STRATEGIES.map(()=>1.0);
+  // Disable continuation/trend-following — only reversal/counter-trend strategies fire
+  const continuation = ['E5X','E2X','E5S','ADX','RBN','SPT','ICH','TRI','KLT','LRS','ARN','CHO','CPK','MZR','MCH'];
+  G.STRATEGIES.forEach((s,i)=>{ if(continuation.includes(s.code)) G.STRATEGY_ACTIVE[i]=false; });
 }
 
 // ============================================================
@@ -1969,7 +1972,7 @@ function storeSignal(sym, epoch, result, traded){
     action: result.action, conf: result.conf, pattern: result.evidence?.pattern||result.src,
     evidence: result.evidence || {}
   });
-  if(G._allSignals.length > 200) G._allSignals.shift();
+  if(G._allSignals.length > 500) G._allSignals.splice(0, 100);
 }
 
 function calcRSI(prices, period){
@@ -2147,24 +2150,27 @@ function evaluateAndTrade(sym){
   // Must trade within 1s of candle close — guarantees immediate entry on closure
   if(G.MARKET.lastCloseAt?.[sym] && Date.now() - G.MARKET.lastCloseAt[sym] > 1000) return;
   const result = getConsensus(sym);
-  if(result && result.conf >= 85){
+  if(result){
+    // Record every opportunity for chart markers
     const prices = G.MARKET.prices[sym];
     result.lastPrice = prices ? prices[prices.length-1] : 0;
     result.sym = sym;
     const cdl = G.MARKET.candles[sym];
     const lastCdl = cdl?.[cdl.length-1];
-    if(lastCdl){
+    if(lastCdl && result.conf >= 60){
       if(!G._signalOnCandle) G._signalOnCandle = {};
       const key = sym+':'+lastCdl.epoch;
       G._signalOnCandle[key] = { action: result.action, conf: result.conf, price: lastCdl.close };
       lastCdl.signal = G._signalOnCandle[key];
     }
-    storeSignal(sym, lastCdl?.epoch||0, result, true);
-    log(`[SIGNAL] ${sym}: ${result.action} ${result.conf}% (${result.count} strategies, ${result.pct}% consensus)`,'t');
-    G.CURRENT_MARKET = sym;
-    G.SELECTED_MARKET = sym;
-    updateWatchlist();
-    execTrade(result, sym);
+    storeSignal(sym, lastCdl?.epoch||0, result, result.conf >= 85);
+    if(result.conf >= 85){
+      log(`[SIGNAL] ${sym}: ${result.action} ${result.conf}% (${result.count} strategies, ${result.pct}% consensus)`,'t');
+      G.CURRENT_MARKET = sym;
+      G.SELECTED_MARKET = sym;
+      updateWatchlist();
+      execTrade(result, sym);
+    }
   }
   } catch(e){ log(`[CRASH] evaluateAndTrade: ${e.message}`,'e'); console.error(e); }
 }
@@ -2441,25 +2447,50 @@ function drawChart(){
   });
   // Signal markers — all signals from G._allSignals matched by epoch
   const allSigs = G._allSignals || [];
-  const arrowSize = Math.max(10, cw*0.55);
+  const markerSize = Math.max(22, cw*1.4);
   all.forEach((k,i)=>{
     const sig = allSigs.find(s => s.sym===sym && s.epoch===k.epoch);
     if(!sig) return;
     const x = i*cw+cw/2;
-    const isCall = sig.action === 'RISE';
-    const posY = isCall ? ny(k.low) - 4 : ny(k.high) + 4;
-    const clampedY = Math.max(10, Math.min(h-10, posY));
-    // Arrow
-    ctx.fillStyle = isCall ? POS : NEG;
-    ctx.font = `bold ${arrowSize}px sans-serif`;
+    const isRise = sig.action === 'RISE';
+    const color = isRise ? POS : NEG;
+    // Place outside candle: RISE below low, FALL above high
+    const baseY = isRise ? ny(k.low) + 6 : ny(k.high) - 6;
+    const sy = Math.max(16, Math.min(h-16, baseY));
+    // Glowing filled triangle
+    ctx.save();
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = color;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    const hw = markerSize*0.5, hh = markerSize*0.45;
+    ctx.beginPath();
+    if(isRise){
+      // ▲ pointing up (below candle)
+      ctx.moveTo(x, sy);        // tip
+      ctx.lineTo(x-hw, sy+hh);  // bottom-left
+      ctx.lineTo(x+hw, sy+hh);  // bottom-right
+    } else {
+      // ▼ pointing down (above candle)
+      ctx.moveTo(x, sy);        // tip
+      ctx.lineTo(x-hw, sy-hh);  // top-left
+      ctx.lineTo(x+hw, sy-hh);  // top-right
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    // Confidence pct label
+    ctx.fillStyle = color;
+    ctx.font = `bold ${Math.max(9, markerSize*0.42)}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.textBaseline = isCall ? 'bottom' : 'top';
-    ctx.fillText(isCall ? '↑' : '↓', x, clampedY);
-    // Pattern label
-    ctx.fillStyle = isCall ? POS : NEG;
-    ctx.font = `bold ${Math.max(6, arrowSize*0.55)}px sans-serif`;
-    ctx.textBaseline = isCall ? 'top' : 'bottom';
-    ctx.fillText(sig.pattern, x, isCall ? clampedY + 2 : clampedY - 2);
+    ctx.textBaseline = isRise ? 'top' : 'bottom';
+    ctx.fillText(sig.conf+'%', x, isRise ? sy+hh+3 : sy-hh-3);
+    // Traded dot or pattern code
+    ctx.font = `${Math.max(8, markerSize*0.36)}px sans-serif`;
+    ctx.fillStyle = sig.traded ? color : '#999';
+    ctx.fillText(sig.traded?'⚡':sig.pattern, x, isRise ? sy+hh+markerSize*0.48 : sy-hh-markerSize*0.48);
   });
   ctx.textAlign='left';
   ctx.textBaseline='alphabetic';
