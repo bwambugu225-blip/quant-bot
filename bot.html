@@ -415,73 +415,64 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
     <div class="kpi"><div id="dashConsLoss" class="v" style="color:var(--negative)">0</div><div class="l">Streak</div></div>
   </div>
 
-  <!-- MAIN ROW -->
-  <div class="row">
-    <!-- Left column: RF Controls + Chart + History -->
-    <div class="col" style="min-width:220px">
-      <!-- R/F Controls -->
-      <div id="rfSection" class="card">
-        <div class="card-title">Rise/Fall <span id="rfModeBadge" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">AUTO</span></div>
-        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-          <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
-            <input type="checkbox" id="marketModeToggle" onchange="toggleMarketMode()" checked style="width:13px;height:13px;accent-color:var(--accent)">
-            <span>Multi Market</span>
-          </label>
-          <span id="marketModeLabel" style="font-size:8px;color:var(--accent);font-weight:600">ON</span>
-        </div>
-        <div style="margin-bottom:6px">
-          <div id="modeTargetMarket" style="font-size:9px;font-weight:600;margin-bottom:2px"></div>
-          <select id="marketSelect" class="inp" onchange="selectMarketFromDropdown(this.value)" style="font-size:9px;width:100%"></select>
-        </div>
-        <div class="stake-row">
-          <div class="field"><label>Stake</label><input class="inp" id="rfStake" type="number" value="1" min="0.35" step="0.5"></div>
-          <div class="field"><label>Duration</label>
-            <select class="inp" id="rfDuration">
-              <option value="5t">5t</option><option value="10t">10t</option>
-              <option value="15" selected>15s</option>
-              <option value="30">30s</option><option value="60">60s</option>
-              <option value="120">120s</option><option value="180">180s</option>
-            </select>
-          </div>
-        </div>
-        <div class="trade-btn-row">
-          <button id="rfStartBtn" class="btn btn-call" onclick="startRF()" style="flex:1">START</button>
-          <button id="rfStopBtn" class="btn btn-put" onclick="stopRF()" style="flex:1;display:none">STOP</button>
-          <button class="btn btn-ghost" onclick="downloadTradeLog()" style="padding:4px 8px;font-size:8px">EXPORT</button>
-        </div>
-        <div style="display:flex;gap:6px;align-items:center;margin-top:5px">
-          <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
-            <input type="checkbox" id="rfMartToggle" onchange="toggleRFMartingale()" style="width:13px;height:13px;accent-color:var(--accent)">
-            Martingale
-          </label>
-          <div style="display:none;gap:3px;align-items:center" id="rfMartOpts">
-            <span style="font-size:8px;color:var(--muted)">x</span>
-            <input class="inp inp-sm" id="rfMartMult" type="number" value="2" min="2" max="10" step="1" style="width:35px">
-          </div>
-          <span id="rfStatus"><span class="status-dot gray"></span></span>
-          <span id="rfCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
-          <span id="rfSysBadge" style="font-size:7px;color:var(--warn)"></span>
+  <!-- RF Controls + Chart + History -->
+    <div id="rfSection" class="card">
+      <div class="card-title">Rise/Fall <span id="rfModeBadge" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">AUTO</span></div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+        <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="marketModeToggle" onchange="toggleMarketMode()" checked style="width:13px;height:13px;accent-color:var(--accent)">
+          <span>Multi Market</span>
+        </label>
+        <span id="marketModeLabel" style="font-size:8px;color:var(--accent);font-weight:600">ON</span>
+      </div>
+      <div style="margin-bottom:6px">
+        <div id="modeTargetMarket" style="font-size:9px;font-weight:600;margin-bottom:2px"></div>
+        <select id="marketSelect" class="inp" onchange="selectMarketFromDropdown(this.value)" style="font-size:9px;width:100%"></select>
+      </div>
+      <div class="stake-row">
+        <div class="field"><label>Stake</label><input class="inp" id="rfStake" type="number" value="1" min="0.35" step="0.5"></div>
+        <div class="field"><label>Duration</label>
+          <select class="inp" id="rfDuration">
+            <option value="5t">5t</option><option value="10t">10t</option>
+            <option value="15" selected>15s</option>
+            <option value="30">30s</option><option value="60">60s</option>
+            <option value="120">120s</option><option value="180">180s</option>
+          </select>
         </div>
       </div>
-
-      <!-- Chart -->
-      <div class="card" style="padding:4px">
-        <canvas id="liveChart" style="width:100%;height:90px;display:block"></canvas>
+      <div class="trade-btn-row">
+        <button id="rfStartBtn" class="btn btn-call" onclick="startRF()" style="flex:1">START</button>
+        <button id="rfStopBtn" class="btn btn-put" onclick="stopRF()" style="flex:1;display:none">STOP</button>
+        <button class="btn btn-ghost" onclick="downloadTradeLog()" style="padding:4px 8px;font-size:8px">EXPORT</button>
       </div>
-
-      <!-- Trade History -->
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <div class="card-title" style="margin:0">History</div>
-          <button class="btn btn-ghost" onclick="clearRecentTrades()" style="padding:2px 6px;font-size:7px">Clear</button>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:5px">
+        <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="rfMartToggle" onchange="toggleRFMartingale()" style="width:13px;height:13px;accent-color:var(--accent)">
+          Martingale
+        </label>
+        <div style="display:none;gap:3px;align-items:center" id="rfMartOpts">
+          <span style="font-size:8px;color:var(--muted)">x</span>
+          <input class="inp inp-sm" id="rfMartMult" type="number" value="2" min="2" max="10" step="1" style="width:35px">
         </div>
-        <div id="recentTrades" style="font-size:9px;color:var(--muted);max-height:110px;overflow-y:auto;padding:2px 0">No trades yet</div>
+        <span id="rfStatus"><span class="status-dot gray"></span></span>
+        <span id="rfCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
+        <span id="rfSysBadge" style="font-size:7px;color:var(--warn)"></span>
       </div>
     </div>
 
-    <div class="col col-2" style="min-width:260px">
+    <!-- Chart -->
+    <div class="card" style="padding:4px">
+      <canvas id="liveChart" style="width:100%;height:250px;display:block"></canvas>
     </div>
-  </div>
+
+    <!-- Trade History -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <div class="card-title" style="margin:0">History</div>
+        <button class="btn btn-ghost" onclick="clearRecentTrades()" style="padding:2px 6px;font-size:7px">Clear</button>
+      </div>
+      <div id="recentTrades" style="font-size:9px;color:var(--muted);max-height:110px;overflow-y:auto;padding:2px 0">No trades yet</div>
+    </div>
 
   <!-- Hidden fallback elements for phantom IDs referenced by JS -->
   <div style="display:none">
@@ -1838,7 +1829,7 @@ function buildCandlesFromTicks(sym, times, prices){
   }
   G.MARKET.tickBuf[sym] = bucket.map(b=>b.price);
   G.MARKET.candleOpenAt[sym] = candleStart || (Date.now());
-  const arr = candles.slice(-220);
+  const arr = candles.slice(-250);
   if(arr.length){
     G.MARKET.candles[sym] = arr;
     G.MARKET.prices[sym] = arr.map(c=>c.close);
@@ -1891,7 +1882,7 @@ function handleTick(data){
       ticks: buf.length
     };
     G.MARKET.candles[sym].push(candle);
-    if(G.MARKET.candles[sym].length > 220) G.MARKET.candles[sym].shift();
+    if(G.MARKET.candles[sym].length > 250) G.MARKET.candles[sym].shift();
     if(!G.MARKET.tickPrices) G.MARKET.tickPrices={};
     if(!G.MARKET.tickPrices[sym]) G.MARKET.tickPrices[sym]=[];
     G.MARKET.tickPrices[sym].push(...buf);
@@ -2359,7 +2350,7 @@ function drawChart(){
   const MUTED=clr('muted'), LINE=clr('line'), POS=clr('positive'), NEG=clr('negative');
   const sym = G.CURRENT_MARKET;
   const raw = G.MARKET.candles[sym] || [];
-  const c = raw.slice(-39);
+  const c = raw.slice(-200);
   const liveBuf = G.MARKET.tickBuf?.[sym] || [];
   const hasLive = liveBuf.length > 0;
   const liveCandle = hasLive ? {
