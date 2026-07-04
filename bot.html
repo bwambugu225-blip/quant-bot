@@ -3230,42 +3230,11 @@ async function broadcastCopySignal(action, symbol, stake){
   } catch(e){ log(`[COPY] Broadcast failed: ${e.message}`,'e'); }
 }
 
-// ── Login Screen (Deriv OAuth2.0 + REST OTP flow) ──
+// ── Login Screen (Direct PAT flow — app_id IS the Bearer token) ──
 async function oauthLogin(){
-  const err = document.getElementById('loginError');
-  err.textContent='';
-  try {
-    // 1. Generate PKCE code_verifier (random 43-128 chars from unreserved set)
-    const array = crypto.getRandomValues(new Uint8Array(64));
-    const codeVerifier = Array.from(array).map(v =>
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'[v % 66]
-    ).join('');
-    // 2. Derive SHA-256 code_challenge
-    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier));
-    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    // 3. Generate random state for CSRF
-    const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-      .map(v => v.toString(16).padStart(2,'0')).join('');
-    // 4. Store PKCE params so they survive the redirect back
-    const redirectUri = window.location.href.split('?')[0].split('#')[0];
-    sessionStorage.setItem('oauth_code_verifier', codeVerifier);
-    sessionStorage.setItem('oauth_state', state);
-    sessionStorage.setItem('oauth_redirect_uri', redirectUri);
-    // 5. Build authorization URL per Deriv OAuth2.0 spec
-    const authUrl = 'https://auth.deriv.com/oauth2/auth?' + new URLSearchParams({
-      response_type: 'code',
-      client_id: G.APP_ID,
-      redirect_uri: redirectUri,
-      scope: 'trade',
-      state: state,
-      code_challenge: codeChallenge,
-      code_challenge_method: 'S256'
-    }).toString();
-    // 6. Full-page redirect — works with file:// origins because the
-    //    top-level navigation from Deriv back to our page is permitted
-    window.location.href = authUrl;
-  } catch(e){ err.textContent='OAuth error: '+e.message; }
+  document.getElementById('loginPat').value = G.APP_ID;
+  document.getElementById('loginError').textContent = '';
+  authorizePat();
 }
 async function exchangeOAuthCode(code){
   const err = document.getElementById('loginError');
