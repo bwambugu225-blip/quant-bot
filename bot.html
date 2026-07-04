@@ -3422,6 +3422,9 @@ document.addEventListener('DOMContentLoaded', () => {
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
     document.getElementById('loginPat').value = urlToken;
     setTimeout(() => authorizePat(), 100);
+  } else if(params.get('error')){
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    document.getElementById('loginError').textContent = 'Authorization denied: '+(params.get('error_description')||params.get('error'));
   }
   // Login Enter key
   document.getElementById('loginPat')?.addEventListener('keydown', e => { if(e.key==='Enter') authorizePat(); });
