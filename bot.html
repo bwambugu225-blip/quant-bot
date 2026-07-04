@@ -1229,6 +1229,41 @@ function getConsensus(sym){
   return { action:winner, conf, src:'ENS', fp, count:agree, total:votes.RISE.length+votes.FALL.length, pct:Math.round(pct) };
 }
 
+// ── Bot-state-independent chart signal evaluation ──
+function evaluateChartSignals(sym){
+  const c = G.MARKET.candles[sym];
+  if(!c || c.length<30) return;
+  const votes = { RISE:[], FALL:[] };
+  G.STRATEGIES.forEach((s,i)=>{
+    if(!G.STRATEGY_ACTIVE[i]) return;
+    try {
+      const r = s.analyze(c, sym);
+      if(r && (r.action==='RISE'||r.action==='FALL') && r.conf>=50){
+        votes[r.action].push({ conf:r.conf, src:r.src });
+      }
+    } catch(e){}
+  });
+  const totalVotes = votes.RISE.length + votes.FALL.length;
+  if(totalVotes < 1) return;
+  const winner = votes.RISE.length >= votes.FALL.length ? 'RISE' : 'FALL';
+  const agree = Math.max(votes.RISE.length, votes.FALL.length);
+  const pool = votes[winner];
+  const avgConf = pool.length ? Math.round(pool.reduce((a,v)=>a+v.conf,0)/pool.length) : 0;
+  const pct = Math.round(agree / totalVotes * 100);
+  // Store for chart even if below trade threshold
+  if(avgConf >= 60 && agree >= 3){
+    if(!G._signalOnCandle) G._signalOnCandle = {};
+    const lastCdl = c[c.length-1];
+    const key = sym+':'+lastCdl.epoch;
+    G._signalOnCandle[key] = { action: winner, conf: avgConf, price: lastCdl.close };
+    storeSignal(sym, lastCdl.epoch, {
+      action: winner, conf: avgConf, src:'ENS',
+      count: agree, total: totalVotes, pct,
+      evidence: { pattern: avgConf>=80?'H':'M' }
+    }, false);
+  }
+}
+
 // ============================================================
 // DIGIT TRACKING & STRATEGY ENGINE
 // ============================================================
@@ -1881,6 +1916,7 @@ function buildCandlesFromTicks(sym, times, prices){
     updateDigitsUI();
     log(`[HIST] ${sym}: ${arr.length} candles built — initial eval`,'i');
     evaluateAndTrade(sym);
+    evaluateChartSignals(sym);
   }
 }
 
@@ -1947,6 +1983,7 @@ function handleTick(data){
     if(candle.ticks >= minTicks){
       evaluateAndTrade(sym);
     }
+    evaluateChartSignals(sym);
     // Reset trade flag so it doesn't leak to the next candle
     if(G._tradedCandle) G._tradedCandle[sym] = false;
   }
@@ -3220,7 +3257,7 @@ async function oauthLogin(){
       response_type: 'code',
       client_id: G.APP_ID,
       redirect_uri: redirectUri,
-      scope: 'trade account_manage',
+      scope: 'trade',
       state: state,
       code_challenge: codeChallenge,
       code_challenge_method: 'S256'
