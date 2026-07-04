@@ -270,6 +270,8 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
       <div id="dgTradeBtnsMC" class="trade-btn-row" style="display:none">
         <span style="font-size:8px;color:var(--muted);text-align:center;width:100%">Use AUTO engine below</span>
       </div>
+
+      <!-- Engine + analysis block (keep as proper siblings to avoid DOM repair/overlap) -->
       <div style="display:flex;gap:4px;margin-top:5px;align-items:center">
         <span id="dgEngineStat"><span class="blink-dot gray"></span></span>
         <span id="dgCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
@@ -278,17 +280,19 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
         <button id="dgEngineBtn" class="btn btn-accent" onclick="toggleDigitEngine()" style="padding:3px 6px;font-size:7px;margin-left:auto">AUTO</button>
         <button class="btn btn-ghost" onclick="resetDigitPnL()" style="padding:2px 4px;font-size:7px">RESET</button>
       </div>
+
       <div style="margin-top:6px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
           <span id="dgDistRange" style="font-size:7px;color:var(--muted)">Last 0 ticks</span>
           <span id="dgMarketName" style="font-size:8px;color:var(--accent);font-weight:600"></span>
         </div>
-        <div id="dgDigitCircles" style="display:grid;grid-template-columns:repeat(10,1fr);gap:2px;margin-bottom:4px"></div>
+        <div id="dgDigitCircles" style="display:grid;grid-template-columns:repeat(5,1fr);gap:2px;margin-bottom:4px"></div>
         <div style="display:flex;gap:6px;font-size:7px;justify-content:center;margin-bottom:4px">
           <span style="color:var(--positive);font-weight:700">HOT</span><span id="dgHottest" style="color:var(--positive)">--</span>
           <span style="color:var(--negative);font-weight:700">COLD</span><span id="dgColdest" style="color:var(--negative)">--</span>
           <span style="color:var(--text);font-weight:700">NOW</span><span id="dgNowDigit" style="color:var(--text)">--</span>
         </div>
+
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
           <div style="background:var(--bg);padding:3px 4px;border:1px solid var(--line);border-radius:var(--radius-sm)">
             <div style="font-size:7px;color:var(--muted);text-transform:uppercase;margin-bottom:2px">Odd/Even</div>
@@ -311,6 +315,7 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
             </div>
           </div>
         </div>
+
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:4px">
           <div style="background:var(--bg);padding:2px;text-align:center;border:1px solid var(--line);border-radius:var(--radius-sm)">
             <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Ticks</div><div id="dgATicks" style="font-size:11px;font-weight:700">0</div>
@@ -424,6 +429,10 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
           </label>
           <span id="marketModeLabel" style="font-size:8px;color:var(--accent);font-weight:600">ON</span>
         </div>
+        <div style="margin-bottom:6px">
+          <div id="modeTargetMarket" style="font-size:9px;font-weight:600;margin-bottom:2px"></div>
+          <select id="marketSelect" class="inp" onchange="selectMarketFromDropdown(this.value)" style="font-size:9px;width:100%"></select>
+        </div>
         <div class="stake-row">
           <div class="field"><label>Stake</label><input class="inp" id="rfStake" type="number" value="1" min="0.35" step="0.5"></div>
           <div class="field"><label>Duration</label>
@@ -470,27 +479,7 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
       </div>
     </div>
 
-    <!-- Right column: Markets + Log -->
     <div class="col col-2" style="min-width:260px">
-      <div class="card">
-        <div class="card-title">Markets</div>
-        <div id="modeTargetMarket" style="font-size:9px;font-weight:600;margin-bottom:3px"></div>
-        <select id="marketSelect" class="inp" onchange="selectMarketFromDropdown(this.value)" style="margin-bottom:4px;font-size:9px"></select>
-        <div id="watchlistBody" style="max-height:200px;overflow-y:auto"></div>
-      </div>
-
-      <details class="log-details">
-        <summary><span style="font-size:8px;font-weight:600;color:var(--muted)">Log</span> <button class="btn btn-ghost" onclick="event.stopPropagation();clearLog()" style="padding:1px 6px;font-size:7px;margin-left:6px">Clear</button></summary>
-        <div class="console-box" id="logBox" style="margin-top:4px"></div>
-      </details>
-
-      <!-- Auth row -->
-      <div class="card" style="padding:6px">
-        <div style="display:flex;gap:4px">
-          <input class="inp inp-sm" id="apiToken" type="password" placeholder="API Token" style="flex:1">
-          <button class="btn btn-accent" onclick="authorizeToken()" style="padding:4px 10px;font-size:8px">CONNECT</button>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -1724,8 +1713,8 @@ function subscribeAll(){
 function connectMarketWS(){
   if(G.MWS && (G.MWS.readyState===WebSocket.OPEN || G.MWS.readyState===WebSocket.CONNECTING)) return;
   if(G.MWS_RECONN){ clearTimeout(G.MWS_RECONN); G.MWS_RECONN=null; }
-  // Deriv WebSocket API — uses the new app_id format (app_id=33JFxN3sbe2usdFigbMb8)
-  const mws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id='+G.APP_ID);
+  // Use legacy Deriv WS with public app_id 1089 for unauthenticated market data
+  const mws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=1089');
   G.MWS = mws;
   mws.onopen = ()=>{
     G.MWS_CONNECTED = true;
@@ -2553,10 +2542,14 @@ function switchMode(mode){
 }
 function updateDigitsUI(){
   const q = BotState.tickQueue;
-  // Tick visualizer
+  // Tick visualizer (create cells if missing — hidden div is empty)
   const viz = document.getElementById('dgTickVisualizer');
   if(viz){
-    const cells = viz.querySelectorAll('.dg-tick');
+    let cells = viz.querySelectorAll('.dg-tick');
+    if(cells.length<5){
+      viz.innerHTML = '<span class="dg-tick"></span>'.repeat(5);
+      cells = viz.querySelectorAll('.dg-tick');
+    }
     for(let i=0;i<5;i++){
       const d = i < q.length ? q[q.length-1-i] : null;
       const el = cells[4-i];
@@ -2619,7 +2612,7 @@ function updateDigitsUI(){
       const nowGlow = isNow ? 'filter:drop-shadow(0 0 4px var(--accent));' : '';
       return '<div class="dg-circle'+(isNow?' now':'')+'">'
         + '<div class="c">'
-        + '<svg viewBox="0 0 36 36" style="width:30px;height:30px;transform:rotate(-90deg);overflow:visible;'+nowGlow+'">'
+        + '<svg viewBox="0 0 36 36" style="width:22px;height:22px;transform:rotate(-90deg);overflow:visible;'+nowGlow+'">'
         + '<circle cx="18" cy="18" r="15.5" fill="'+(isNow?'var(--acc-dim)':'none')+'" stroke="var(--surface-2)" stroke-width="'+nowStroke+'"/>'
         + '<circle cx="18" cy="18" r="15.5" fill="none" stroke="'+ringColor+'" stroke-width="'+nowStroke+'" stroke-linecap="round" stroke-dasharray="'+dash+'"/>'
         + '<text x="18" y="20" text-anchor="middle" font-size="12" font-weight="800" fill="'+txtColor+'" transform="rotate(90,18,18)">'+i+'</text>'
@@ -3107,61 +3100,90 @@ async function broadcastCopySignal(action, symbol, stake){
 }
 
 // ── Login Screen (Deriv OAuth2.0 + REST OTP flow) ──
-function oauthLogin(){
+async function oauthLogin(){
   const err = document.getElementById('loginError');
   err.textContent='';
-  // Check if this is a redirect back from OAuth (token in URL)
-  const params = new URLSearchParams(window.location.search);
-  const urlToken = params.get('token1');
-  if(urlToken){
-    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
-    document.getElementById('loginPat').value = urlToken;
-    // Store account mapping from OAuth redirect: token1=..., acct1=..., cur1=...
-    const accounts = [];
-    for(let i=1; ; i++){
-      const t = params.get('token'+i); const a = params.get('acct'+i); const c = params.get('cur'+i);
-      if(!t || !a) break;
-      accounts.push({ token:t, account:a, currency:c||'USD' });
-    }
-    G._oauthAccounts = accounts;
-    authorizePat();
-    return;
-  }
-  // Open Deriv OAuth2.0 popup
-  const popup = window.open(
-    'https://oauth.deriv.com/oauth2/authorize?app_id='+G.APP_ID,
-    'deriv_oauth',
-    'width=500,height=700,menubar=no,toolbar=no,location=yes'
-  );
-  if(!popup || popup.closed){ err.textContent='Popup blocked — allow popups or paste a token manually'; return; }
-  // Poll popup for redirect with token1
-  const pollTimer = setInterval(() => {
-    try {
-      if(popup.closed){ clearInterval(pollTimer); return; }
-      const popupUrl = popup.location.href;
-      if(popupUrl.includes('token1=')){
-        clearInterval(pollTimer);
-        popup.close();
-        // Extract all token/acct/cur params
-        const m = popupUrl.match(/[?&]token1=([^&]+)/);
-        if(m && m[1]){
-          document.getElementById('loginPat').value = decodeURIComponent(m[1]);
-          // Parse all accounts from the redirect
-          const accounts = [];
-          for(let i=1; ; i++){
-            const tMatch = popupUrl.match(new RegExp('[?&]acct'+i+'=([^&]+)'));
-            const tTok  = popupUrl.match(new RegExp('[?&]token'+i+'=([^&]+)'));
-            const tCur  = popupUrl.match(new RegExp('[?&]cur'+i+'=([^&]+)'));
-            if(!tTok || !tMatch) break;
-            accounts.push({ token:decodeURIComponent(tTok[1]), account:decodeURIComponent(tMatch[1]), currency:decodeURIComponent(tCur?.[1]||'USD') });
-          }
-          G._oauthAccounts = accounts;
-          authorizePat();
+  try {
+    // 1. Generate PKCE code_verifier (random 43-128 chars from unreserved set)
+    const array = crypto.getRandomValues(new Uint8Array(64));
+    const codeVerifier = Array.from(array).map(v =>
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'[v % 66]
+    ).join('');
+    // 2. Derive SHA-256 code_challenge
+    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier));
+    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    // 3. Generate random state for CSRF
+    const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map(v => v.toString(16).padStart(2,'0')).join('');
+    // 4. Store PKCE params and redirect URI in sessionStorage
+    const redirectUri = window.location.href.split('?')[0].split('#')[0];
+    sessionStorage.setItem('oauth_code_verifier', codeVerifier);
+    sessionStorage.setItem('oauth_state', state);
+    sessionStorage.setItem('oauth_redirect_uri', redirectUri);
+    // 5. Build authorization URL per Deriv OAuth2.0 spec
+    const authUrl = 'https://auth.deriv.com/oauth2/auth?' + new URLSearchParams({
+      response_type: 'code',
+      client_id: G.APP_ID,
+      redirect_uri: redirectUri,
+      scope: 'trade account_manage',
+      state: state,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256'
+    }).toString();
+    // 6. Open popup for OAuth
+    const popup = window.open(authUrl, 'deriv_oauth', 'width=500,height=700,menubar=no,toolbar=no,location=yes');
+    if(!popup || popup.closed){ err.textContent='Popup blocked — allow popups or paste a token manually'; return; }
+    // 7. Poll popup for redirect back with authorization code
+    const pollTimer = setInterval(() => {
+      try {
+        if(popup.closed){ clearInterval(pollTimer); return; }
+        const popupUrl = popup.location.href;
+        if(popupUrl.includes('code=') || popupUrl.includes('error=')){
+          clearInterval(pollTimer);
+          popup.close();
+          const url = new URL(popupUrl);
+          const returnedState = url.searchParams.get('state');
+          const storedState = sessionStorage.getItem('oauth_state');
+          if(returnedState !== storedState){ err.textContent='State mismatch — CSRF detected'; return; }
+          const code = url.searchParams.get('code');
+          if(!code){ err.textContent='Authorization denied: '+(url.searchParams.get('error_description')||'cancelled'); return; }
+          sessionStorage.removeItem('oauth_state');
+          // 8. Exchange authorization code for access token
+          exchangeOAuthCode(code);
         }
-      }
-    } catch(e){ /* cross-origin until redirect lands */ }
-  }, 300);
-  setTimeout(() => { clearInterval(pollTimer); if(!popup.closed) popup.close(); }, 120000);
+      } catch(e){ /* cross-origin until redirect lands */ }
+    }, 300);
+    setTimeout(() => { clearInterval(pollTimer); if(!popup.closed) popup.close(); }, 120000);
+  } catch(e){ err.textContent='OAuth error: '+e.message; }
+}
+async function exchangeOAuthCode(code){
+  const err = document.getElementById('loginError');
+  const codeVerifier = sessionStorage.getItem('oauth_code_verifier');
+  const redirectUri = sessionStorage.getItem('oauth_redirect_uri');
+  sessionStorage.removeItem('oauth_code_verifier');
+  sessionStorage.removeItem('oauth_redirect_uri');
+  try {
+    const resp = await fetch('https://auth.deriv.com/oauth2/token', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type:'authorization_code',
+        client_id: G.APP_ID,
+        code: code,
+        code_verifier: codeVerifier,
+        redirect_uri: redirectUri
+      })
+    });
+    const data = await resp.json();
+    if(data.access_token){
+      document.getElementById('loginPat').value = data.access_token;
+      err.textContent='';
+      authorizePat();
+    } else {
+      err.textContent='Token exchange failed: '+(data.error_description||data.error||'unknown');
+    }
+  } catch(e){ err.textContent='Token exchange error: '+e.message; }
 }
 async function authorizePat(){
   const inp = document.getElementById('loginPat');
@@ -3268,10 +3290,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const themeBtn = document.getElementById('themeBtn');
   if(themeBtn) themeBtn.textContent = document.documentElement.classList.contains('dark') ? '\u2600\ufe0f' : '\u{1f319}';
   G.BOOT_AT = Date.now();
-  // Check for OAuth token in URL (from Deriv redirect)
+  // Check for OAuth redirect back (PKCE code or legacy token1)
   const params = new URLSearchParams(window.location.search);
+  const urlCode = params.get('code');
+  const urlState = params.get('state');
   const urlToken = params.get('token1');
-  if(urlToken){
+  if(urlCode && urlState === sessionStorage.getItem('oauth_state')){
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    sessionStorage.removeItem('oauth_state');
+    exchangeOAuthCode(urlCode);
+  } else if(urlToken){
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
     document.getElementById('loginPat').value = urlToken;
     setTimeout(() => authorizePat(), 100);
