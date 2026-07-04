@@ -3247,7 +3247,7 @@ async function oauthLogin(){
     // 3. Generate random state for CSRF
     const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map(v => v.toString(16).padStart(2,'0')).join('');
-    // 4. Store PKCE params and redirect URI in sessionStorage
+    // 4. Store PKCE params so they survive the redirect back
     const redirectUri = window.location.href.split('?')[0].split('#')[0];
     sessionStorage.setItem('oauth_code_verifier', codeVerifier);
     sessionStorage.setItem('oauth_state', state);
@@ -3260,32 +3260,12 @@ async function oauthLogin(){
       scope: 'trade',
       state: state,
       code_challenge: codeChallenge,
-      code_challenge_method: 'S256'
+      code_challenge_method: 'S256',
+      prompt: 'login'
     }).toString();
-    // 6. Open popup for OAuth
-    const popup = window.open(authUrl, 'deriv_oauth', 'width=500,height=700,menubar=no,toolbar=no,location=yes');
-    if(!popup || popup.closed){ err.textContent='Popup blocked — allow popups or paste a token manually'; return; }
-    // 7. Poll popup for redirect back with authorization code
-    const pollTimer = setInterval(() => {
-      try {
-        if(popup.closed){ clearInterval(pollTimer); return; }
-        const popupUrl = popup.location.href;
-        if(popupUrl.includes('code=') || popupUrl.includes('error=')){
-          clearInterval(pollTimer);
-          popup.close();
-          const url = new URL(popupUrl);
-          const returnedState = url.searchParams.get('state');
-          const storedState = sessionStorage.getItem('oauth_state');
-          if(returnedState !== storedState){ err.textContent='State mismatch — CSRF detected'; return; }
-          const code = url.searchParams.get('code');
-          if(!code){ err.textContent='Authorization denied: '+(url.searchParams.get('error_description')||'cancelled'); return; }
-          sessionStorage.removeItem('oauth_state');
-          // 8. Exchange authorization code for access token
-          exchangeOAuthCode(code);
-        }
-      } catch(e){ /* cross-origin until redirect lands */ }
-    }, 300);
-    setTimeout(() => { clearInterval(pollTimer); if(!popup.closed) popup.close(); }, 120000);
+    // 6. Full-page redirect — works with file:// origins because the
+    //    top-level navigation from Deriv back to our page is permitted
+    window.location.href = authUrl;
   } catch(e){ err.textContent='OAuth error: '+e.message; }
 }
 async function exchangeOAuthCode(code){
