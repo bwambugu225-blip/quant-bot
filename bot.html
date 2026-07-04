@@ -431,14 +431,10 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
       </div>
       <div class="stake-row">
         <div class="field"><label>Stake</label><input class="inp" id="rfStake" type="number" value="1" min="0.35" step="0.5"></div>
-        <div class="field"><label>Duration</label>
-          <select class="inp" id="rfDuration">
-            <option value="5t">5t</option><option value="10t">10t</option>
-            <option value="15" selected>15s</option>
-            <option value="30">30s</option><option value="60">60s</option>
-            <option value="120">120s</option><option value="180">180s</option>
-          </select>
-        </div>
+          <div class="field"><label>Duration</label>
+            <span style="font-size:11px;font-weight:700;padding:4px 0;display:block">15s <span style="font-size:7px;color:var(--muted);font-weight:400">(locked)</span></span>
+            <input type="hidden" id="rfDuration" value="15">
+          </div>
       </div>
         <div class="trade-btn-row">
           <button id="rfStartBtn" class="btn btn-call" onclick="startRF()" style="flex:1">START</button>
@@ -479,6 +475,9 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
       </div>
       <div id="recentTrades" style="font-size:9px;color:var(--muted);max-height:110px;overflow-y:auto;padding:2px 0">No trades yet</div>
     </div>
+
+  <!-- Toast notifications -->
+  <div id="toastContainer" style="position:fixed;top:12px;right:12px;z-index:99999;display:flex;flex-direction:column;gap:6px;pointer-events:none"></div>
 
   <!-- Hidden fallback elements for phantom IDs referenced by JS -->
   <div style="display:none">
@@ -1568,7 +1567,9 @@ function onDigitContractResolved(won, profit){
     BotState.currentStake = +(BotState.baseStake * factor).toFixed(2);
   }
   if(BotState.totalProfitLoss >= BotState.targetProfit || BotState.totalProfitLoss <= -BotState.stopLoss){
-    log(`[DIGIT] ${BotState.totalProfitLoss >= BotState.targetProfit ? 'TP' : 'SL'} hit — resetting PnL, continuing`,'w');
+    const isTP = BotState.totalProfitLoss >= BotState.targetProfit;
+    showToast(`${isTP ? 'TAKE PROFIT' : 'STOP LOSS'} $${BotState.totalProfitLoss.toFixed(2)}`, isTP ? 'tp' : 'sl');
+    log(`[DIGIT] ${isTP ? 'TP' : 'SL'} hit — resetting PnL, continuing`,'w');
     resetDigitPnL();
     return;
   }
@@ -2143,6 +2144,8 @@ function evaluateAndTrade(sym){
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
   if(Date.now() - G.BOOT_AT < 4000) return;
   if(G.MARKET_SELECTION_MODE==='manual' && sym!==G.SELECTED_MARKET) return;
+  // Must trade within 1s of candle close — guarantees immediate entry on closure
+  if(G.MARKET.lastCloseAt?.[sym] && Date.now() - G.MARKET.lastCloseAt[sym] > 1000) return;
   const result = getConsensus(sym);
   if(result && result.conf >= 85){
     const prices = G.MARKET.prices[sym];
@@ -2247,6 +2250,8 @@ function handleContract(c){
       G.PROCESSED_CONTRACTS = new Set(arr.slice(-200));
     }
     const won = c.status==='won' || (c.is_sold === 1 && c.profit > 0);
+    const profitStr = (c.profit>=0?'+':'')+c.profit.toFixed(2);
+    showToast(`${won?'WIN':'LOSS'} ${profitStr}`, won?'win':'loss');
     log(`[${won?'WIN':'LOSS'}] ${fmt$(c.profit)}`, won?'s':'e');
     if(G.LAST_SIGNAL && G.TRADE_MODE!=='DIGITS'){ updateStrategyStats(G.LAST_SIGNAL, won); learnFromTrade(G.LAST_SIGNAL, won); }
     if(won){ G.WINS++; G.CONS_LOSS=0; }
@@ -2400,28 +2405,31 @@ function drawChart(){
     close: liveBuf[liveBuf.length-1]
   } : null;
   const all = liveCandle ? [...c, liveCandle] : c;
-  const FIXED_CW = Math.max(6, Math.min(10, 800 / all.length));
-  const totalW = all.length * FIXED_CW + 20;
   const dpr = window.devicePixelRatio || 1;
   const h = canvas.clientHeight || 250;
-  canvas.style.width = totalW + 'px';
-  canvas.width = totalW * dpr;
-  canvas.height = h * dpr;
-  const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.clearRect(0,0,totalW,h);
   if(all.length<2){
+    canvas.style.width = '100%'; canvas.style.minWidth = '';
+    const w = canvas.clientWidth; canvas.width = w*dpr; canvas.height = h*dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
     ctx.fillStyle=MUTED; ctx.font='11px monospace';
     ctx.fillText('Waiting for data...',12,h/2);
     return;
   }
+  const FIXED_CW = Math.max(6, Math.min(10, 800 / all.length));
+  const totalW = all.length * FIXED_CW + 20;
+  canvas.style.width = totalW + 'px'; canvas.style.minWidth = totalW + 'px';
+  canvas.width = totalW * dpr; canvas.height = h * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,totalW,h);
   let lo=Infinity,hi=-Infinity;
   for(const k of all){if(k.low<lo)lo=k.low;if(k.high>hi)hi=k.high;}
   const pad=(hi-lo)*0.1||0.001, yMin=lo-pad, yMax=hi+pad;
   const ny=v=>h-((v-yMin)/(yMax-yMin))*h;
   const cw=FIXED_CW;
   ctx.strokeStyle=LINE; ctx.lineWidth=1;
-  for(let i=1;i<5;i++){const y=h*i/5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+  for(let i=1;i<5;i++){const y=h*i/5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(totalW,y);ctx.stroke();}
   all.forEach((k,i)=>{
     const live = hasLive && i===all.length-1;
     const x=i*cw+cw/2, up=k.close>=k.open;
@@ -2621,8 +2629,12 @@ function updateDigitsUI(){
   const get = (id) => document.getElementById(id);
   const hist = BotState.tickHistory; // capped at 1000
   const histLen = hist.length;
+  // Throttle full SVG rebuild to every 5th tick (cursor stays smooth)
+  const throttleKey = '_dgThrottle';
+  if(!G[throttleKey]) G[throttleKey]=0;
+  G[throttleKey]++;
+  const fullRebuild = G[throttleKey] % 5 === 0;
   // Digit circles
-  const hfreq = Array(10).fill(0);
   for(const d of hist) hfreq[d]++;
   const hTotal = histLen || 1;
   let maxF=0, maxD=-1, minF=histLen, minD=-1;
@@ -2633,29 +2645,36 @@ function updateDigitsUI(){
   const circles = get('dgDigitCircles');
   if(circles){
     const now = q.length ? q[q.length-1] : -1;
-    circles.innerHTML = hfreq.map((f,i)=>{
-      const pct = (f/hTotal*100);
-      const pctStr = pct.toFixed(1);
-      const isMax = i===maxD;
-      const isMin = i===minD;
-      const isNow = i===now;
-      const ringColor = isMax ? 'var(--positive)' : isMin ? 'var(--negative)' : 'var(--muted)';
-      const txtColor = isMax ? 'var(--positive)' : isMin ? 'var(--negative)' : 'var(--muted)';
-      const circ = 2 * Math.PI * 15.5; // ~97.4 — actual path length
-      const dash = pct === 0 ? '0.1 ' + circ.toFixed(1) : (pct/100*circ).toFixed(1) + ' ' + ((100-pct)/100*circ).toFixed(1);
-      const nowStroke = isNow ? '4.5' : '3.5';
-      const nowGlow = isNow ? 'filter:drop-shadow(0 0 4px var(--accent));' : '';
-      return '<div class="dg-circle'+(isNow?' now':'')+'">'
-        + '<div class="c">'
-        + '<svg viewBox="0 0 36 36" style="width:22px;height:22px;transform:rotate(-90deg);overflow:visible;'+nowGlow+'">'
-        + '<circle cx="18" cy="18" r="15.5" fill="'+(isNow?'var(--acc-dim)':'none')+'" stroke="var(--surface-2)" stroke-width="'+nowStroke+'"/>'
-        + '<circle cx="18" cy="18" r="15.5" fill="none" stroke="'+ringColor+'" stroke-width="'+nowStroke+'" stroke-linecap="round" stroke-dasharray="'+dash+'"/>'
-        + '<text x="18" y="20" text-anchor="middle" font-size="12" font-weight="800" fill="'+txtColor+'" transform="rotate(90,18,18)">'+i+'</text>'
-        + '</svg>'
-        + '</div>'
-        + '<span class="pct">'+pctStr+'%</span>'
-        + '</div>';
-    }).join('');
+    if(fullRebuild){
+      circles.innerHTML = hfreq.map((f,i)=>{
+        const pct = (f/hTotal*100);
+        const pctStr = pct.toFixed(1);
+        const isMax = i===maxD;
+        const isMin = i===minD;
+        const isNow = i===now;
+        const ringColor = isMax ? 'var(--positive)' : isMin ? 'var(--negative)' : 'var(--muted)';
+        const txtColor = isMax ? 'var(--positive)' : isMin ? 'var(--negative)' : 'var(--muted)';
+        const circ = 2 * Math.PI * 15.5;
+        const dash = pct === 0 ? '0.1 ' + circ.toFixed(1) : (pct/100*circ).toFixed(1) + ' ' + ((100-pct)/100*circ).toFixed(1);
+        const nowStroke = isNow ? '4.5' : '3.5';
+        const nowGlow = isNow ? 'filter:drop-shadow(0 0 4px var(--accent));' : '';
+        return '<div class="dg-circle'+(isNow?' now':'')+'">'
+          + '<div class="c">'
+          + '<svg viewBox="0 0 36 36" style="width:22px;height:22px;transform:rotate(-90deg);overflow:visible;'+nowGlow+'">'
+          + '<circle cx="18" cy="18" r="15.5" fill="'+(isNow?'var(--acc-dim)':'none')+'" stroke="var(--surface-2)" stroke-width="'+nowStroke+'"/>'
+          + '<circle cx="18" cy="18" r="15.5" fill="none" stroke="'+ringColor+'" stroke-width="'+nowStroke+'" stroke-linecap="round" stroke-dasharray="'+dash+'"/>'
+          + '<text x="18" y="20" text-anchor="middle" font-size="12" font-weight="800" fill="'+txtColor+'" transform="rotate(90,18,18)">'+i+'</text>'
+          + '</svg>'
+          + '</div>'
+          + '<span class="pct">'+pctStr+'%</span>'
+          + '</div>';
+      }).join('');
+    }
+    // Always update NOW indicator without full rebuild
+    const nowEl = get('dgNowDigit');
+    if(nowEl) nowEl.textContent = now>=0 ? String(now) : '—';
+    setText('dgHottest', maxD>=0 ? `${maxD} (${(maxF/hTotal*100).toFixed(1)}%)` : '—');
+    setText('dgColdest', minD>=0 ? `${minD} (${(minF/hTotal*100).toFixed(1)}%)` : '—');
   }
   setText('dgDistRange', 'Last '+histLen+' ticks');
   const cs = digitChiSq(hist);
@@ -2666,9 +2685,6 @@ function updateDigitsUI(){
   }
   const dgMarket = get('dgMarketName');
   if(dgMarket){ const s = G.CURRENT_MARKET; const info = SYMBOLS.find(x=>x.sym===s); dgMarket.textContent = info?info.name+' ('+s+')':s; }
-  setText('dgHottest', maxD>=0 ? `${maxD} (${(maxF/hTotal*100).toFixed(1)}%)` : '—');
-  setText('dgColdest', minD>=0 ? `${minD} (${(minF/hTotal*100).toFixed(1)}%)` : '—');
-  setText('dgNowDigit', q.length ? String(q[q.length-1]) : '—');
   // EO stats (from tickQueue window)
   let eCnt=0, oCnt=0, eoStr=0, eoLast=null, eoCur=0;
   for(const d of q){
@@ -2906,6 +2922,17 @@ function downloadTradeLog(){
   log(`[EXPORT] ${a.download} — ${(blob.size/1024).toFixed(1)}KB`,'s');
 }
 
+function showToast(msg, type){
+  const c = document.getElementById('toastContainer'); if(!c) return;
+  const colors = { win:'#22c55e', loss:'#ef4444', tp:'#3b82f6', sl:'#f59e0b', info:'#8b8b8b' };
+  const bg = colors[type] || colors.info;
+  const el = document.createElement('div');
+  el.textContent = msg;
+  el.style.cssText = `background:${bg};color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.3);opacity:0;transform:translateX(40px);transition:all .3s ease;pointer-events:auto`;
+  c.appendChild(el);
+  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
+  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(40px)'; setTimeout(() => el.remove(), 300); }, 2500);
+}
 function addRecentTrade(text,cls){
   const el = document.getElementById('recentTrades'); if(!el) return;
   if(el.textContent==='No trades yet') el.innerHTML='';
