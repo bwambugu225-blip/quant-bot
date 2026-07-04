@@ -440,11 +440,15 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
           </select>
         </div>
       </div>
-      <div class="trade-btn-row">
-        <button id="rfStartBtn" class="btn btn-call" onclick="startRF()" style="flex:1">START</button>
-        <button id="rfStopBtn" class="btn btn-put" onclick="stopRF()" style="flex:1;display:none">STOP</button>
-        <button class="btn btn-ghost" onclick="downloadTradeLog()" style="padding:4px 8px;font-size:8px">EXPORT</button>
-      </div>
+        <div class="trade-btn-row">
+          <button id="rfStartBtn" class="btn btn-call" onclick="startRF()" style="flex:1">START</button>
+          <button id="rfStopBtn" class="btn btn-put" onclick="stopRF()" style="flex:1;display:none">STOP</button>
+          <button class="btn btn-ghost" onclick="downloadTradeLog()" style="padding:4px 8px;font-size:8px">EXPORT</button>
+        </div>
+        <div style="display:flex;gap:4px;margin-top:4px;border-top:1px solid var(--line);padding-top:4px">
+          <button class="btn btn-call" onclick="placeManualRF('RISE')" style="flex:1;padding:6px">RISE</button>
+          <button class="btn btn-put" onclick="placeManualRF('FALL')" style="flex:1;padding:6px">FALL</button>
+        </div>
       <div style="display:flex;gap:6px;align-items:center;margin-top:5px">
         <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
           <input type="checkbox" id="rfMartToggle" onchange="toggleRFMartingale()" style="width:13px;height:13px;accent-color:var(--accent)">
@@ -462,7 +466,9 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
 
     <!-- Chart -->
     <div class="card" style="padding:4px">
-      <canvas id="liveChart" style="width:100%;height:250px;display:block"></canvas>
+      <div style="overflow-x:auto;overflow-y:hidden">
+        <canvas id="liveChart" style="height:250px;display:block"></canvas>
+      </div>
     </div>
 
     <!-- Trade History -->
@@ -1095,6 +1101,31 @@ function initStrategies(){
     if(consecDn) return {action:'RISE',conf:80,src:'PAC'};
     return null;
   }});
+  // S39: Immediate Reversal — exploits trend exhaustion + first reversal candle
+  S.push({ name:'Immediate Rev', code:'IRE', analyze:(c)=>{
+    if(c.length<10) return null;
+    const last=c[c.length-1]; if(!last) return null;
+    let dnCnt=0,upCnt=0;
+    for(let i=c.length-2;i>=Math.max(0,c.length-7);i--){
+      const x=c[i]; if(!x) break;
+      if(x.close<x.open) dnCnt++; else break;
+    }
+    for(let i=c.length-2;i>=Math.max(0,c.length-7);i--){
+      const x=c[i]; if(!x) break;
+      if(x.close>x.open) upCnt++; else break;
+    }
+    const range=last.high-last.low; if(range===0) return null;
+    const body=Math.abs(last.close-last.open);
+    const lw=(Math.min(last.open,last.close)-last.low)/range;
+    const uw=(last.high-Math.max(last.open,last.close))/range;
+    // 3+ bearish then green reversal with strong lower wick (buyers stepped in)
+    if(dnCnt>=3&&last.close>last.open&&lw>0.5&&body/range>0.2)
+      return {action:'RISE',conf:86,src:'IRE'};
+    // 3+ bullish then red reversal with strong upper wick (sellers stepped in)
+    if(upCnt>=3&&last.close<last.open&&uw>0.5&&body/range>0.2)
+      return {action:'FALL',conf:86,src:'IRE'};
+    return null;
+  }});
   G.STRATEGY_ACTIVE = G.STRATEGIES.map(()=>true);
   G.STRATEGY_WEIGHTS = G.STRATEGIES.map(()=>1.0);
 }
@@ -1236,6 +1267,15 @@ function setDigitContract(type){
   else { act(btnMC,'MATCH'); if(tradesMC)tradesMC.style.display='flex'; }
 }
 
+function placeManualRF(action){
+  if(!G.AUTH){ log('[RF] Authorize first','e'); return; }
+  if(!G.WS || G.WS.readyState!==WebSocket.OPEN){ log('[RF] WS not open','e'); return; }
+  if(G.ACTIVE_CONTRACTS.size>=1){ log('[RF] Contract active — wait','w'); return; }
+  const raw = document.getElementById('rfDuration')?.value || '15';
+  if(raw.endsWith('t')){ G.TRADE_DURATION = parseInt(raw); G.TRADE_DURATION_UNIT = 't'; }
+  else { G.TRADE_DURATION = parseInt(raw); G.TRADE_DURATION_UNIT = 's'; }
+  execTrade({ action, conf:100, src:'MANUAL', sym:G.CURRENT_MARKET||'R_50', lastPrice:0 });
+}
 function placeDigitManual(contractType){
   if(!G.AUTH){ log('[DIGIT] Authorize first','e'); return; }
   if(!G.WS || G.WS.readyState!==WebSocket.OPEN){ log('[DIGIT] WS not open','e'); return; }
@@ -2360,12 +2400,16 @@ function drawChart(){
     close: liveBuf[liveBuf.length-1]
   } : null;
   const all = liveCandle ? [...c, liveCandle] : c;
+  const FIXED_CW = Math.max(6, Math.min(10, 800 / all.length));
+  const totalW = all.length * FIXED_CW + 20;
   const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  if(canvas.width!==w*dpr||canvas.height!==h*dpr){ canvas.width=w*dpr; canvas.height=h*dpr; }
+  const h = canvas.clientHeight || 250;
+  canvas.style.width = totalW + 'px';
+  canvas.width = totalW * dpr;
+  canvas.height = h * dpr;
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.clearRect(0,0,w,h);
+  ctx.clearRect(0,0,totalW,h);
   if(all.length<2){
     ctx.fillStyle=MUTED; ctx.font='11px monospace';
     ctx.fillText('Waiting for data...',12,h/2);
@@ -2375,7 +2419,7 @@ function drawChart(){
   for(const k of all){if(k.low<lo)lo=k.low;if(k.high>hi)hi=k.high;}
   const pad=(hi-lo)*0.1||0.001, yMin=lo-pad, yMax=hi+pad;
   const ny=v=>h-((v-yMin)/(yMax-yMin))*h;
-  const cw=w/all.length;
+  const cw=FIXED_CW;
   ctx.strokeStyle=LINE; ctx.lineWidth=1;
   for(let i=1;i<5;i++){const y=h*i/5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
   all.forEach((k,i)=>{
