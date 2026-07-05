@@ -1195,6 +1195,20 @@ function getConsensus(sym){
   if(G._marketLossAt?.[sym] && Date.now() - G._marketLossAt[sym] < 45000) return null;
   // ── Loss cluster breaker: 2+ losses in 120s → pause all 60s ──
   if(G._clusterUntil && Date.now() < G._clusterUntil) return null;
+
+  // ── REGIME FILTER: skip strong trends (mean reversion needs ranging) ──
+  const cl=closes(c), hi=highs(c), lo=lows(c);
+  if(cl.length>=30){
+    const di=(i)=>{ const u=hi[i]-hi[i-1], d=lo[i-1]-lo[i]; return {up:u>0?u:0,dn:d>0?d:0}; };
+    let uS=0,dS=0,tS=0;
+    for(let i=cl.length-14;i<cl.length;i++){ const d=di(i); uS+=d.up; dS+=d.dn; tS+=Math.max(hi[i]-lo[i],Math.abs(hi[i]-cl[i-1]),Math.abs(lo[i]-cl[i-1])); }
+    if(tS>0){ const dx=Math.abs(uS-dS)/(uS+dS)*100; if(dx>30) return null; }
+  }
+
+  // ── MEAN REVERSION CONFLUENCE: require 3+ OB/OS indicators agreeing ──
+  const obos = obosConfluence(c);
+  if(!obos || obos.count < 3) return null;
+
   const votes = { RISE:[], FALL:[] };
   const weights = G.STRATEGY_WEIGHTS || G.STRATEGIES.map(()=>1.0);
   G.STRATEGIES.forEach((s,i)=>{
@@ -1214,7 +1228,22 @@ function getConsensus(sym){
   const winner = wRise >= wFall ? 'RISE' : 'FALL';
   const pct = Math.max(wRise, wFall) / total * 100;
   const agree = Math.max(votes.RISE.length, votes.FALL.length);
+  // Must match OB/OS direction AND have strong consensus
+  if(winner !== obos.direction) return null;
   if(pct < 85 || agree < 5) return null;
+
+  // ── WICK CONFIRMATION: last candle must show rejection ──
+  const last = c[c.length-1];
+  if(last){
+    const range = last.high - last.low;
+    if(range > 0){
+      const uw = (last.high - Math.max(last.open, last.close)) / range;
+      const lw = (Math.min(last.open, last.close) - last.low) / range;
+      if(winner === 'RISE' && lw < 0.35) return null;
+      if(winner === 'FALL' && uw < 0.35) return null;
+    }
+  }
+
   // ── Fingerprint suppression check ──
   const fp = fingerprint(sym, winner);
   if(isSuppressed(fp)){
@@ -1227,6 +1256,194 @@ function getConsensus(sym){
   const boost = Math.min(5, (agree-4)*1.5);
   const conf = Math.min(95, Math.round(avgConf + boost));
   return { action:winner, conf, src:'ENS', fp, count:agree, total:votes.RISE.length+votes.FALL.length, pct:Math.round(pct) };
+}
+function obosConfluence(c){
+  const cl=closes(c), hi=highs(c), lo=lows(c);
+  if(!cl || cl.length<30) return null;
+  const rsiVal=rsi(cl,14); if(rsiVal==null) return null;
+  // Stoch %K
+  let kArr=[];
+  for(let i=cl.length-14;i<cl.length;i++){ const hh=Math.max(...hi.slice(i-14,i)), ll=Math.min(...lo.slice(i-14,i)); kArr.push(hh===ll?50:((cl[i]-ll)/(hh-ll))*100); }
+  const sk=kArr[kArr.length-1];
+  // Williams %R
+  const wr=(()=>{ const hh=Math.max(...hi.slice(-14)), ll=Math.min(...lo.slice(-14)); return hh===ll?-50:((hh-cl[cl.length-1])/(hh-ll))*-100; })();
+  // CCI
+  const cv=cci(c,14);
+  // Bollinger %B
+  const m=sma(cl,20), sd=stddev(cl,20);
+  const bb=(m!=null&&sd!=null&&sd!==0)?((cl[cl.length-1]-(m-2*sd))/(4*sd))*100:50;
+  let os=0,ob=0;
+  const threshold={'rsi':35,'stoch':25,'wr':-75,'cci':-100,'bb':25};
+  if(rsiVal<threshold.rsi)os++;else if(rsiVal>100-threshold.rsi)ob++;
+  if(sk<threshold.stoch)os++;else if(sk>100-threshold.stoch)ob++;
+  if(wr<threshold.wr)os++;else if(wr>-threshold.wr)ob++;
+  if(cv!=null&&cv<threshold.cci)os++;else if(cv!=null&&cv>-threshold.cci)ob++;
+  if(bb<threshold.bb)os++;else if(bb>100-threshold.bb)ob++;
+  if(os>=3)return{direction:'RISE',count:os,score:os>=4?90:80};
+  if(ob>=3)return{direction:'FALL',count:ob,score:ob>=4?90:80};
+  return null;
+}
+
+// ── ELITE MODE: market-specific optimized strategies ──
+const ELITE = {
+  // Format: sym -> { fn:'NAME', params, minConf, name }
+  // fn is one of: 'WR', 'WR+STO', 'WR+TF', 'WR+WCK', 'REV', 'BBO'
+  'R_10':    { fn:'WR+TF',  params:{wrP:7, wrOS:80, tfLb:2}, minConf:70, name:'W80P7+T2' },
+  'R_25':    { fn:'WR+STO', params:{wrP:7, wrOS:90},        minConf:70, name:'W90P7+STO' },
+  'R_50':    { fn:'WR+TF',  params:{wrP:10, wrOS:85, tfLb:2}, minConf:70, name:'W85P10+T2' },
+  'R_75':    { fn:'WR+WCK', params:{wrP:14, wrOS:90, wck:0.35}, minConf:70, name:'W90P14+WCK' },
+  'R_100':   { fn:'REV',    params:{trendN:3, wickMin:0.50}, minConf:70, name:'REV3_50' },
+  '1HZ10V':  { fn:'BBO',    params:{bbPd:20, bbMult:2.5},   minConf:70, name:'BBO25' },
+  '1HZ25V':  { fn:'WR',     params:{wrP:7, wrOS:95},        minConf:70, name:'W95P7' },
+  '1HZ50V':  { fn:'WR+WCK', params:{wrP:14, wrOS:80, wck:0.35}, minConf:70, name:'W80P14+WCK' },
+  '1HZ75V':  { fn:'WR+STO', params:{wrP:7, wrOS:85},        minConf:70, name:'W85P7+STO' },
+  '1HZ100V': { fn:'WR',     params:{wrP:10, wrOS:75},       minConf:70, name:'W75P10' },
+};
+
+function wrVal(c,p){
+  if(c.length<p+1) return null;
+  const hi=highs(c), lo=lows(c), cl=closes(c);
+  const hh=Math.max(...hi.slice(-p)), ll=Math.min(...lo.slice(-p));
+  return hh===ll?-50:((hh-cl[cl.length-1])/(hh-ll))*-100;
+}
+
+function eliteWR(c, p, osLvl){
+  const wr=wrVal(c,p);
+  if(wr===null) return null;
+  const last=c[c.length-1];
+  if(wr<-osLvl && last.close>last.open) return 'RISE';
+  if(wr>-20 && last.close<last.open) return 'FALL';
+  return null;
+}
+
+function eliteStoch(c, p, osLvl){
+  if(c.length<p+4) return null;
+  const hi=highs(c), lo=lows(c), cl=closes(c);
+  let kArr=[];
+  for(let i=cl.length-p;i<cl.length;i++){
+    const hh=Math.max(...hi.slice(i-p,i)), ll=Math.min(...lo.slice(i-p,i));
+    kArr.push(hh===ll?50:((cl[i]-ll)/(hh-ll))*100);
+  }
+  if(kArr.length<4) return null;
+  const kk=kArr[kArr.length-1], pk=kArr[kArr.length-2];
+  const dd=sma(kArr,3), pd=sma(kArr.slice(0,-1),3);
+  if(dd===null||pd===null) return null;
+  const last=c[c.length-1];
+  if(pk<=dd&&kk>dd&&kk<osLvl&&last.close>last.open) return 'RISE';
+  if(pk>=dd&&kk<dd&&kk>(100-osLvl)&&last.close<last.open) return 'FALL';
+  return null;
+}
+
+function eliteTrend(c, lb){
+  if(c.length<lb+1) return null;
+  const cl=closes(c);
+  let green=0,red=0;
+  for(let i=cl.length-lb;i<cl.length;i++){
+    if(c[i].close>c[i].open) green++;
+    else red++;
+  }
+  if(green===lb) return 'RISE';
+  if(red===lb) return 'FALL';
+  return null;
+}
+
+function eliteWick(c, minW){
+  if(c.length<3) return null;
+  const last=c[c.length-1], prev=c[c.length-2];
+  const rg=last.high-last.low; if(rg<=0) return null;
+  const lw=(Math.min(last.open,last.close)-last.low)/rg;
+  const uw=(last.high-Math.max(last.open,last.close))/rg;
+  if(lw>=minW&&last.close>last.open&&last.close>prev.close) return 'RISE';
+  if(uw>=minW&&last.close<last.open&&last.close<prev.close) return 'FALL';
+  return null;
+}
+
+function eliteBBO(c, pd, mult){
+  if(c.length<pd+2) return null;
+  const cl=closes(c); const m=sma(cl,pd), sd=stddev(cl,pd);
+  if(m===null||sd===null||sd===0) return null;
+  const upper=m+mult*sd, lower=m-mult*sd;
+  const last=c[c.length-1];
+  if(last.close>upper&&last.close>last.open) return 'RISE';
+  if(last.close<lower&&last.close<last.open) return 'FALL';
+  return null;
+}
+
+function eliteRev(c, trendN, wickMin){
+  if(c.length<trendN+3) return null;
+  const last=c[c.length-1], prev=c[c.length-2];
+  let dn=true,up=true;
+  for(let i=1;i<=trendN;i++){
+    const x=c[c.length-1-i];
+    if(x.close>=x.open) dn=false;
+    if(x.close<=x.open) up=false;
+  }
+  const rg=last.high-last.low; if(rg<=0) return null;
+  const lw=(Math.min(last.open,last.close)-last.low)/rg;
+  const uw=(last.high-Math.max(last.open,last.close))/rg;
+  if(dn&&last.close>last.open&&lw>=wickMin&&last.close>prev.close) return 'RISE';
+  if(up&&last.close<last.open&&uw>=wickMin&&last.close<prev.close) return 'FALL';
+  return null;
+}
+
+function getEliteSignal(sym){
+  const cfg=ELITE[sym];
+  if(!cfg) return null;
+  const c=G.MARKET.candles[sym];
+  if(!c||c.length<30) return null;
+  // Cooldowns
+  if(G._lastTradeAt&&Date.now()-G._lastTradeAt<20000) return null;
+  if(G._marketLossAt?.[sym]&&Date.now()-G._marketLossAt[sym]<45000) return null;
+  if(G._clusterUntil&&Date.now()<G._clusterUntil) return null;
+  // Regime filter: skip strong trends
+  if(c.length>=30){
+    const cl=closes(c), hi=highs(c), lo=lows(c);
+    let uS=0,dS=0,tS=0;
+    for(let i=cl.length-14;i<cl.length;i++){
+      const u=hi[i]-hi[i-1], d=lo[i-1]-lo[i];
+      uS+=u>0?u:0; dS+=d>0?d:0;
+      tS+=Math.max(hi[i]-lo[i],Math.abs(hi[i]-cl[i-1]),Math.abs(lo[i]-cl[i-1]));
+    }
+    if(tS>0){ const dx=Math.abs(uS-dS)/(uS+dS)*100; if(dx>30) return null; }
+  }
+  let dir=null; const p=cfg.params;
+  switch(cfg.fn){
+    case 'WR': dir=eliteWR(c,p.wrP,p.wrOS); break;
+    case 'WR+STO': {
+      const d1=eliteWR(c,p.wrP,p.wrOS);
+      if(!d1) break;
+      const st=eliteStoch(c,14,20);
+      if(st!==d1) break;
+      dir=d1;
+      break;
+    }
+    case 'WR+TF': {
+      const d1=eliteWR(c,p.wrP,p.wrOS);
+      if(!d1) break;
+      const tf=eliteTrend(c,p.tfLb);
+      if(tf!==d1) break;
+      dir=d1;
+      break;
+    }
+    case 'WR+WCK': {
+      const d1=eliteWR(c,p.wrP,p.wrOS);
+      if(!d1) break;
+      const wk=eliteWick(c,p.wck);
+      if(wk!==d1) break;
+      dir=d1;
+      break;
+    }
+    case 'REV': dir=eliteRev(c,p.trendN,p.wickMin); break;
+    case 'BBO': dir=eliteBBO(c,p.bbPd,p.bbMult); break;
+  }
+  if(!dir) return null;
+  const conf=cfg.minConf+5; // boost for elite confirmation
+  const fp=fingerprint(sym, dir);
+  if(isSuppressed(fp)){
+    log(`[IMMUNE] ELITE ${sym} ${dir} (fingerprint: ${fp})`,'i');
+    return null;
+  }
+  return { action:dir, conf:Math.min(95,conf), src:`ELITE-${cfg.name}`, fp, count:2, total:2, pct:90 };
 }
 
 // ── Bot-state-independent chart signal evaluation ──
@@ -2186,7 +2403,16 @@ function evaluateAndTrade(sym){
   if(G.MARKET_SELECTION_MODE==='manual' && sym!==G.SELECTED_MARKET) return;
   // Must trade within 1s of candle close — guarantees immediate entry on closure
   if(G.MARKET.lastCloseAt?.[sym] && Date.now() - G.MARKET.lastCloseAt[sym] > 1000) return;
-  const result = getConsensus(sym);
+  // Elite signal first (market-specific optimized strategy)
+  const eliteResult = getEliteSignal(sym);
+  let result = eliteResult;
+  // Fall back to consensus bot if no elite signal
+  if(!result || result.conf < 85){
+    const consensusResult = getConsensus(sym);
+    if(consensusResult && (!result || consensusResult.conf >= result.conf)){
+      result = consensusResult;
+    }
+  }
   if(result){
     // Record every opportunity for chart markers
     const prices = G.MARKET.prices[sym];
@@ -2202,7 +2428,8 @@ function evaluateAndTrade(sym){
     }
     storeSignal(sym, lastCdl?.epoch||0, result, result.conf >= 85);
     if(result.conf >= 85){
-      log(`[SIGNAL] ${sym}: ${result.action} ${result.conf}% (${result.count} strategies, ${result.pct}% consensus)`,'t');
+      const srcLabel = result.src || 'ENS';
+      log(`[SIGNAL] ${sym}: ${result.action} ${result.conf}% (${srcLabel})`,'t');
       G.CURRENT_MARKET = sym;
       G.SELECTED_MARKET = sym;
       updateWatchlist();

@@ -18,5 +18,5 @@ const handler=(r,s)=>{
     s.end('Not found');
   }
 };
-https.createServer(opts,handler).listen(8443,()=>console.log('HTTPS on 8443'));
+try{ https.createServer(opts,handler).listen(8443,()=>console.log('HTTPS on 8443')); }catch(e){ console.log('HTTPS SKIP:',e.message); }
 http.createServer(handler).listen(8080,()=>console.log('HTTP on 8080'));
