@@ -3248,7 +3248,7 @@ async function oauthLogin(){
     const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map(v => v.toString(16).padStart(2,'0')).join('');
     // 4. Store PKCE params so they survive the redirect back
-    const redirectUri = window.location.href.split('?')[0].split('#')[0];
+    const redirectUri = 'https://dv-quant.vercel.app';
     sessionStorage.setItem('oauth_code_verifier', codeVerifier);
     sessionStorage.setItem('oauth_state', state);
     sessionStorage.setItem('oauth_redirect_uri', redirectUri);
@@ -3265,6 +3265,12 @@ async function oauthLogin(){
     // 6. Full-page redirect
     window.location.href = authUrl;
   } catch(e){ err.textContent='OAuth error: '+e.message; }
+}
+function legacyLogin(){
+  const redirectUri = 'https://dv-quant.vercel.app';
+  sessionStorage.setItem('oauth_redirect_uri', redirectUri);
+  const url = 'https://oauth.deriv.com/oauth2/authorize?app_id='+encodeURIComponent(G.APP_ID)+'&l=EN&redirect_uri='+encodeURIComponent(redirectUri);
+  window.location.href = url;
 }
 async function exchangeOAuthCode(code){
   const err = document.getElementById('loginError');
@@ -3313,12 +3319,11 @@ async function authorizePat(){
   await doRESTFlow(token);
 }
 async function doRESTFlow(token){
-  // Step 1: Call REST API to list accounts (uses OAuth token or PAT)
-  // If OAuth gave us account info, skip listing and go straight to OTP
   let accounts = G._oauthAccounts;
+  // Step 1: Try REST API first
   try {
     if(!accounts || !accounts.length){
-      const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID, 'Content-Type':'application/json' };
+      const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID };
       const resp = await fetch('https://api.derivws.com/trading/v1/options/accounts', { method:'GET', headers:hdrs });
       if(resp.ok){
         const data = await resp.json();
@@ -3326,35 +3331,93 @@ async function doRESTFlow(token){
         G._oauthAccounts = accounts;
       }
     }
-  } catch(e){ log('[AUTH] REST accounts failed: '+e.message,'w'); }
+  } catch(e){ log('[AUTH] REST accounts failed, trying WS...','w'); }
+  // Step 2: Fallback — WS authorize (works with PAT and legacy tokens)
+  if(!accounts || !accounts.length){
+    try {
+      const wsAuth = await wsAuthorize(token);
+      if(wsAuth && wsAuth.length){
+        accounts = wsAuth;
+        G._oauthAccounts = accounts;
+      }
+    } catch(e){ log('[AUTH] WS authorize also failed','e'); }
+  }
   if(!accounts || !accounts.length){
     document.getElementById('loginError').textContent = 'Could not fetch Deriv accounts — check your token';
     document.getElementById('loginPat').disabled=false;
     document.getElementById('oauthBtn').textContent='Login with Deriv';
     return;
   }
-  // Step 2: Pick preferred account (demo first, then real)
+  // Step 3: Pick preferred account
   const preferred = G.ACCOUNT_TYPE || 'demo';
   const isDemo = (a) => a.account.startsWith('VR') || a.isDemo === true || a.is_virtual === true;
   let account = accounts.find(a => (preferred==='demo' ? isDemo(a) : !isDemo(a)));
   if(!account) account = accounts.find(a => isDemo(a)) || accounts[0];
-  const isDemoAcc = isDemo(account);
   G.ACCOUNT_ID = account.account;
-  G.ACCOUNT_TYPE = isDemoAcc ? 'demo' : 'real';
+  G.ACCOUNT_TYPE = isDemo(account) ? 'demo' : 'real';
   G.BALANCE = account.balance || 0;
-  // Step 3: Get OTP for WebSocket URL
+  G.TOKEN = token;
+  // Step 4: Connect via OTP or direct WS
   try {
-    const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID, 'Content-Type':'application/json' };
-    const otpResp = await fetch('https://api.derivws.com/trading/v1/options/accounts/'+account.account+'/otp', { method:'POST', headers:hdrs });
+    const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID };
+    const otpResp = await fetch('https://api.derivws.com/trading/v1/options/accounts/'+account.account+'/otp', { method:'POST', headers:hdrs, body:'{}' });
     if(otpResp.ok){
       const otpData = await otpResp.json();
       const wsUrl = otpData.data?.url || otpData.url;
       if(wsUrl){ connectOTP(wsUrl); return; }
     }
-  } catch(e){ log('[AUTH] OTP failed: '+e.message,'e'); }
-  document.getElementById('loginError').textContent = 'Failed to get WebSocket connection — try again';
-  document.getElementById('loginPat').disabled=false;
-  document.getElementById('oauthBtn').textContent='Login with Deriv';
+  } catch(e){ log('[AUTH] OTP failed, trying direct WS...','w'); }
+  // Step 5: Fallback — direct WS with token in URL
+  connectDirectWS(token);
+}
+function wsAuthorize(token){
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id='+G.APP_ID);
+    let done = false;
+    const t = setTimeout(() => { if(!done){ done=true; ws.close(); reject(new Error('timeout')); } }, 8000);
+    ws.onmessage = (e) => {
+      let msg;
+      try{ msg = JSON.parse(e.data); }catch(er){ return; }
+      if(msg.msg_type === 'authorize'){
+        if(!done && msg.authorize){
+          done = true;
+          clearTimeout(t);
+          ws.close();
+          const acc = msg.authorize;
+          const loginId = acc.loginid;
+          const currency = acc.currency || 'USD';
+          const isVirtual = acc.is_virtual === 1 || acc.is_virtual === true || loginId?.startsWith('VR');
+          const balance = parseFloat(acc.balance || 0);
+          resolve([{ account:loginId, token:token, currency:currency, isDemo:isVirtual, balance:balance }]);
+        }
+      } else if(msg.error && msg.error.code === 'AuthorizationFailed'){
+        if(!done){ done=true; clearTimeout(t); ws.close(); reject(new Error(msg.error.message)); }
+      }
+    };
+    ws.onopen = () => ws.send(JSON.stringify({ authorize:token }));
+    ws.onerror = () => { if(!done){ done=true; clearTimeout(t); reject(new Error('ws error')); } };
+  });
+}
+function connectDirectWS(token){
+  const url = 'wss://ws.derivws.com/websockets/v3?app_id='+G.APP_ID+'&token='+token+'&l=EN';
+  const ws = new WebSocket(url);
+  ws.onopen = () => {
+    G.WS = ws;
+    G.AUTH = true;
+    localSave();
+    document.getElementById('loginOverlay').classList.add('hidden');
+    document.getElementById('loginPat').disabled=false;
+    document.getElementById('oauthBtn').textContent='Login with Deriv';
+    document.getElementById('loginError').textContent='';
+    log('[AUTH] Authorized via direct WS','s');
+    updateDash();
+  };
+  ws.onerror = () => {
+    document.getElementById('loginError').textContent = 'WebSocket connection failed';
+    document.getElementById('loginPat').disabled=false;
+    document.getElementById('oauthBtn').textContent='Login with Deriv';
+  };
+  ws.onclose = () => { if(G.WS === ws){ G.AUTH = false; } };
 }
 function connectOTP(url){
   G.TOKEN = document.getElementById('loginPat')?.value?.trim() || '';
@@ -3418,11 +3481,27 @@ document.addEventListener('DOMContentLoaded', () => {
     exchangeOAuthCode(urlCode);
   } else if(urlToken){
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    // Cross-domain (Vercel): proxy token back to localhost
+    if(window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'){
+      window.location.href = 'http://localhost:8080/bot.html?token1='+encodeURIComponent(urlToken);
+      return;
+    }
     document.getElementById('loginPat').value = urlToken;
     setTimeout(() => authorizePat(), 100);
+  } else if(urlCode && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'){
+    // Cross-domain PKCE: proxy code back to localhost
+    const s = urlState ? '&state='+encodeURIComponent(urlState) : '';
+    window.location.href = 'http://localhost:8080/bot.html?code='+encodeURIComponent(urlCode)+s;
+    return;
+  } else if(urlCode && !urlState){
+    // Code received but no state — can't verify, show error
+    window.history.replaceState({}, document.title, window.location.pathname);
+    document.getElementById('loginError').textContent = 'OAuth code received but state parameter missing — try again';
   } else if(params.get('error')){
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
-    document.getElementById('loginError').textContent = 'Authorization denied: '+(params.get('error_description')||params.get('error'));
+    const desc = params.get('error_description') || params.get('error');
+    document.getElementById('loginError').textContent = 'OAuth error: '+desc;
+    console.warn('[OAUTH] Error:', {error:params.get('error'), description:desc, state:params.get('state')});
   }
   // Login Enter key
   document.getElementById('loginPat')?.addEventListener('keydown', e => { if(e.key==='Enter') authorizePat(); });
