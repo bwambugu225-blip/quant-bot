@@ -625,35 +625,37 @@ const closes = (c)=> c.map(x=>x.close);
 const highs  = (c)=> c.map(x=>x.high);
 const lows   = (c)=> c.map(x=>x.low);
 
+function max(arr){ let m=-Infinity; for(let i=0;i<arr.length;i++) if(arr[i]>m) m=arr[i]; return m; }
+function min(arr){ let m=Infinity; for(let i=0;i<arr.length;i++) if(arr[i]<m) m=arr[i]; return m; }
 function sma(arr,p){ if(arr.length<p) return null; let s=0; for(let i=arr.length-p;i<arr.length;i++) s+=arr[i]; return s/p; }
-function ema(arr,p){ if(arr.length<p) return null; const k=2/(p+1); let e=arr.slice(0,p).reduce((a,b)=>a+b,0)/p; for(let i=p;i<arr.length;i++) e=arr[i]*k+e*(1-k); return e; }
+function ema(arr,p){ if(arr.length<p) return null; const k=2/(p+1); let e=0; for(let i=0;i<p;i++) e+=arr[i]; e/=p; for(let i=p;i<arr.length;i++) e=arr[i]*k+e*(1-k); return e; }
 function stddev(arr,p){ const m=sma(arr,p); if(m===null) return null; let s=0; for(let i=arr.length-p;i<arr.length;i++) s+=(arr[i]-m)**2; return Math.sqrt(s/p); }
 function rsi(arr,p=14){ if(arr.length<p+1) return null; let g=0,l=0; for(let i=arr.length-p;i<arr.length;i++){ const d=arr[i]-arr[i-1]; if(d>0) g+=d; else l-=d; } const ag=g/p, al=l/p; if(al===0) return 100; return 100-100/(1+ag/al); }
+const _ic={}; function icGet(k){ const v=_ic[k]; return v&&v.t===G.BOOT_AT?v.v:undefined; } function icSet(k,v){ _ic[k]={v,t:G.BOOT_AT}; }
 function stoch(highArr,lowArr,closeArr,p=14){
   if(closeArr.length<p) return null;
-  const hh=Math.max(...highArr.slice(-p)); const ll=Math.min(...lowArr.slice(-p));
+  const hh=max(highArr.slice(-p)); const ll=min(lowArr.slice(-p));
   return hh===ll? 50 : ((closeArr[closeArr.length-1]-ll)/(hh-ll))*100;
 }
 function williamsR(highArr,lowArr,closeArr,p=14){
   if(closeArr.length<p) return null;
-  const hh=Math.max(...highArr.slice(-p)); const ll=Math.min(...lowArr.slice(-p));
+  const hh=max(highArr.slice(-p)); const ll=min(lowArr.slice(-p));
   return hh===ll? -50 : ((hh-closeArr[closeArr.length-1])/(hh-ll))*-100;
 }
 function cci(c,p=14){
   if(c.length<p) return null;
   const tps=c.slice(-p).map(x=>(x.high+x.low+x.close)/3);
-  const m=tps.reduce((a,b)=>a+b,0)/p;
-  const md=tps.reduce((a,b)=>a+Math.abs(b-m),0)/p;
+  const m=0; let s=0; for(let i=c.length-p;i<c.length;i++) s+=tps[i-(c.length-p)]; const mn=s/p;
+  let md=0; for(let i=0;i<tps.length;i++) md+=Math.abs(tps[i]-mn); md/=p;
   if(md===0) return 0;
-  const tp=tps[tps.length-1];
-  return (tp-m)/(0.015*md);
+  return (tps[tps.length-1]-mn)/(0.015*md);
 }
 function atr(c,p=14){
   if(c.length<p+1) return null;
   let s=0;
   for(let i=c.length-p;i<c.length;i++){
-    const tr=Math.max(c[i].high-c[i].low, Math.abs(c[i].high-c[i-1].close), Math.abs(c[i].low-c[i-1].close));
-    s+=tr;
+    const tr=c[i].high-c[i].low; const a1=Math.abs(c[i].high-c[i-1].close); const a2=Math.abs(c[i].low-c[i-1].close);
+    s+=tr>a1?tr>a2?tr:a2:a1>a2?a1:a2;
   }
   return s/p;
 }
@@ -667,469 +669,18 @@ function initStrategies(){
   G.STRATEGIES = [];
   G.STRATEGY_WEIGHTS = [];
   const S = G.STRATEGIES;
-  // ── GROUP 1: TREND (S1-S8) ──
-  // S1: EMA5/20 Cross – fast trend shift
-  S.push({ name:'EMA5/20 Cross', code:'E5X', analyze:(c)=>{
-    if(c.length<30) return null;
-    const cl=closes(c),e5=ema(cl,5),e20=ema(cl,20),p5=ema(cl.slice(0,-1),5),p20=ema(cl.slice(0,-1),20);
-    if(e5==null||e20==null||p5==null||p20==null) return null;
-    const last=c[c.length-1];
-    if(p5<=p20&&e5>e20&&last.close>last.open) return {action:'RISE',conf:80,src:'E5X'};
-    if(p5>=p20&&e5<e20&&last.close<last.open) return {action:'FALL',conf:80,src:'E5X'};
-    return null;
-  }});
-  // S2: EMA20/50 Cross – medium trend change
-  S.push({ name:'EMA20/50 Cross', code:'E2X', analyze:(c)=>{
-    if(c.length<60) return null;
-    const cl=closes(c),e20=ema(cl,20),e50=ema(cl,50),p20=ema(cl.slice(0,-1),20),p50=ema(cl.slice(0,-1),50);
-    if(e20==null||e50==null||p20==null||p50==null) return null;
-    if(p20<=p50&&e20>e50) return {action:'RISE',conf:84,src:'E2X'};
-    if(p20>=p50&&e20<e50) return {action:'FALL',conf:84,src:'E2X'};
-    return null;
-  }});
-  // S3: EMA50 Slope – directional bias
-  S.push({ name:'EMA50 Slope', code:'E5S', analyze:(c)=>{
-    if(c.length<60) return null;
-    const cl=closes(c), hi=highs(c), lo=lows(c); const last=c[c.length-1];
-    const e50=ema(cl,50); if(e50==null) return null;
-    const prev=ema(cl.slice(0,-1),50); if(prev==null) return null;
-    const slope=e50-prev; const atrV=atr(c,14); if(atrV==null||atrV===0) return null;
-    if(slope>atrV*0.02&&last.close>last.open&&last.close>e50) return {action:'RISE',conf:78,src:'E5S'};
-    if(slope<-atrV*0.02&&last.close<last.open&&last.close<e50) return {action:'FALL',conf:78,src:'E5S'};
-    return null;
-  }});
-  // S4: Price vs EMA200 – long-term mean reversion
-  S.push({ name:'Price vs EMA200', code:'P2H', analyze:(c)=>{
-    if(c.length<220) return null;
-    const cl=closes(c),e200=ema(cl,200); if(e200==null) return null;
-    const last=c[c.length-1]; const p=last.close; const dist=(p-e200)/e200*100;
-    const atrV=atr(c,14); if(atrV==null||atrV===0) return null;
-    if(dist>atrV/e200*200&&last.close<last.open) return {action:'FALL',conf:80,src:'P2H'};
-    if(dist<-atrV/e200*200&&last.close>last.open) return {action:'RISE',conf:80,src:'P2H'};
-    return null;
-  }});
-  // S5: ADX Trend Direction
-  S.push({ name:'ADX Trend', code:'ADX', analyze:(c)=>{
-    if(c.length<30) return null;
-    const hi=highs(c), lo=lows(c), cl=closes(c);
-    const di=(i)=>{ const up=hi[i]-hi[i-1], dn=lo[i-1]-lo[i]; return {up:up>0?up:0,dn:dn>0?dn:0}; };
-    const period=14; if(cl.length<period+1) return null;
-    let upSum=0, dnSum=0, trSum=0;
-    for(let i=cl.length-period;i<cl.length;i++){
-      const d=di(i); upSum+=d.up; dnSum+=d.dn;
-      const tr=Math.max(hi[i]-lo[i],Math.abs(hi[i]-cl[i-1]),Math.abs(lo[i]-cl[i-1]));
-      trSum+=tr;
-    }
-    if(trSum===0) return null;
-    const diUp=upSum/trSum*100, diDn=dnSum/trSum*100;
-    const dx=diUp+diDn===0?0:Math.abs(diUp-diDn)/(diUp+diDn)*100;
-    if(dx<20) return null; // not trending
-    const last=c[c.length-1];
-    if(diUp>diDn&&last.close>last.open) return {action:'RISE',conf:82,src:'ADX'};
-    if(diDn>diUp&&last.close<last.open) return {action:'FALL',conf:82,src:'ADX'};
-    return null;
-  }});
-  // S6: MA Ribbon Alignment
-  S.push({ name:'MA Ribbon', code:'RBN', analyze:(c)=>{
-    if(c.length<60) return null;
-    const cl=closes(c); const last=c[c.length-1];
-    const e10=ema(cl,10),e20=ema(cl,20),e30=ema(cl,30),e50=ema(cl,50);
-    if(e10==null||e20==null||e30==null||e50==null) return null;
-    const bull=e10>e20&&e20>e30&&e30>e50&&last.close>last.open;
-    const bear=e10<e20&&e20<e30&&e30<e50&&last.close<last.open;
-    if(bull) return {action:'RISE',conf:86,src:'RBN'};
-    if(bear) return {action:'FALL',conf:86,src:'RBN'};
-    return null;
-  }});
-  // S7: SuperTrend (simplified ATR-based)
-  S.push({ name:'SuperTrend', code:'SPT', analyze:(c)=>{
-    if(c.length<20) return null;
-    const cl=closes(c), hi=highs(c), lo=lows(c); const last=c[c.length-1];
-    const atrV=atr(c,10); if(atrV==null||atrV===0) return null;
-    const mid=(hi[hi.length-1]+lo[lo.length-1])/2;
-    const upper=mid+atrV*1.5, lower=mid-atrV*1.5;
-    const prevCl=cl[cl.length-2];
-    if(prevCl<=lower&&cl[cl.length-1]>lower&&last.close>last.open) return {action:'RISE',conf:82,src:'SPT'};
-    if(prevCl>=upper&&cl[cl.length-1]<upper&&last.close<last.open) return {action:'FALL',conf:82,src:'SPT'};
-    return null;
-  }});
-  // S8: Ichimoku Twist
-  S.push({ name:'Ichimoku Twist', code:'ICH', analyze:(c)=>{
-    if(c.length<30) return null;
-    const hi=highs(c), lo=lows(c); const last=c[c.length-1];
-    const conv=(Math.max(...hi.slice(-9))+Math.min(...lo.slice(-9)))/2;
-    const base=(Math.max(...hi.slice(-26))+Math.min(...lo.slice(-26)))/2;
-    const pConv=(Math.max(...hi.slice(-10,-1))+Math.min(...lo.slice(-10,-1)))/2;
-    const pBase=(Math.max(...hi.slice(-27,-1))+Math.min(...lo.slice(-27,-1)))/2;
-    if(pConv<=pBase&&conv>base&&last.close>last.open) return {action:'RISE',conf:82,src:'ICH'};
-    if(pConv>=pBase&&conv<base&&last.close<last.open) return {action:'FALL',conf:82,src:'ICH'};
-    return null;
-  }});
-  // ── GROUP 2: MOMENTUM (S9-S16) ──
-  // S9: RSI Extremes
-  S.push({ name:'RSI Extreme', code:'RSX', analyze:(c)=>{
-    if(c.length<20) return null;
-    const cl=closes(c), r=rsi(cl,14); if(r==null) return null;
-    const last=c[c.length-1]; const range=last.high-last.low; if(range===0) return null;
-    const ls=(Math.min(last.open,last.close)-last.low)/range;
-    const us=(last.high-Math.max(last.open,last.close))/range;
-    if(r<28&&last.close>last.open&&ls>0.5) return {action:'RISE',conf:85,src:'RSX'};
-    if(r>72&&last.close<last.open&&us>0.5) return {action:'FALL',conf:85,src:'RSX'};
-    return null;
-  }});
-  // S10: RSI Divergence
-  S.push({ name:'RSI Divergence', code:'RSD', analyze:(c)=>{
-    if(c.length<30) return null;
-    const cl=closes(c), r=rsi(cl,14); if(r==null) return null;
-    const hi=highs(c), lo=lows(c);
-    const pkHigh=c.slice(-10).reduce((a,x)=>x.high>a.high?x:a,{high:-Infinity});
-    const pkLow=c.slice(-10).reduce((a,x)=>x.low<a.low?x:a,{low:Infinity});
-    const pkIdxHi=c.slice(-10).indexOf(pkHigh), pkIdxLo=c.slice(-10).indexOf(pkLow);
-    const rAtHi=rsi(cl.slice(-10),14); if(rAtHi==null) return null;
-    const rAtLo=rsi(cl.slice(-10),14);
-    if(pkHigh.high>c[c.length-5]?.high&&rAtHi<45) return {action:'FALL',conf:80,src:'RSD'};
-    if(pkLow.low<c[c.length-5]?.low&&rAtLo>55) return {action:'RISE',conf:80,src:'RSD'};
-    return null;
-  }});
-  // S11: Stochastic Cross
-  S.push({ name:'Stochastic Cross', code:'STC', analyze:(c)=>{
-    if(c.length<24) return null;
-    const hi=highs(c), lo=lows(c), cl=closes(c);
-    const k=(i)=>{ const hh=Math.max(...hi.slice(i-14,i)), ll=Math.min(...lo.slice(i-14,i)); return hh===ll?50:((cl[i]-ll)/(hh-ll))*100; };
-    const kv=[],dk=14; for(let i=cl.length-14;i<cl.length;i++) kv.push(k(i));
-    if(kv.length<4) return null;
-    const kk=kv[kv.length-1],pk=kv[kv.length-2],dd=sma(kv,3); if(dd==null) return null;
-    const pd=sma(kv.slice(0,-1),3);
-    if(pk<=pd&&kk>dd&&kk<25&&c[c.length-1].close>c[c.length-1].open) return {action:'RISE',conf:82,src:'STC'};
-    if(pk>=pd&&kk<dd&&kk>75&&c[c.length-1].close<c[c.length-1].open) return {action:'FALL',conf:82,src:'STC'};
-    return null;
-  }});
-  // S12: Williams %R
+  // S1: Williams %R — mean reversion via overbought/oversold
   S.push({ name:'Williams %R', code:'WPR', analyze:(c)=>{
     if(c.length<20) return null;
     const hi=highs(c), lo=lows(c), cl=closes(c);
-    const p=14; const wr=(i)=>{ const hh=Math.max(...hi.slice(i-p,i)), ll=Math.min(...lo.slice(i-p,i)); return hh===ll?-50:((hh-cl[i])/(hh-ll))*-100; };
+    const p=14; const wr=(i)=>{ const hh=max(hi.slice(i-p,i)), ll=min(lo.slice(i-p,i)); return hh===ll?-50:((hh-cl[i])/(hh-ll))*-100; };
     const cw=wr(cl.length-1),pw=wr(cl.length-2); const last=c[c.length-1];
     if(cw<-85&&pw<-80&&last.close>last.open) return {action:'RISE',conf:84,src:'WPR'};
     if(cw>-15&&pw>-20&&last.close<last.open) return {action:'FALL',conf:84,src:'WPR'};
     return null;
   }});
-  // S13: CCI Extreme
-  S.push({ name:'CCI Extreme', code:'CCI', analyze:(c)=>{
-    if(c.length<20) return null;
-    const cv=cci(c,14); if(cv==null) return null;
-    const last=c[c.length-1];
-    if(cv<-120&&last.close>last.open) return {action:'RISE',conf:80,src:'CCI'};
-    if(cv>120&&last.close<last.open) return {action:'FALL',conf:80,src:'CCI'};
-    return null;
-  }});
-  // S14: ROC Signal
-  S.push({ name:'ROC Signal', code:'ROC', analyze:(c)=>{
-    if(c.length<15) return null;
-    const cl=closes(c); const last=c[c.length-1];
-    const roc=cl[cl.length-10]===0?0:((cl[cl.length-1]-cl[cl.length-10])/cl[cl.length-10])*100;
-    const prev=cl[cl.length-11]===0?0:((cl[cl.length-2]-cl[cl.length-11])/cl[cl.length-11])*100;
-    if(prev<-3&&roc>-2&&last.close>last.open) return {action:'RISE',conf:78,src:'ROC'};
-    if(prev>3&&roc<2&&last.close<last.open) return {action:'FALL',conf:78,src:'ROC'};
-    return null;
-  }});
-  // S15: Money Flow Index
-  S.push({ name:'MFI', code:'MFI', analyze:(c)=>{
-    if(c.length<22) return null;
-    const cl=closes(c), hi=highs(c), lo=lows(c);
-    const tp=c.slice(-14).map((x,i)=>i>0?{tp:(x.high+x.low+x.close)/3,bull:(x.high+x.low+x.close)>(c[c.length-15+i].high+c[c.length-15+i].low+c[c.length-15+i].close)/3?1:0}:{tp:(x.high+x.low+x.close)/3,bull:1});
-    let mfP=0,mfN=0;
-    tp.forEach(t=>{const v=t.tp*0;if(t.bull)mfP++;else mfN++;});
-    if(mfN===0) return null; const ratio=mfP/mfN; const mfi=100-100/(1+ratio);
-    const last=c[c.length-1];
-    if(mfi<20&&last.close>last.open) return {action:'RISE',conf:80,src:'MFI'};
-    if(mfi>80&&last.close<last.open) return {action:'FALL',conf:80,src:'MFI'};
-    return null;
-  }});
-  // S16: TRIX Signal
-  S.push({ name:'TRIX Signal', code:'TRI', analyze:(c)=>{
-    if(c.length<35) return null;
-    const cl=closes(c);
-    const t=(arr)=>{ const e1=ema(arr,15); if(e1==null) return null; const e2=ema(cl.slice(0,arr.length),15); if(e2==null) return null; return e1; };
-    const v=t(cl); if(v==null) return null;
-    const last=c[c.length-1];
-    if(v>0&&last.close>last.open) return {action:'RISE',conf:76,src:'TRI'};
-    if(v<0&&last.close<last.open) return {action:'FALL',conf:76,src:'TRI'};
-    return null;
-  }});
-  // ── GROUP 3: VOLATILITY (S17-S20) ──
-  // S17: Bollinger Squeeze
-  S.push({ name:'Bollinger Squeeze', code:'BBS', analyze:(c)=>{
-    if(c.length<25) return null;
-    const cl=closes(c); const m=sma(cl,20), sd=stddev(cl,20); if(m==null||sd==null) return null;
-    const upper=m+2*sd, lower=m-2*sd; const bw=(upper-lower)/m;
-    const prevSd=stddev(cl.slice(0,-1),20); if(prevSd==null) return null;
-    const prevBw=(m+2*prevSd-(m-2*prevSd))/m;
-    const last=c[c.length-1];
-    if(bw<prevBw&&last.close>upper&&last.close>last.open) return {action:'RISE',conf:84,src:'BBS'};
-    if(bw<prevBw&&last.close<lower&&last.close<last.open) return {action:'FALL',conf:84,src:'BBS'};
-    return null;
-  }});
-  // S18: Bollinger Touch
-  S.push({ name:'Bollinger Touch', code:'BBT', analyze:(c)=>{
-    if(c.length<25) return null;
-    const cl=closes(c); const m=sma(cl,20), sd=stddev(cl,20); if(m==null||sd==null) return null;
-    const upper=m+2*sd, lower=m-2*sd; const last=c[c.length-1];
-    if(last.close>upper&&last.close<last.open) return {action:'FALL',conf:78,src:'BBT'};
-    if(last.close<lower&&last.close>last.open) return {action:'RISE',conf:78,src:'BBT'};
-    return null;
-  }});
-  // S19: Keltner Break
-  S.push({ name:'Keltner Break', code:'KLT', analyze:(c)=>{
-    if(c.length<25) return null;
-    const cl=closes(c), hi=highs(c), lo=lows(c);
-    const m=ema(cl,20), atrV=atr(c,10); if(m==null||atrV==null) return null;
-    const upper=m+atrV*1.5, lower=m-atrV*1.5; const last=c[c.length-1];
-    if(last.close>upper&&last.close>last.open) return {action:'RISE',conf:80,src:'KLT'};
-    if(last.close<lower&&last.close<last.open) return {action:'FALL',conf:80,src:'KLT'};
-    return null;
-  }});
-  // S20: ATR Regime – volatility expansion
-  S.push({ name:'ATR Regime', code:'ATR', analyze:(c)=>{
-    if(c.length<20) return null;
-    const rng=c.map(x=>x.high-x.low); const cur=rng[rng.length-1];
-    const avg=sma(rng.slice(0,-1),14); if(avg==null||avg===0) return null;
-    const last=c[c.length-1];
-    if(cur>avg*1.8&&last.close<last.open) return {action:'FALL',conf:78,src:'ATR'};
-    if(cur>avg*1.8&&last.close>last.open) return {action:'RISE',conf:78,src:'ATR'};
-    return null;
-  }});
-  // ── GROUP 4: PATTERN (S21-S26) ──
-  // S21: Pivot Reversal (calls existing evaluateSingleMarket)
-  S.push({ name:'Pivot Reversal', code:'REV', analyze:(c,sym)=>{
-    try{ const r=evaluateSingleMarket(sym); return r?{action:r.action,conf:r.conf-5,src:'REV',evidence:r.evidence}:null; }catch(e){return null;}
-  }});
-  // S22: Doji
-  S.push({ name:'Doji Pattern', code:'DOJ', analyze:(c)=>{
-    if(c.length<10) return null;
-    const last=c[c.length-1]; const body=Math.abs(last.close-last.open); const range=last.high-last.low;
-    if(range===0||body/range>0.15) return null;
-    const prev=c[c.length-2]; const pBody=Math.abs(prev.close-prev.open);
-    if(prev.close>prev.open&&pBody>body*2&&last.close<last.open) return {action:'FALL',conf:76,src:'DOJ'};
-    if(prev.close<prev.open&&pBody>body*2&&last.close>last.open) return {action:'RISE',conf:76,src:'DOJ'};
-    return null;
-  }});
-  // S23: Engulfing
-  S.push({ name:'Engulfing', code:'ENG', analyze:(c)=>{
-    if(c.length<10) return null;
-    const last=c[c.length-1], prev=c[c.length-2];
-    const b1=Math.abs(last.close-last.open), b2=Math.abs(prev.close-prev.open);
-    if(b2===0) return null;
-    if(prev.close<prev.open&&last.close>last.open&&b1>b2*1.2&&last.close>prev.open&&last.open<prev.close)
-      return {action:'RISE',conf:82,src:'ENG'};
-    if(prev.close>prev.open&&last.close<last.open&&b1>b2*1.2&&last.close<prev.open&&last.open>prev.close)
-      return {action:'FALL',conf:82,src:'ENG'};
-    return null;
-  }});
-  // S24: Hammer / Shooting Star
-  S.push({ name:'Hammer/Star', code:'HMR', analyze:(c)=>{
-    if(c.length<10) return null;
-    const last=c[c.length-1]; const body=Math.abs(last.close-last.open); const range=last.high-last.low;
-    if(range===0) return null;
-    const uw=(last.high-Math.max(last.open,last.close))/range;
-    const lw=(Math.min(last.open,last.close)-last.low)/range;
-    if(lw>body/range*2&&lw>uw*2&&last.close>last.open) return {action:'RISE',conf:80,src:'HMR'};
-    if(uw>body/range*2&&uw>lw*2&&last.close<last.open) return {action:'FALL',conf:80,src:'HMR'};
-    return null;
-  }});
-  // S25: Morning/Evening Star
-  S.push({ name:'Star Pattern', code:'MES', analyze:(c)=>{
-    if(c.length<10) return null;
-    if(c.length<5) return null;
-    const a=c[c.length-3], b=c[c.length-2], d=c[c.length-1];
-    if(!a||!b||!d) return null;
-    const ba=Math.abs(a.close-a.open), bb=Math.abs(b.close-b.open);
-    if(bb===0) return null;
-    if(a.close<a.open&&bb<ba*0.5&&d.close>d.open&&d.close>a.open) return {action:'RISE',conf:84,src:'MES'};
-    if(a.close>a.open&&bb<ba*0.5&&d.close<d.open&&d.close<a.open) return {action:'FALL',conf:84,src:'MES'};
-    return null;
-  }});
-  // S26: Harami
-  S.push({ name:'Harami', code:'HAR', analyze:(c)=>{
-    if(c.length<10) return null;
-    const last=c[c.length-1], prev=c[c.length-2];
-    const b1=Math.abs(last.close-last.open), b2=Math.abs(prev.close-prev.open);
-    if(b2===0) return null;
-    if(prev.close<prev.open&&last.close>last.open&&b1<b2*0.7) return {action:'RISE',conf:78,src:'HAR'};
-    if(prev.close>prev.open&&last.close<last.open&&b1<b2*0.7) return {action:'FALL',conf:78,src:'HAR'};
-    return null;
-  }});
-  // ── GROUP 5: STATISTICAL (S27-S30) ──
-  // S27: Z-Score
-  S.push({ name:'Z-Score', code:'ZSC', analyze:(c)=>{
-    if(c.length<25) return null;
-    const cl=closes(c); const m=sma(cl,20), sd=stddev(cl,20);
-    if(m==null||sd==null||sd===0) return null;
-    const z=(cl[cl.length-1]-m)/sd; const last=c[c.length-1];
-    if(z>2&&last.close<last.open) return {action:'FALL',conf:80,src:'ZSC'};
-    if(z<-2&&last.close>last.open) return {action:'RISE',conf:80,src:'ZSC'};
-    return null;
-  }});
-  // S28: Linear Regression Slope
-  S.push({ name:'LinReg Slope', code:'LRS', analyze:(c)=>{
-    if(c.length<15) return null;
-    const cl=closes(c).slice(-14); const n=cl.length; const last=c[c.length-1];
-    const mx=(n-1)/2, my=cl.reduce((a,b)=>a+b,0)/n;
-    let num=0,den=0;
-    for(let i=0;i<n;i++){ num+=(i-mx)*(cl[i]-my); den+=(i-mx)**2; }
-    if(den===0) return null; const slope=num/den;
-    if(Math.abs(slope)<1e-8) return null;
-    const prev=cl[cl.length-2];
-    if(slope>0&&last.close<last.open&&last.close<prev) return {action:'FALL',conf:78,src:'LRS'};
-    if(slope<0&&last.close>last.open&&last.close>prev) return {action:'RISE',conf:78,src:'LRS'};
-    return null;
-  }});
-  // S29: Std Dev Channel
-  S.push({ name:'StdDev Channel', code:'SDC', analyze:(c)=>{
-    if(c.length<25) return null;
-    const cl=closes(c); const m=sma(cl,20), sd=stddev(cl,20);
-    if(m==null||sd==null) return null;
-    const upper=m+2.5*sd, lower=m-2.5*sd; const last=c[c.length-1];
-    if(last.close>upper) return {action:'FALL',conf:82,src:'SDC'};
-    if(last.close<lower) return {action:'RISE',conf:82,src:'SDC'};
-    return null;
-  }});
-  // S30: Mean Reversion
-  S.push({ name:'Mean Reversion', code:'MRV', analyze:(c)=>{
-    if(c.length<25) return null;
-    const cl=closes(c); const m=sma(cl,10); if(m==null) return null;
-    const last=c[c.length-1]; const pct=(last.close-m)/m*100;
-    if(pct>1.5&&last.close<last.open) return {action:'FALL',conf:76,src:'MRV'};
-    if(pct<-1.5&&last.close>last.open) return {action:'RISE',conf:76,src:'MRV'};
-    return null;
-  }});
-  // ── GROUP 6: OSCILLATOR (S31-S34) ──
-  // S31: Aroon
-  S.push({ name:'Aroon', code:'ARN', analyze:(c)=>{
-    if(c.length<30) return null;
-    const hi=highs(c), lo=lows(c); const p=25; const last=c[c.length-1];
-    const idxHi=hi.slice(-p).indexOf(Math.max(...hi.slice(-p)));
-    const idxLo=lo.slice(-p).indexOf(Math.min(...lo.slice(-p)));
-    const up=((p-1-idxHi)/p)*100, dn=((p-1-idxLo)/p)*100;
-    if(up>70&&up>dn+30&&last.close>last.open) return {action:'RISE',conf:80,src:'ARN'};
-    if(dn>70&&dn>up+30&&last.close<last.open) return {action:'FALL',conf:80,src:'ARN'};
-    return null;
-  }});
-  // S32: Chande Momentum Oscillator
-  S.push({ name:'Chande MOM', code:'CHO', analyze:(c)=>{
-    if(c.length<15) return null;
-    const cl=closes(c); const p=12;
-    let upSum=0,dnSum=0;
-    for(let i=cl.length-p;i<cl.length;i++){ const d=cl[i]-cl[i-1]; if(d>0) upSum+=d; else dnSum-=d; }
-    const cmo=upSum+dnSum===0?0:((upSum-dnSum)/(upSum+dnSum))*100;
-    const last=c[c.length-1];
-    if(cmo<-40&&last.close>last.open) return {action:'RISE',conf:80,src:'CHO'};
-    if(cmo>40&&last.close<last.open) return {action:'FALL',conf:80,src:'CHO'};
-    return null;
-  }});
-  // S33: Ultimate Oscillator
-  S.push({ name:'Ultimate Osc', code:'UOS', analyze:(c)=>{
-    if(c.length<30) return null;
-    const hi=highs(c), lo=lows(c), cl=closes(c);
-    const bp=(i)=>cl[i]-Math.min(lo[i],cl[i-1]);
-    const tr=(i)=>Math.max(hi[i],cl[i-1])-Math.min(lo[i],cl[i-1]);
-    const avg=(p)=>{ let b=0,t=0; for(let i=cl.length-p;i<cl.length;i++){ b+=bp(i); t+=tr(i); } return t===0?50:(b/t)*100; };
-    if(cl.length<28) return null;
-    const uo=(4*avg(7)+2*avg(14)+avg(28))/7; const last=c[c.length-1];
-    if(uo<30&&last.close>last.open) return {action:'RISE',conf:78,src:'UOS'};
-    if(uo>70&&last.close<last.open) return {action:'FALL',conf:78,src:'UOS'};
-    return null;
-  }});
-  // S34: Coppock Curve
-  S.push({ name:'Coppock', code:'CPK', analyze:(c)=>{
-    if(c.length<25) return null;
-    const cl=closes(c);
-    const roc1=cl[cl.length-12]===0?0:((cl[cl.length-1]-cl[cl.length-12])/cl[cl.length-12])*100;
-    const roc2=cl[cl.length-15]===0?0:((cl[cl.length-1]-cl[cl.length-15])/cl[cl.length-15])*100;
-    const rc=roc1+roc2; const last=c[c.length-1];
-    if(rc<-20&&last.close>last.open) return {action:'RISE',conf:76,src:'CPK'};
-    if(rc>20&&last.close<last.open) return {action:'FALL',conf:76,src:'CPK'};
-    return null;
-  }});
-  // ── GROUP 7: HYBRID (S35-S38) ──
-  // S35: StochRSI
-  S.push({ name:'StochRSI', code:'SRI', analyze:(c)=>{
-    if(c.length<25) return null;
-    const cl=closes(c);
-    const rs=rsi(cl,14); if(rs==null) return null;
-    const rArr=[]; for(let i=0;i<14;i++){ const v=rsi(cl.slice(0,cl.length-14+i+1),14); if(v!=null) rArr.push(v); }
-    if(rArr.length<8) return null;
-    const hh=Math.max(...rArr), ll=Math.min(...rArr);
-    const sr=hh===ll?50:((rs-ll)/(hh-ll))*100;
-    const last=c[c.length-1];
-    if(sr<10&&last.close>last.open) return {action:'RISE',conf:84,src:'SRI'};
-    if(sr>90&&last.close<last.open) return {action:'FALL',conf:84,src:'SRI'};
-    return null;
-  }});
-  // S36: MACD Zero Cross
-  S.push({ name:'MACD Zero', code:'MZR', analyze:(c)=>{
-    if(c.length<35) return null;
-    const cl=closes(c);
-    const f=ema(cl,12), s=ema(cl,26); if(f==null||s==null) return null;
-    const m=f-s; const prev=ema(cl.slice(0,-1),12)-ema(cl.slice(0,-1),26);
-    const last=c[c.length-1];
-    if(prev<0&&m>0&&last.close>last.open) return {action:'RISE',conf:82,src:'MZR'};
-    if(prev>0&&m<0&&last.close<last.open) return {action:'FALL',conf:82,src:'MZR'};
-    return null;
-  }});
-  // S37: MACD Histogram
-  S.push({ name:'MACD Hist', code:'MCH', analyze:(c)=>{
-    if(c.length<40) return null;
-    const cl=closes(c);
-    const f=ema(cl,12), s=ema(cl,26); if(f==null||s==null) return null;
-    const m=f-s; const hist=m-ema(cl,9); if(hist==null) return null;
-    const prevHist=((ema(cl.slice(0,-1),12)-ema(cl.slice(0,-1),26))-ema(cl.slice(0,-1),9));
-    const last=c[c.length-1];
-    if(prevHist<0&&hist>0&&last.close>last.open) return {action:'RISE',conf:82,src:'MCH'};
-    if(prevHist>0&&hist<0&&last.close<last.open) return {action:'FALL',conf:82,src:'MCH'};
-    return null;
-  }});
-  // S38: Price Action Cluster
-  S.push({ name:'PA Cluster', code:'PAC', analyze:(c)=>{
-    if(c.length<10) return null;
-    const last=c[c.length-1]; const prev=c[c.length-2]; const pprev=c[c.length-3];
-    if(!prev||!pprev) return null;
-    const consecUp=prev.close>prev.open&&pprev.close>pprev.open&&last.close<last.open&&last.close<prev.low;
-    const consecDn=prev.close<prev.open&&pprev.close<pprev.open&&last.close>last.open&&last.close>prev.high;
-    if(consecUp) return {action:'FALL',conf:80,src:'PAC'};
-    if(consecDn) return {action:'RISE',conf:80,src:'PAC'};
-    return null;
-  }});
-  // S39: Immediate Reversal — exploits trend exhaustion + first reversal candle
-  S.push({ name:'Immediate Rev', code:'IRE', analyze:(c)=>{
-    if(c.length<10) return null;
-    const last=c[c.length-1]; if(!last) return null;
-    let dnCnt=0,upCnt=0;
-    for(let i=c.length-2;i>=Math.max(0,c.length-7);i--){
-      const x=c[i]; if(!x) break;
-      if(x.close<x.open) dnCnt++; else break;
-    }
-    for(let i=c.length-2;i>=Math.max(0,c.length-7);i--){
-      const x=c[i]; if(!x) break;
-      if(x.close>x.open) upCnt++; else break;
-    }
-    const range=last.high-last.low; if(range===0) return null;
-    const body=Math.abs(last.close-last.open);
-    const lw=(Math.min(last.open,last.close)-last.low)/range;
-    const uw=(last.high-Math.max(last.open,last.close))/range;
-    // 3+ bearish then green reversal with strong lower wick (buyers stepped in)
-    if(dnCnt>=3&&last.close>last.open&&lw>0.5&&body/range>0.2)
-      return {action:'RISE',conf:86,src:'IRE'};
-    // 3+ bullish then red reversal with strong upper wick (sellers stepped in)
-    if(upCnt>=3&&last.close<last.open&&uw>0.5&&body/range>0.2)
-      return {action:'FALL',conf:86,src:'IRE'};
-    return null;
-  }});
   G.STRATEGY_ACTIVE = G.STRATEGIES.map(()=>true);
   G.STRATEGY_WEIGHTS = G.STRATEGIES.map(()=>1.0);
-  // Disable continuation/trend-following — only reversal/counter-trend strategies fire
-  const continuation = ['E5X','E2X','E5S','ADX','RBN','SPT','ICH','TRI','KLT','LRS','ARN','CHO','CPK','MZR','MCH'];
-  G.STRATEGIES.forEach((s,i)=>{ if(continuation.includes(s.code)) G.STRATEGY_ACTIVE[i]=false; });
 }
 
 // ============================================================
@@ -1230,7 +781,7 @@ function getConsensus(sym){
   const agree = Math.max(votes.RISE.length, votes.FALL.length);
   // Must match OB/OS direction AND have strong consensus
   if(winner !== obos.direction) return null;
-  if(pct < 85 || agree < 5) return null;
+  if(pct < 85 || agree < 1) return null;
 
   // ── WICK CONFIRMATION: last candle must show rejection ──
   const last = c[c.length-1];
@@ -1260,40 +811,39 @@ function getConsensus(sym){
 function obosConfluence(c){
   const cl=closes(c), hi=highs(c), lo=lows(c);
   if(!cl || cl.length<30) return null;
+  const ck='obos_'+c[c.length-1].epoch;
+  const cached=icGet(ck); if(cached) return cached;
   const rsiVal=rsi(cl,14); if(rsiVal==null) return null;
-  // Stoch %K
-  let kArr=[];
-  for(let i=cl.length-14;i<cl.length;i++){ const hh=Math.max(...hi.slice(i-14,i)), ll=Math.min(...lo.slice(i-14,i)); kArr.push(hh===ll?50:((cl[i]-ll)/(hh-ll))*100); }
+  const rl=cl.length;
+  let kArr=[]; const s14=rl-14;
+  for(let i=s14;i<rl;i++){ const hh=max(hi.slice(i-14,i)), ll=min(lo.slice(i-14,i)); kArr.push(hh===ll?50:((cl[i]-ll)/(hh-ll))*100); }
   const sk=kArr[kArr.length-1];
-  // Williams %R
-  const wr=(()=>{ const hh=Math.max(...hi.slice(-14)), ll=Math.min(...lo.slice(-14)); return hh===ll?-50:((hh-cl[cl.length-1])/(hh-ll))*-100; })();
-  // CCI
+  const wr=(()=>{ const hh=max(hi.slice(-14)), ll=min(lo.slice(-14)); return hh===ll?-50:((hh-cl[rl-1])/(hh-ll))*-100; })();
   const cv=cci(c,14);
-  // Bollinger %B
   const m=sma(cl,20), sd=stddev(cl,20);
-  const bb=(m!=null&&sd!=null&&sd!==0)?((cl[cl.length-1]-(m-2*sd))/(4*sd))*100:50;
+  const bb=(m!=null&&sd!=null&&sd!==0)?((cl[rl-1]-(m-2*sd))/(4*sd))*100:50;
   let os=0,ob=0;
-  const threshold={'rsi':35,'stoch':25,'wr':-75,'cci':-100,'bb':25};
-  if(rsiVal<threshold.rsi)os++;else if(rsiVal>100-threshold.rsi)ob++;
-  if(sk<threshold.stoch)os++;else if(sk>100-threshold.stoch)ob++;
-  if(wr<threshold.wr)os++;else if(wr>-threshold.wr)ob++;
-  if(cv!=null&&cv<threshold.cci)os++;else if(cv!=null&&cv>-threshold.cci)ob++;
-  if(bb<threshold.bb)os++;else if(bb>100-threshold.bb)ob++;
-  if(os>=3)return{direction:'RISE',count:os,score:os>=4?90:80};
-  if(ob>=3)return{direction:'FALL',count:ob,score:ob>=4?90:80};
-  return null;
+  const t={'rsi':35,'stoch':25,'wr':-75,'cci':-100,'bb':25};
+  if(rsiVal<t.rsi)os++;else if(rsiVal>100-t.rsi)ob++;
+  if(sk<t.stoch)os++;else if(sk>100-t.stoch)ob++;
+  if(wr<t.wr)os++;else if(wr>-t.wr)ob++;
+  if(cv!=null&&cv<t.cci)os++;else if(cv!=null&&cv>-t.cci)ob++;
+  if(bb<t.bb)os++;else if(bb>100-t.bb)ob++;
+  const r=os>=3?{direction:'RISE',count:os,score:os>=4?90:80}:ob>=3?{direction:'FALL',count:ob,score:ob>=4?90:80}:null;
+  icSet(ck,r);
+  return r;
 }
 
 // ── ELITE MODE: market-specific optimized strategies ──
 const ELITE = {
   // Format: sym -> { fn:'NAME', params, minConf, name }
-  // fn is one of: 'WR', 'WR+STO', 'WR+TF', 'WR+WCK', 'REV', 'BBO'
+  // fn is one of: 'WR', 'WR+STO', 'WR+TF', 'WR+WCK'
   'R_10':    { fn:'WR+TF',  params:{wrP:7, wrOS:80, tfLb:2}, minConf:70, name:'W80P7+T2' },
   'R_25':    { fn:'WR+STO', params:{wrP:7, wrOS:90},        minConf:70, name:'W90P7+STO' },
   'R_50':    { fn:'WR+TF',  params:{wrP:10, wrOS:85, tfLb:2}, minConf:70, name:'W85P10+T2' },
   'R_75':    { fn:'WR+WCK', params:{wrP:14, wrOS:90, wck:0.35}, minConf:70, name:'W90P14+WCK' },
-  'R_100':   { fn:'REV',    params:{trendN:3, wickMin:0.50}, minConf:70, name:'REV3_50' },
-  '1HZ10V':  { fn:'BBO',    params:{bbPd:20, bbMult:2.5},   minConf:70, name:'BBO25' },
+  'R_100':   { fn:'WR',     params:{wrP:7, wrOS:85},        minConf:70, name:'W85P7' },
+  '1HZ10V':  { fn:'WR',     params:{wrP:7, wrOS:80},        minConf:70, name:'W80P7' },
   '1HZ25V':  { fn:'WR',     params:{wrP:7, wrOS:95},        minConf:70, name:'W95P7' },
   '1HZ50V':  { fn:'WR+WCK', params:{wrP:14, wrOS:80, wck:0.35}, minConf:70, name:'W80P14+WCK' },
   '1HZ75V':  { fn:'WR+STO', params:{wrP:7, wrOS:85},        minConf:70, name:'W85P7+STO' },
@@ -1303,7 +853,7 @@ const ELITE = {
 function wrVal(c,p){
   if(c.length<p+1) return null;
   const hi=highs(c), lo=lows(c), cl=closes(c);
-  const hh=Math.max(...hi.slice(-p)), ll=Math.min(...lo.slice(-p));
+  const hh=max(hi.slice(-p)), ll=min(lo.slice(-p));
   return hh===ll?-50:((hh-cl[cl.length-1])/(hh-ll))*-100;
 }
 
@@ -1321,7 +871,7 @@ function eliteStoch(c, p, osLvl){
   const hi=highs(c), lo=lows(c), cl=closes(c);
   let kArr=[];
   for(let i=cl.length-p;i<cl.length;i++){
-    const hh=Math.max(...hi.slice(i-p,i)), ll=Math.min(...lo.slice(i-p,i));
+    const hh=max(hi.slice(i-p,i)), ll=min(lo.slice(i-p,i));
     kArr.push(hh===ll?50:((cl[i]-ll)/(hh-ll))*100);
   }
   if(kArr.length<4) return null;
@@ -1355,34 +905,6 @@ function eliteWick(c, minW){
   const uw=(last.high-Math.max(last.open,last.close))/rg;
   if(lw>=minW&&last.close>last.open&&last.close>prev.close) return 'RISE';
   if(uw>=minW&&last.close<last.open&&last.close<prev.close) return 'FALL';
-  return null;
-}
-
-function eliteBBO(c, pd, mult){
-  if(c.length<pd+2) return null;
-  const cl=closes(c); const m=sma(cl,pd), sd=stddev(cl,pd);
-  if(m===null||sd===null||sd===0) return null;
-  const upper=m+mult*sd, lower=m-mult*sd;
-  const last=c[c.length-1];
-  if(last.close>upper&&last.close>last.open) return 'RISE';
-  if(last.close<lower&&last.close<last.open) return 'FALL';
-  return null;
-}
-
-function eliteRev(c, trendN, wickMin){
-  if(c.length<trendN+3) return null;
-  const last=c[c.length-1], prev=c[c.length-2];
-  let dn=true,up=true;
-  for(let i=1;i<=trendN;i++){
-    const x=c[c.length-1-i];
-    if(x.close>=x.open) dn=false;
-    if(x.close<=x.open) up=false;
-  }
-  const rg=last.high-last.low; if(rg<=0) return null;
-  const lw=(Math.min(last.open,last.close)-last.low)/rg;
-  const uw=(last.high-Math.max(last.open,last.close))/rg;
-  if(dn&&last.close>last.open&&lw>=wickMin&&last.close>prev.close) return 'RISE';
-  if(up&&last.close<last.open&&uw>=wickMin&&last.close<prev.close) return 'FALL';
   return null;
 }
 
@@ -1433,8 +955,6 @@ function getEliteSignal(sym){
       dir=d1;
       break;
     }
-    case 'REV': dir=eliteRev(c,p.trendN,p.wickMin); break;
-    case 'BBO': dir=eliteBBO(c,p.bbPd,p.bbMult); break;
   }
   if(!dir) return null;
   const conf=cfg.minConf+5; // boost for elite confirmation
@@ -1485,18 +1005,16 @@ function evaluateChartSignals(sym){
 // DIGIT TRACKING & STRATEGY ENGINE
 // ============================================================
 function processDigit(sym, price){
-  const pipSize = G.MARKET.pipSize?.[sym] || 2;
-  const s = price.toFixed(pipSize);
-  const digit = parseInt(s.slice(-1), 10);
+  const digit = (price.toFixed(2)).slice(-1)|0;
   const q = BotState.tickQueue;
-  q.push(digit);
-  if(q.length > 5) q.shift();
+  if(q.length>=5){ BotState._tqOff=(BotState._tqOff+1)%5; q[BotState._tqOff]=digit; }
+  else q.push(digit);
   const h = BotState.tickHistory;
   h.push(digit);
-  if(h.length > 1000) h.splice(0, h.length - 1000);
+  if(h.length>1000) h.splice(0,500);
   const pq = BotState.priceQueue;
   pq.push(price);
-  if(pq.length > 10) pq.shift();
+  if(pq.length>10) pq.splice(0,5);
   return digit;
 }
 
@@ -1724,23 +1242,24 @@ function evaluateDigitStrategy(sym){
   G.SENDING_TIMEOUT = setTimeout(()=>{ G.ACTIVE_CONTRACTS.delete('sending'); BotState.contractActive = false; log('[DIGIT] Auto trade timed out','w'); },15000);
 }
 function digitChiSq(hist){
-  if(hist.length < 40) return 0;
-  const freq=Array(10).fill(0); for(const d of hist) freq[d]++;
-  const exp = hist.length/10; let cs=0;
-  for(let i=0;i<10;i++) cs += (freq[i]-exp)*(freq[i]-exp)/exp;
+  const l=hist.length; if(l<40) return 0;
+  const freq=Array(10).fill(0); for(let i=0;i<l;i++) freq[hist[i]]++;
+  const exp=l/10; let cs=0;
+  for(let i=0;i<10;i++){const d=freq[i]-exp; cs+=d*d/exp;}
   return cs;
 }
 function digitRunTest(hist){
-  // Runs test: are digit movements random?
-  if(hist.length<30) return 0;
-  let runs=1, up=null; const n1=hist.filter(d=>d>=5).length, n2=hist.length-n1;
-  for(let i=1;i<hist.length;i++){
-    const d = hist[i] > hist[i-1] ? 1 : hist[i] < hist[i-1] ? -1 : 0;
-    if(up!==null && d!==0 && d!==up) runs++;
+  const l=hist.length; if(l<30) return 0;
+  let runs=1,up=null,n1=0;
+  for(let i=0;i<l;i++) if(hist[i]>=5) n1++;
+  const n2=l-n1;
+  for(let i=1;i<l;i++){
+    const d=hist[i]>hist[i-1]?1:hist[i]<hist[i-1]?-1:0;
+    if(up!==null&&d!==0&&d!==up) runs++;
     if(d!==0) up=d;
   }
-  const expR = 1+(2*n1*n2)/(n1+n2);
-  return (runs - expR) / Math.sqrt(2*n1*n2*(2*n1*n2-n1-n2)/((n1+n2)*(n1+n2)*(n1+n2-1)));
+  const expR=1+(2*n1*n2)/(n1+n2);
+  return (runs-expR)/Math.sqrt(2*n1*n2*(2*n1*n2-n1-n2)/((n1+n2)*(n1+n2)*(n1+n2-1)));
 }
 function scoreEOPrecision(sample, fullHist){
   const total = sample.length;
@@ -2114,8 +1633,8 @@ function buildCandlesFromTicks(sym, times, prices){
       candles.push({
         epoch: bucket[bucket.length-1].epoch,
         open:  bucket[0].price,
-        high:  Math.max(...ps),
-        low:   Math.min(...ps),
+        high:  max(ps),
+        low:   min(ps),
         close: bucket[bucket.length-1].price,
         ticks: bucket.length
       });
@@ -2150,59 +1669,49 @@ function handleHistory(data){
   buildCandlesFromTicks(sym, data.history?.times || [], data.history?.prices || []);
 }
 
+let _tickCount=0;
 function handleTick(data){
   const t = data.tick; if(!t) return;
   const sym = t.symbol || G.MARKET.tickSubs[data.subscription?.id];
   const price = +t.quote;
-  const epoch = +t.epoch; // seconds
+  const epoch = +t.epoch;
   if(!sym || !Number.isFinite(price) || !Number.isFinite(epoch)) return;
   processDigit(sym, price);
-  updateDigitsUI();
-  if(G.TRADE_MODE==='DIGITS' && BotState.isTrading && G.ACTIVE_CONTRACTS.size===0 && BotState.tickHistory.length >= 30) evaluateDigitStrategy(sym);
-  if(!G.MARKET.candles[sym]) G.MARKET.candles[sym]=[];
-  if(!G.MARKET.tickBuf[sym]) G.MARKET.tickBuf[sym]=[];
-  if(!G.MARKET.candleOpenAt[sym]) G.MARKET.candleOpenAt[sym]=epoch*1000;
-  const buf = G.MARKET.tickBuf[sym];
+  _tickCount++;
+  // Throttle heavy UI to every 3rd tick
+  if((_tickCount&3)===0) updateDigitsUI();
+  if(G.TRADE_MODE==='DIGITS' && BotState.isTrading && G.ACTIVE_CONTRACTS.size===0 && BotState.tickHistory.length >= 30){
+    if((_tickCount&7)===0) setTimeout(()=>evaluateDigitStrategy(sym),0);
+  }
+  let candles=G.MARKET.candles[sym]; if(!candles) G.MARKET.candles[sym]=candles=[];
+  let buf=G.MARKET.tickBuf[sym]; if(!buf) G.MARKET.tickBuf[sym]=buf=[];
+  let openAt=G.MARKET.candleOpenAt[sym]; if(!openAt) G.MARKET.candleOpenAt[sym]=openAt=epoch*1000;
   buf.push(price);
-  const elapsed = (epoch*1000) - G.MARKET.candleOpenAt[sym];
-  if(elapsed >= G.CANDLE_INTERVAL_MS){
-    // Close a 15-second candle — validate quality
-    const info = SYMBOLS.find(x=>x.sym===sym);
-    const expectedTicks = info && (info.cat==='VOL1S' || info.cat==='STEP') ? 15 : 7; // 1s →~15, 2s →~7
-    const minTicks = Math.max(3, Math.round(expectedTicks * 0.6));
-    const candle = {
-      epoch,
-      open:  buf[0]||price,
-      high:  buf.length ? Math.max(...buf) : price,
-      low:   buf.length ? Math.min(...buf) : price,
-      close: price,
-      ticks: buf.length
-    };
-    G.MARKET.candles[sym].push(candle);
-    if(G.MARKET.candles[sym].length > 250) G.MARKET.candles[sym].shift();
-    if(!G.MARKET.tickPrices) G.MARKET.tickPrices={};
-    if(!G.MARKET.tickPrices[sym]) G.MARKET.tickPrices[sym]=[];
-    G.MARKET.tickPrices[sym].push(...buf);
-    if(G.MARKET.tickPrices[sym].length > 80) G.MARKET.tickPrices[sym].splice(0,G.MARKET.tickPrices[sym].length-60);
-    G.MARKET.tickBuf[sym] = [];
-    G.MARKET.candleOpenAt[sym] = epoch*1000;
-    G.MARKET.prices[sym] = G.MARKET.candles[sym].map(c=>c.close);
-    G.MARKET.lastCloseAt[sym] = Date.now();
-    // Store signal marker if a trade was placed during this candle
+  if((epoch*1000)-openAt >= G.CANDLE_INTERVAL_MS){
+    const info=SYMBOLS.find(x=>x.sym===sym);
+    const expT=info&&(info.cat==='VOL1S'||info.cat==='STEP')?15:7;
+    const minT=Math.max(3,Math.round(expT*0.6));
+    const candle={epoch,open:buf[0]||price,high:max(buf),low:min(buf),close:price,ticks:buf.length};
+    candles.push(candle);
+    if(candles.length>250) candles.shift();
+    const tp=G.MARKET.tickPrices||(G.MARKET.tickPrices={});
+    const ta=tp[sym]||(tp[sym]=[]); ta.push.apply(ta,buf);
+    if(ta.length>80) ta.splice(0,ta.length-60);
+    G.MARKET.tickBuf[sym]=[];
+    G.MARKET.candleOpenAt[sym]=epoch*1000;
+    G.MARKET.prices[sym]=candles.map(c=>c.close);
+    G.MARKET.lastCloseAt[sym]=Date.now();
     if(G._tradedCandle?.[sym]){
-      if(!G._signalOnCandle) G._signalOnCandle = {};
-      const key = sym+':'+candle.epoch;
-      G._signalOnCandle[key] = { action: G.LAST_SIGNAL?.action||'FALL', conf: G.LAST_SIGNAL?.conf||0, price: candle.close };
-      candle.signal = G._signalOnCandle[key];
-      storeSignal(sym, candle.epoch, G.LAST_SIGNAL, true);
-      G._tradedCandle[sym] = false;
+      const key=sym+':'+candle.epoch;
+      G._signalOnCandle||(G._signalOnCandle={});
+      G._signalOnCandle[key]={action:G.LAST_SIGNAL?.action||'FALL',conf:G.LAST_SIGNAL?.conf||0,price:candle.close};
+      candle.signal=G._signalOnCandle[key];
+      storeSignal(sym,candle.epoch,G.LAST_SIGNAL,true);
+      G._tradedCandle[sym]=false;
     }
-    if(candle.ticks >= minTicks){
-      evaluateAndTrade(sym);
-    }
+    if(candle.ticks>=minT) evaluateAndTrade(sym);
     evaluateChartSignals(sym);
-    // Reset trade flag so it doesn't leak to the next candle
-    if(G._tradedCandle) G._tradedCandle[sym] = false;
+    if(G._tradedCandle) G._tradedCandle[sym]=false;
   }
   if(sym===G.CURRENT_MARKET) drawChart();
 }
@@ -2256,8 +1765,8 @@ function evaluateSingleMarket(sym, liveBuf){
   if(liveBuf && liveBuf.length >= 2){
     curr = {
       open: lastClosed.close,
-      high: Math.max(...liveBuf),
-      low: Math.min(...liveBuf),
+      high: max(liveBuf),
+      low: min(liveBuf),
       close: liveBuf[liveBuf.length-1]
     };
     p1 = lastClosed;
@@ -2449,16 +1958,13 @@ function execTrade(signal, asset){
   const stake = signal.copyStake || (Martingale.enabled ? Martingale.currentStake : parseFloat(document.getElementById('rfStake')?.value||1));
   const dur = G.TRADE_DURATION || 15;
   const durUnit = G.TRADE_DURATION_UNIT || 's';
-  if(!G.WS || G.WS.readyState!==WebSocket.OPEN){ log('[TRADE] WS not open','e'); return; }
-  if(!G.WS || G.WS.readyState!==WebSocket.OPEN){ log('[TRADE] WS not open','e'); return; }
   const ct = signal.action==='RISE'?'CALL':'PUT';
   G.LAST_SIGNAL = { ...signal, stake, dur, asset };
   G._lastTradeAt = Date.now();
-  if(!signal.copyStake && G.COPY_BROADCAST_ENABLED && G.COPY_MODE==='master') broadcastCopySignal(ct, asset, stake);
+  if(G.COPY_BROADCAST_ENABLED && G.COPY_MODE==='master') broadcastCopySignal(ct, asset, stake);
   log(`[TRADE] ${ct} $${stake.toFixed(2)} ${asset} via ${signal.src}`,'t');
   if(!G._tradedCandle) G._tradedCandle = {};
   G._tradedCandle[asset] = true;
-  broadcastCopySignal(ct, asset, stake);
   G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
   if(G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
   G.SENDING_TIMEOUT = setTimeout(()=>{
@@ -2515,10 +2021,7 @@ function handleContract(c){
     if(!c.contract_id) return;
     if(G.PROCESSED_CONTRACTS.has(c.contract_id)) return;
     G.PROCESSED_CONTRACTS.add(c.contract_id);
-    if(G.PROCESSED_CONTRACTS.size > 500){
-      const arr = [...G.PROCESSED_CONTRACTS];
-      G.PROCESSED_CONTRACTS = new Set(arr.slice(-200));
-    }
+    if(G.PROCESSED_CONTRACTS.size>500) G.PROCESSED_CONTRACTS=new Set([...G.PROCESSED_CONTRACTS].slice(-200));
     const won = c.status==='won' || (c.is_sold === 1 && c.profit > 0);
     const profitStr = (c.profit>=0?'+':'')+c.profit.toFixed(2);
     showToast(`${won?'WIN':'LOSS'} ${profitStr}`, won?'win':'loss');
@@ -2670,8 +2173,8 @@ function drawChart(){
   const hasLive = liveBuf.length > 0;
   const liveCandle = hasLive ? {
     open: c.length ? c[c.length-1].close : liveBuf[0],
-    high: Math.max(...liveBuf),
-    low: Math.min(...liveBuf),
+    high: max(liveBuf),
+    low: min(liveBuf),
     close: liveBuf[liveBuf.length-1]
   } : null;
   const all = liveCandle ? [...c, liveCandle] : c;
@@ -2773,35 +2276,23 @@ function selectMarketFromDropdown(sym){
 function updateWatchlist(){
   const body = document.getElementById('watchlistBody');
   if(!body) return;
+  const topSig=evaluateSingleMarket(G.CURRENT_MARKET);
+  document.getElementById('watchTopMarket').textContent=topSig?`${G.CURRENT_MARKET}: ${topSig.action} ${topSig.conf}%`:'—';
+  // Throttle full rebuild to every 3rd call
+  if(!G._wlThrottle) G._wlThrottle=0;
+  if((++G._wlThrottle)%3!==0) return;
   let rise=0, fall=0;
-  const html = SYMBOLS.map(s=>{
-    const c = G.MARKET.candles[s.sym] || [];
-    const price = c.length? c[c.length-1].close.toFixed(3) : '—';
-    let sigTxt='—', sigCls='sig-none';
-    const sig = evaluateSingleMarket(s.sym);
-    if(sig){
-      sigTxt = `${sig.action} ${sig.conf}%`;
-      sigCls = sig.action==='RISE'?'sig-rise':'sig-fall';
-      if(sig.action==='RISE') rise++; else fall++;
-    }
-    const selCls = s.sym===G.CURRENT_MARKET ? 'selected':'';
-    const src = sig ? sig.src : '—';
-    return `<div class="watch-item ${selCls}" onclick="selectMarket('${s.sym}')">
-      <div>
-        <div class="sym">${s.name} <span style="font-size:10px;color:var(--muted);font-weight:500;">${s.sym}</span></div>
-        <div style="font-size:9px;color:var(--muted);margin-top:2px;">${c.length} candles · ${src}</div>
-      </div>
-      <div style="text-align:right;">
-        <div class="price">${price}</div>
-        <div class="signal ${sigCls}">${sigTxt}</div>
-      </div>
-    </div>`;
+  const html=SYMBOLS.map(s=>{
+    const c=G.MARKET.candles[s.sym]||[];
+    const price=c.length?c[c.length-1].close.toFixed(3):'—';
+    let sigTxt='—',sigCls='sig-none';
+    // Use cached signal from last evaluateSingleMarket
+    const sig=s.sym===G.CURRENT_MARKET?topSig:evaluateSingleMarket(s.sym);
+    if(sig){sigTxt=`${sig.action} ${sig.conf}%`; sigCls=sig.action==='RISE'?'sig-rise':'sig-fall'; if(sig.action==='RISE')rise++;else fall++;}
+    const src=sig?sig.src:'—';
+    return `<div class="watch-item ${s.sym===G.CURRENT_MARKET?'selected':''}" onclick="selectMarket('${s.sym}')"><div><div class="sym">${s.name} <span style="font-size:10px;color:var(--muted);font-weight:500;">${s.sym}</span></div><div style="font-size:9px;color:var(--muted);margin-top:2px;">${c.length} candles · ${src}</div></div><div style="text-align:right;"><div class="price">${price}</div><div class="signal ${sigCls}">${sigTxt}</div></div></div>`;
   }).join('');
-  body.innerHTML = html;
-  const total = rise+fall;
-  // Best market: current signal
-  const topSig = evaluateSingleMarket(G.CURRENT_MARKET);
-  document.getElementById('watchTopMarket').textContent = topSig ? `${G.CURRENT_MARKET}: ${topSig.action} ${topSig.conf}%` : '—';
+  body.innerHTML=html;
 }
 
 function selectMarket(sym){
@@ -2928,7 +2419,7 @@ function updateDigitsUI(){
   const throttleKey = '_dgThrottle';
   if(!G[throttleKey]) G[throttleKey]=0;
   G[throttleKey]++;
-  const fullRebuild = G[throttleKey] % 5 === 0;
+  const fullRebuild = (G[throttleKey]&3)===0;
   // Digit circles
   const hfreq = Array(10).fill(0);
   for(const d of hist) hfreq[d]++;
@@ -3059,11 +2550,13 @@ function updateDash(){
 function genId(){ return ++G.RID; }
 function now(){ const d=new Date(); return `[${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}]`; }
 function fmt$(a){ return (a>=0?'$':'-$')+Math.abs(a).toFixed(2); }
+let _logBox=null;
 function log(m,t='i'){
-  const box = document.getElementById('logBox'); if(!box) return;
-  const l = document.createElement('div'); l.className=t; l.textContent=`${now()} ${m}`;
-  box.appendChild(l); box.scrollTop=box.scrollHeight;
-  while(box.children.length>200) box.removeChild(box.firstChild);
+  if(!_logBox) _logBox=document.getElementById('logBox');
+  if(!_logBox) return;
+  const l=document.createElement('div'); l.className=t; l.textContent=`${now()} ${m}`;
+  _logBox.appendChild(l); _logBox.scrollTop=_logBox.scrollHeight;
+  while(_logBox.children.length>200) _logBox.removeChild(_logBox.firstChild);
 }
 function clearLog(){ const b=document.getElementById('logBox'); if(b){ b.innerHTML=''; log('Console cleared.'); } }
 
@@ -3218,16 +2711,17 @@ function downloadTradeLog(){
   log(`[EXPORT] ${a.download} — ${(blob.size/1024).toFixed(1)}KB`,'s');
 }
 
+let _toastC=null;
 function showToast(msg, type){
-  const c = document.getElementById('toastContainer'); if(!c) return;
-  const colors = { win:'#22c55e', loss:'#ef4444', tp:'#3b82f6', sl:'#f59e0b', info:'#8b8b8b' };
-  const bg = colors[type] || colors.info;
-  const el = document.createElement('div');
-  el.textContent = msg;
-  el.style.cssText = `background:${bg};color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.3);opacity:0;transform:translateX(40px);transition:all .3s ease;pointer-events:auto`;
-  c.appendChild(el);
-  requestAnimationFrame(() => { el.style.opacity = '1'; el.style.transform = 'translateX(0)'; });
-  setTimeout(() => { el.style.opacity = '0'; el.style.transform = 'translateX(40px)'; setTimeout(() => el.remove(), 300); }, 2500);
+  if(!_toastC) _toastC=document.getElementById('toastContainer');
+  if(!_toastC) return;
+  const bg={'win':'#22c55e','loss':'#ef4444','tp':'#3b82f6','sl':'#f59e0b','info':'#8b8b8b'}[type]||'#8b8b8b';
+  const el=document.createElement('div');
+  el.textContent=msg;
+  el.style.cssText=`background:${bg};color:#fff;padding:8px 14px;border-radius:8px;font-size:12px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.3);opacity:0;transform:translateX(40px);transition:all .3s ease;pointer-events:auto`;
+  _toastC.appendChild(el);
+  requestAnimationFrame(()=>{el.style.opacity='1';el.style.transform='translateX(0)';});
+  setTimeout(()=>{el.style.opacity='0';el.style.transform='translateX(40px)';setTimeout(()=>el.remove(),300);},2500);
 }
 function addRecentTrade(text,cls){
   const el = document.getElementById('recentTrades'); if(!el) return;
@@ -3246,28 +2740,33 @@ function clearRecentTrades(){
 // ============================================================
 // SESSION PERSISTENCE (localStorage)
 // ============================================================
+let _saveTimer=0;
 function saveState(){
-  try {
-    localStorage.setItem('deriv_token', G.TOKEN);
-    localStorage.setItem('deriv_account_type', G.ACCOUNT_TYPE);
-    localStorage.setItem('deriv_telegram_token', G.TELEGRAM_BOT_TOKEN);
-    localStorage.setItem('deriv_telegram_chat_id', G.TELEGRAM_CHAT_ID);
-    localStorage.setItem('deriv_strategy_active', JSON.stringify(G.STRATEGY_ACTIVE));
-    localStorage.setItem('deriv_trade_history', JSON.stringify(G.TRADE_HISTORY.slice(-200)));
-    const stake = document.getElementById('rfStake')?.value;
-    if(stake) localStorage.setItem('deriv_stake', stake);
-    const bs = BotState;
-    localStorage.setItem('deriv_botstate', JSON.stringify({
-      isTrading: bs.isTrading, contractType: bs.contractType,
-      baseStake: bs.baseStake, targetProfit: bs.targetProfit, stopLoss: bs.stopLoss
-    }));
-    localStorage.setItem('deriv_copy_mode', G.COPY_MODE||'off');
-    localStorage.setItem('deriv_copy_traders', JSON.stringify(G.COPY_TRADERS));
-    const tgToken = document.getElementById('tgToken')?.value;
-    const tgChat = document.getElementById('tgChatId')?.value;
-    if(tgToken) localStorage.setItem('deriv_tg_token', tgToken);
-    if(tgChat) localStorage.setItem('deriv_tg_chat', tgChat);
-  } catch(e){ console.log('[SAVE]', e.message); }
+  if(_saveTimer) clearTimeout(_saveTimer);
+  _saveTimer=setTimeout(()=>{
+    _saveTimer=0;
+    try {
+      localStorage.setItem('deriv_token', G.TOKEN);
+      localStorage.setItem('deriv_account_type', G.ACCOUNT_TYPE);
+      localStorage.setItem('deriv_telegram_token', G.TELEGRAM_BOT_TOKEN);
+      localStorage.setItem('deriv_telegram_chat_id', G.TELEGRAM_CHAT_ID);
+      localStorage.setItem('deriv_strategy_active', JSON.stringify(G.STRATEGY_ACTIVE));
+      localStorage.setItem('deriv_trade_history', JSON.stringify(G.TRADE_HISTORY.slice(-200)));
+      const stake = document.getElementById('rfStake')?.value;
+      if(stake) localStorage.setItem('deriv_stake', stake);
+      const bs = BotState;
+      localStorage.setItem('deriv_botstate', JSON.stringify({
+        isTrading: bs.isTrading, contractType: bs.contractType,
+        baseStake: bs.baseStake, targetProfit: bs.targetProfit, stopLoss: bs.stopLoss
+      }));
+      localStorage.setItem('deriv_copy_mode', G.COPY_MODE||'off');
+      localStorage.setItem('deriv_copy_traders', JSON.stringify(G.COPY_TRADERS));
+      const tgToken = document.getElementById('tgToken')?.value;
+      const tgChat = document.getElementById('tgChatId')?.value;
+      if(tgToken) localStorage.setItem('deriv_tg_token', tgToken);
+      if(tgChat) localStorage.setItem('deriv_tg_chat', tgChat);
+    } catch(e){ console.log('[SAVE]', e.message); }
+  }, 500);
 }
 function restoreState(){
   try {

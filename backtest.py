@@ -1,15 +1,12 @@
-import csv, json, math, time
+import csv, json, math, time, itertools
 from pathlib import Path
 
 CSV_DIR = Path(r"C:\Users\b0231\Downloads")
 MARKETS = ["R_10","R_25","R_50","R_75","R_100","1HZ10V","1HZ25V","1HZ50V","1HZ75V","1HZ100V"]
 
 def load_csv(path):
-    rows=[]
     with open(path) as f:
-        for row in csv.DictReader(f):
-            rows.append([int(row["time_unix"]),float(row["open"]),float(row["high"]),float(row["low"]),float(row["close"]),int(row["ticks"])])
-    return rows
+        return [[int(r["time_unix"]),float(r["open"]),float(r["high"]),float(r["low"]),float(r["close"]),int(r["ticks"])] for r in csv.DictReader(f)]
 
 def ema(arr, p):
     if len(arr)<p: return None
@@ -18,342 +15,209 @@ def ema(arr, p):
     return e
 
 def test_strategy(candles, strategy_fn):
-    """Run a strategy function over all candles. Returns trade results."""
     trades=[]
-    n=len(candles)
-    for i in range(n-1):
-        trade=strategy_fn(candles, i)
-        if trade:
-            direction=trade
+    for i in range(len(candles)-1):
+        d=strategy_fn(candles,i)
+        if d:
             nxt=candles[i+1]
-            won=(direction=='RISE' and nxt[4]>nxt[1]) or (direction=='FALL' and nxt[4]<nxt[1])
-            trades.append(won)
+            trades.append((d=='RISE' and nxt[4]>nxt[1]) or (d=='FALL' and nxt[4]<nxt[1]))
     return trades
 
-# ── STRATEGY DEFINITIONS ──
-
-def t_wr(c, i, p=14, os=-85, ob=-20, req_wick=False, mw=0.35):
-    """Williams %R mean reversion"""
+def t_wr(c,i,p=14,os=-85,ob=-20,rw=False,mw=0.35):
     if i<p+1: return None
-    hi=max(c[j][2] for j in range(i-p+1,i+1))
-    lo=min(c[j][3] for j in range(i-p+1,i+1))
+    s=i-p+1; hi=max(c[j][2] for j in range(s,i+1)); lo=min(c[j][3] for j in range(s,i+1))
     wr=-50 if hi==lo else ((hi-c[i][4])/(hi-lo))*-100
     ci=c[i]
     if wr<os and ci[4]>ci[1]:
-        if req_wick:
+        if rw:
             rg=ci[2]-ci[3]
             if rg<=0: return None
             if (min(ci[1],ci[4])-ci[3])/rg<mw: return None
         return 'RISE'
     if wr>ob and ci[4]<ci[1]:
-        if req_wick:
+        if rw:
             rg=ci[2]-ci[3]
             if rg<=0: return None
             if (ci[2]-max(ci[1],ci[4]))/rg<mw: return None
         return 'FALL'
     return None
 
-def t_trend_follow(c, i, lookback=3):
-    """Follow the trend: if N consecutive in same direction, bet on continuation"""
-    if i<lookback+1: return None
-    green=all(c[i-j][4]>c[i-j][1] for j in range(lookback))
-    red=all(c[i-j][4]<c[i-j][1] for j in range(lookback))
-    if green: return 'RISE'
-    if red: return 'FALL'
+def t_trend_follow(c,i,lb=3):
+    if i<lb+1: return None
+    g=all(c[i-j][4]>c[i-j][1] for j in range(lb))
+    r=all(c[i-j][4]<c[i-j][1] for j in range(lb))
+    return 'RISE' if g else 'FALL' if r else None
+
+def t_trend_boost(c,i,lb=3,mp=0.6):
+    if i<lb: return None
+    g=sum(1 for j in range(i-lb+1,i+1) if c[j][4]>c[j][1]); r=lb-g
+    if g>=lb*mp and c[i][4]>c[i][1]: return 'RISE'
+    if r>=lb*mp and c[i][4]<c[i][1]: return 'FALL'
     return None
 
-def t_trend_boost(c, i, lookback=3, min_pct=0.6):
-    """Trend: majority direction in last N, with wi"""
-    if i<lookback: return None
-    g=sum(1 for j in range(i-lookback+1,i+1) if c[j][4]>c[j][1])
-    r=lookback-g
-    if g>=lookback*min_pct and c[i][4]>c[i][1]: return 'RISE'
-    if r>=lookback*min_pct and c[i][4]<c[i][1]: return 'FALL'
-    return None
-
-def t_bb_breakout(c, i, p=20, sd_m=2.0):
-    """BB breakout: price closes outside bands, bet on continuation"""
+def t_bb_breakout(c,i,p=20,sd_m=2.0):
     if i<p+1: return None
-    a=[c[j][4] for j in range(i-p+1,i+1)]
-    m=sum(a)/p
-    sd=math.sqrt(sum((x-m)**2 for x in a)/p)
+    s=i-p+1; a=[c[j][4] for j in range(s,i+1)]
+    m=sum(a)/p; sd=math.sqrt(sum((x-m)**2 for x in a)/p)
     if sd==0: return None
-    upper=m+sd_m*sd; lower=m-sd_m*sd
-    ci=c[i]
-    if ci[4]>upper and ci[4]>ci[1]: return 'RISE'
-    if ci[4]<lower and ci[4]<ci[1]: return 'FALL'
+    u=m+sd_m*sd; l=m-sd_m*sd; ci=c[i]
+    if ci[4]>u and ci[4]>ci[1]: return 'RISE'
+    if ci[4]<l and ci[4]<ci[1]: return 'FALL'
     return None
 
-def t_ema_cross(c, i, fast=5, slow=20):
-    """EMA cross: fast crosses above slow"""
+def t_ema_cross(c,i,fast=5,slow=20):
     if i<slow+2: return None
     cl=[c[j][4] for j in range(i+1)]
-    e_fast=ema(cl,fast); e_slow=ema(cl,slow)
-    if e_fast is None or e_slow is None: return None
-    prev_cl=cl[:-1]
-    e_fast_p=ema(prev_cl,fast); e_slow_p=ema(prev_cl,slow)
-    if e_fast_p is None or e_slow_p is None: return None
+    ef=ema(cl,fast); es=ema(cl,slow)
+    if ef is None or es is None: return None
+    pc=cl[:-1]; efp=ema(pc,fast); esp=ema(pc,slow)
+    if efp is None or esp is None: return None
     ci=c[i]
-    if e_fast_p<=e_slow_p and e_fast>e_slow and ci[4]>ci[1]: return 'RISE'
-    if e_fast_p>=e_slow_p and e_fast<e_slow and ci[4]<ci[1]: return 'FALL'
+    if efp<=esp and ef>es and ci[4]>ci[1]: return 'RISE'
+    if efp>=esp and ef<es and ci[4]<ci[1]: return 'FALL'
     return None
 
-def t_momentum(c, i, lookback=5, threshold=0.5):
-    """Momentum: price change over N candles exceeds threshold %"""
-    if i<lookback: return None
-    pct_chg=(c[i][4]-c[i-lookback][4])/c[i-lookback][4]*100 if c[i-lookback][4]!=0 else 0
-    ci=c[i]
-    if pct_chg>threshold and ci[4]>ci[1]: return 'RISE'
-    if pct_chg<-threshold and ci[4]<ci[1]: return 'FALL'
+def t_momentum(c,i,lb=5,th=0.5):
+    if i<lb: return None
+    pch=(c[i][4]-c[i-lb][4])/c[i-lb][4]*100 if c[i-lb][4]!=0 else 0; ci=c[i]
+    if pch>th and ci[4]>ci[1]: return 'RISE'
+    if pch<-th and ci[4]<ci[1]: return 'FALL'
     return None
 
-def t_volatility_expansion(c, i, lookback=10, mult=1.5):
-    """Volatility expansion: current range > avg range * mult"""
-    if i<lookback+1: return None
-    rngs=[c[j][2]-c[j][3] for j in range(i-lookback,i)]
-    avg=sum(rngs)/lookback
-    cur=c[i][2]-c[i][3]
-    if avg==0: return None
-    ci=c[i]
+def t_vol_exp(c,i,lb=10,mult=1.5):
+    if i<lb+1: return None
+    rngs=[c[j][2]-c[j][3] for j in range(i-lb,i)]; avg=sum(rngs)/lb; cur=c[i][2]-c[i][3]
+    if avg==0: return None; ci=c[i]
     if cur>avg*mult and ci[4]>ci[1]: return 'RISE'
     if cur>avg*mult and ci[4]<ci[1]: return 'FALL'
     return None
 
-def t_reversal_after_trend(c, i, trend_n=4, wick_min=0.5):
-    """Reversal: strong N-candle trend + wick rejection"""
-    if i<trend_n+2: return None
-    ci=c[i]; pv=c[i-1]
-    dn=all(c[i-j][4]<c[i-j][1] for j in range(1,trend_n+1))
-    up=all(c[i-j][4]>c[i-j][1] for j in range(1,trend_n+1))
+def t_rev_trend(c,i,tn=4,wm=0.5):
+    if i<tn+2: return None; ci=c[i]; pv=c[i-1]
+    dn=all(c[i-j][4]<c[i-j][1] for j in range(1,tn+1))
+    up=all(c[i-j][4]>c[i-j][1] for j in range(1,tn+1))
     rg=ci[2]-ci[3]
     if rg<=0: return None
-    lw=(min(ci[1],ci[4])-ci[3])/rg
-    uw=(ci[2]-max(ci[1],ci[4]))/rg
-    if dn and ci[4]>ci[1] and lw>=wick_min and ci[4]>pv[4]: return 'RISE'
-    if up and ci[4]<ci[1] and uw>=wick_min and ci[4]<pv[4]: return 'FALL'
+    lw=(min(ci[1],ci[4])-ci[3])/rg; uw=(ci[2]-max(ci[1],ci[4]))/rg
+    if dn and ci[4]>ci[1] and lw>=wm and ci[4]>pv[4]: return 'RISE'
+    if up and ci[4]<ci[1] and uw>=wm and ci[4]<pv[4]: return 'FALL'
     return None
 
-def t_support_resistance(c, i, lookback=20):
-    """Support/Resistance bounce"""
-    if i<lookback+2: return None
-    hi_lb=max(c[j][2] for j in range(i-lookback,i))
-    lo_lb=min(c[j][3] for j in range(i-lookback,i))
-    band=(hi_lb-lo_lb)*0.02
-    ci=c[i]; pv=c[i-1]
-    rg=ci[2]-ci[3]
+def t_sr_bounce(c,i,lb=20):
+    if i<lb+2: return None
+    hi_lb=max(c[j][2] for j in range(i-lb,i)); lo_lb=min(c[j][3] for j in range(i-lb,i))
+    band=(hi_lb-lo_lb)*0.02; ci=c[i]; rg=ci[2]-ci[3]
     if rg<=0: return None
-    lw=(min(ci[1],ci[4])-ci[3])/rg
-    uw=(ci[2]-max(ci[1],ci[4]))/rg
-    # Near support: price near recent low + bullish wick
+    lw=(min(ci[1],ci[4])-ci[3])/rg; uw=(ci[2]-max(ci[1],ci[4]))/rg
     if ci[3]<=lo_lb+band and ci[4]>ci[1] and lw>=0.4: return 'RISE'
-    # Near resistance: price near recent high + bearish wick
     if ci[2]>=hi_lb-band and ci[4]<ci[1] and uw>=0.4: return 'FALL'
     return None
+
+def add_result(results, sigs, label):
+    if len(sigs)>=10:
+        w=sum(1 for x in sigs if x)
+        results.append({'s':label,'wr':round(w/len(sigs)*100,1),'t':len(sigs),'w':w})
 
 def main():
     t_start=time.time()
     all_results=[]
-    
     for mi,m in enumerate(MARKETS):
         path=CSV_DIR/f"{m}_15s.csv"
         if not path.exists(): continue
-        c=load_csv(path)
-        t0=time.time()
-        n=len(c)
+        c=load_csv(path); t0=time.time(); n=len(c)
         print(f"\n[{mi+1}/10] {m}: {n} candles",flush=True)
         results=[]
-        
-        # 1. Williams %R (various params)
-        for p in [7,10,14]:
-            for os in [-95,-90,-85,-80,-75]:
-                for wick in [False,True]:
-                    sigs=test_strategy(c, lambda c,i,p=p,os=os,wick=wick: t_wr(c,i,p,os,-20,wick,0.35))
-                    if len(sigs)>=10:
-                        w=sum(1 for x in sigs if x)
-                        results.append({'s':f'W{abs(os)}P{p}W{int(wick)}','wr':round(w/len(sigs)*100,1),'t':len(sigs),'w':w})
-        
-        # 2. Trend follow
+        for p,os,wick in itertools.product([7,10,14],[-95,-90,-85,-80,-75],[False,True]):
+            sigs=test_strategy(c,lambda c,i,p=p,os=os,wick=wick: t_wr(c,i,p,os,-20,wick,0.35))
+            add_result(results,sigs,f'W{abs(os)}P{p}W{int(wick)}')
         for lb in [2,3,4]:
-            sigs=test_strategy(c, lambda c,i,lb=lb: t_trend_follow(c,i,lb))
-            if len(sigs)>=10:
-                w=sum(1 for x in sigs if x)
-                results.append({'s':f'TF{lb}','wr':round(w/len(sigs)*100,1),'t':len(sigs),'w':w})
-        
-        # 3. Trend boost (majority)
-        for lb in [5,8]:
-            for mp in [0.6,0.7,0.8]:
-                sigs=test_strategy(c, lambda c,i,lb=lb,mp=mp: t_trend_boost(c,i,lb,mp))
-                if len(sigs)>=10:
-                    w=sum(1 for x in sigs if x)
-                    results.append({'s':f'TB{lb}_{int(mp*100)}','wr':round(w/len(sigs)*100,1),'t':len(sigs),'w':w})
-        
-        # 4. BB breakout
+            sigs=test_strategy(c,lambda c,i,lb=lb: t_trend_follow(c,i,lb))
+            add_result(results,sigs,f'TF{lb}')
+        for lb,mp in itertools.product([5,8],[0.6,0.7,0.8]):
+            sigs=test_strategy(c,lambda c,i,lb=lb,mp=mp: t_trend_boost(c,i,lb,mp))
+            add_result(results,sigs,f'TB{lb}_{int(mp*100)}')
         for sd_m in [1.5,2.0,2.5,3.0]:
-            sigs=test_strategy(c, lambda c,i,sd_m=sd_m: t_bb_breakout(c,i,20,sd_m))
-            if len(sigs)>=10:
-                w=sum(1 for x in sigs if x)
-                results.append({'s':f'BBO{int(sd_m*10)}','wr':round(w/len(sigs)*100,1),'t':len(sigs),'w':w})
-        
-        # 5. EMA cross
-        sigs=test_strategy(c, lambda c,i: t_ema_cross(c,i,5,20))
-        if len(sigs)>=10:
-            w=sum(1 for x in sigs if x)
-            results.append({'s':'EMA5_20','wr':round(w/len(sigs)*100,1),'t':len(sigs),'w':w})
-        
-        # 6. Momentum
-        for lb in [3,5,8]:
-            for thresh in [0.3,0.5,1.0]:
-                sigs=test_strategy(c, lambda c,i,lb=lb,th=thresh: t_momentum(c,i,lb,th))
-                if len(sigs)>=10:
-                    w=sum(1 for x in sigs if x)
-                    results.append({'s':f'MOM{lb}_{thresh}','wr':round(w/len(sigs)*100,1),'t':len(sigs),'w':w})
-        
-        # 7. Volatility expansion
+            sigs=test_strategy(c,lambda c,i,sd_m=sd_m: t_bb_breakout(c,i,20,sd_m))
+            add_result(results,sigs,f'BBO{int(sd_m*10)}')
+        sigs=test_strategy(c,lambda c,i: t_ema_cross(c,i,5,20))
+        add_result(results,sigs,'EMA5_20')
+        for lb,th in itertools.product([3,5,8],[0.3,0.5,1.0]):
+            sigs=test_strategy(c,lambda c,i,lb=lb,th=th: t_momentum(c,i,lb,th))
+            add_result(results,sigs,f'MOM{lb}_{th}')
         for mult in [1.3,1.5,2.0]:
-            sigs=test_strategy(c, lambda c,i,mult=mult: t_volatility_expansion(c,i,10,mult))
-            if len(sigs)>=10:
-                w=sum(1 for x in sigs if x)
-                results.append({'s':f'VOL{int(mult*10)}','wr':round(w/len(sigs)*100,1),'t':len(sigs),'w':w})
-        
-        # 8. Reversal after trend
-        for trend_n in [3,4]:
-            for wick_min in [0.4,0.5]:
-                sigs=test_strategy(c, lambda c,i,tn=trend_n,wm=wick_min: t_reversal_after_trend(c,i,tn,wm))
-                if len(sigs)>=10:
-                    w=sum(1 for x in sigs if x)
-                    results.append({'s':f'REV{trend_n}_{int(wick_min*100)}','wr':round(w/len(sigs)*100,1),'t':len(sigs),'w':w})
-        
-        # 9. Support/Resistance
-        sigs=test_strategy(c, lambda c,i: t_support_resistance(c,i,20))
-        if len(sigs)>=10:
-            w=sum(1 for x in sigs if x)
-            results.append({'s':'SR20','wr':round(w/len(sigs)*100,1),'t':len(sigs),'w':w})
-        
-        # ── COMBINATION: WR + Trend confirmation ──
-        for p in [7,10,14]:
-            for os in [-90,-85,-80]:
-                for trend_lb in [2,3]:
-                    for trend_type in ['follow','boost']:
-                        sigs=[]
-                        for i in range(50,n-1):
-                            d=t_wr(c,i,p,os,-20,False,0.35)
-                            if d is None: continue
-                            if trend_type=='follow':
-                                td=t_trend_follow(c,i,trend_lb)
-                            else:
-                                td=t_trend_boost(c,i,trend_lb,0.6)
-                            if td!=d: continue  # trend must agree with WR
-                            nxt=c[i+1]
-                            won=(d=='RISE' and nxt[4]>nxt[1]) or (d=='FALL' and nxt[4]<nxt[1])
-                            sigs.append(won)
-                        if len(sigs)>=10:
-                            w=sum(1 for x in sigs if x)
-                            results.append({'s':f'W{abs(os)}P{p}+T{trend_lb}{trend_type[0]}','wr':round(w/len(sigs)*100,1),'t':len(sigs),'w':w})
-        
-        # ── COMBINATION: WR + Momentum ──
-        for p in [7,10,14]:
-            for os in [-90,-85,-80]:
-                for mom_lb in [3,5]:
-                    sigs=[]
-                    for i in range(50,n-1):
-                        d=t_wr(c,i,p,os,-20,False,0.35)
-                        if d is None: continue
-                        md=t_momentum(c,i,mom_lb,0.3)
-                        if md!=d: continue
-                        nxt=c[i+1]
-                        won=(d=='RISE' and nxt[4]>nxt[1]) or (d=='FALL' and nxt[4]<nxt[1])
-                        sigs.append(won)
-                    if len(sigs)>=10:
-                        w=sum(1 for x in sigs if x)
-                        results.append({'s':f'W{abs(os)}P{p}+M{mom_lb}','wr':round(w/len(sigs)*100,1),'t':len(sigs),'w':w})
-        
-        # ── COMBINATION: WR + Volatility Expansion ──
-        for p in [7,10,14]:
-            for os in [-90,-85,-80]:
-                for mult in [1.3,1.5]:
-                    sigs=[]
-                    for i in range(50,n-1):
-                        d=t_wr(c,i,p,os,-20,False,0.35)
-                        if d is None: continue
-                        vd=t_volatility_expansion(c,i,10,mult)
-                        if vd!=d: continue
-                        nxt=c[i+1]
-                        won=(d=='RISE' and nxt[4]>nxt[1]) or (d=='FALL' and nxt[4]<nxt[1])
-                        sigs.append(won)
-                    if len(sigs)>=10:
-                        w=sum(1 for x in sigs if x)
-                        results.append({'s':f'W{abs(os)}P{p}+V{int(mult*10)}','wr':round(w/len(sigs)*100,1),'t':len(sigs),'w':w})
-        
-        # ── COMBINATION: Trend + Momentum (both agree) ──
-        for lb in [2,3]:
-            for mom_lb in [3,5]:
-                for thresh in [0.3,0.5]:
-                    sigs=[]
-                    for i in range(50,n-1):
-                        d=t_trend_follow(c,i,lb)
-                        if d is None: continue
-                        md=t_momentum(c,i,mom_lb,thresh)
-                        if md!=d: continue
-                        nxt=c[i+1]
-                        won=(d=='RISE' and nxt[4]>nxt[1]) or (d=='FALL' and nxt[4]<nxt[1])
-                        sigs.append(won)
-                    if len(sigs)>=10:
-                        w=sum(1 for x in sigs if x)
-                        results.append({'s':f'TF{lb}+M{mom_lb}_{thresh}','wr':round(w/len(sigs)*100,1),'t':len(sigs),'w':w})
-        
-        # ── REPORT ──
+            sigs=test_strategy(c,lambda c,i,mult=mult: t_vol_exp(c,i,10,mult))
+            add_result(results,sigs,f'VOL{int(mult*10)}')
+        for tn,wm in itertools.product([3,4],[0.4,0.5]):
+            sigs=test_strategy(c,lambda c,i,tn=tn,wm=wm: t_rev_trend(c,i,tn,wm))
+            add_result(results,sigs,f'REV{tn}_{int(wm*100)}')
+        sigs=test_strategy(c,lambda c,i: t_sr_bounce(c,i,20))
+        add_result(results,sigs,'SR20')
+        for p,os,trend_lb,trend_type in itertools.product([7,10,14],[-90,-85,-80],[2,3],['follow','boost']):
+            sigs=[]
+            for i in range(50,n-1):
+                d=t_wr(c,i,p,os,-20,False,0.35)
+                if d is None: continue
+                td=t_trend_follow(c,i,trend_lb) if trend_type=='follow' else t_trend_boost(c,i,trend_lb,0.6)
+                if td!=d: continue
+                nxt=c[i+1]; sigs.append((d=='RISE' and nxt[4]>nxt[1]) or (d=='FALL' and nxt[4]<nxt[1]))
+            add_result(results,sigs,f'W{abs(os)}P{p}+T{trend_lb}{trend_type[0]}')
+        for p,os,mom_lb in itertools.product([7,10,14],[-90,-85,-80],[3,5]):
+            sigs=[]
+            for i in range(50,n-1):
+                d=t_wr(c,i,p,os,-20,False,0.35)
+                if d is None: continue
+                md=t_momentum(c,i,mom_lb,0.3)
+                if md!=d: continue
+                nxt=c[i+1]; sigs.append((d=='RISE' and nxt[4]>nxt[1]) or (d=='FALL' and nxt[4]<nxt[1]))
+            add_result(results,sigs,f'W{abs(os)}P{p}+M{mom_lb}')
+        for p,os,mult in itertools.product([7,10,14],[-90,-85,-80],[1.3,1.5]):
+            sigs=[]
+            for i in range(50,n-1):
+                d=t_wr(c,i,p,os,-20,False,0.35)
+                if d is None: continue
+                vd=t_vol_exp(c,i,10,mult)
+                if vd!=d: continue
+                nxt=c[i+1]; sigs.append((d=='RISE' and nxt[4]>nxt[1]) or (d=='FALL' and nxt[4]<nxt[1]))
+            add_result(results,sigs,f'W{abs(os)}P{p}+V{int(mult*10)}')
+        for lb,mom_lb,th in itertools.product([2,3],[3,5],[0.3,0.5]):
+            sigs=[]
+            for i in range(50,n-1):
+                d=t_trend_follow(c,i,lb)
+                if d is None: continue
+                md=t_momentum(c,i,mom_lb,th)
+                if md!=d: continue
+                nxt=c[i+1]; sigs.append((d=='RISE' and nxt[4]>nxt[1]) or (d=='FALL' and nxt[4]<nxt[1]))
+            add_result(results,sigs,f'TF{lb}+M{mom_lb}_{th}')
         results.sort(key=lambda x: -x['wr'])
-        print(f"  Top [{time.time()-t0:.0f}s]:", flush=True)
-        print(f"  {'Strat':<24} {'WR%':<8} {'T':<6} {'W':<6}", flush=True)
-        print(f"  {'-'*46}", flush=True)
+        print(f"  Top [{time.time()-t0:.0f}s]:",flush=True)
+        print(f"  {'Strat':<24} {'WR%':<8} {'T':<6} {'W':<6}",flush=True)
+        print(f"  {'-'*46}",flush=True)
         for r in results[:30]:
-            if r['t']>=15:
-                print(f"  {r['s']:<24} {r['wr']:<8.1f} {r['t']:<6} {r['w']:<6}", flush=True)
-        
+            if r['t']>=15: print(f"  {r['s']:<24} {r['wr']:<8.1f} {r['t']:<6} {r['w']:<6}",flush=True)
         for r in results: r['m']=m
         all_results.extend(results)
-    
-    # ── GLOBAL ──
-    print(f"\n\n{'='*60}", flush=True)
-    print(f"BEST PER MARKET (>=50 trades)", flush=True)
-    print(f"{'='*60}", flush=True)
-    print(f"{'Market':<10} {'Strat':<24} {'WR%':<8} {'T':<6}", flush=True)
-    print("-"*50, flush=True)
+    print(f"\n\n{'='*60}",flush=True); print(f"BEST PER MARKET (>=50 trades)",flush=True); print(f"{'='*60}",flush=True)
+    print(f"{'Market':<10} {'Strat':<24} {'WR%':<8} {'T':<6}",flush=True); print("-"*50,flush=True)
     for m in MARKETS:
         mrs=[r for r in all_results if r['m']==m and r['t']>=50]
         mrs.sort(key=lambda x: -x['wr'])
         if mrs:
-            r=mrs[0]
-            print(f"{m:<10} {r['s']:<24} {r['wr']:<8.1f} {r['t']:<6}", flush=True)
-    
-    # Elite (>=75% WR)
+            r=mrs[0]; print(f"{m:<10} {r['s']:<24} {r['wr']:<8.1f} {r['t']:<6}",flush=True)
     elite=[r for r in all_results if r['wr']>=75 and r['t']>=10]
     if elite:
-        print(f"\n\n{'='*60}", flush=True)
-        print(f"ELITE (>=75% WR, >=10 trades)", flush=True)
-        print(f"{'='*60}", flush=True)
-        print(f"{'Market':<10} {'Strat':<24} {'WR%':<8} {'T':<6}", flush=True)
-        print("-"*50, flush=True)
+        print(f"\n\n{'='*60}",flush=True); print(f"ELITE (>=75% WR, >=10 trades)",flush=True); print(f"{'='*60}",flush=True)
+        print(f"{'Market':<10} {'Strat':<24} {'WR%':<8} {'T':<6}",flush=True); print("-"*50,flush=True)
         elite.sort(key=lambda x: -x['wr'])
-        for r in elite[:15]:
-            print(f"{r['m']:<10} {r['s']:<24} {r['wr']:<8.1f} {r['t']:<6}", flush=True)
-    
-    # Best with >=100 trades
+        for r in elite[:15]: print(f"{r['m']:<10} {r['s']:<24} {r['wr']:<8.1f} {r['t']:<6}",flush=True)
     best100=[r for r in all_results if r['t']>=100]
     best100.sort(key=lambda x: -x['wr'])
     if best100:
-        print(f"\n\n{'='*60}", flush=True)
-        print(f"BEST WITH >=100 TRADES", flush=True)
-        print(f"{'='*60}", flush=True)
-        print(f"{'Market':<10} {'Strat':<24} {'WR%':<8} {'T':<6}", flush=True)
-        print("-"*50, flush=True)
+        print(f"\n\n{'='*60}",flush=True); print(f"BEST WITH >=100 TRADES",flush=True); print(f"{'='*60}",flush=True)
+        print(f"{'Market':<10} {'Strat':<24} {'WR%':<8} {'T':<6}",flush=True); print("-"*50,flush=True)
         seen=set()
         for r in best100[:20]:
             k=(r['m'],r['s'])
-            if k not in seen:
-                seen.add(k)
-                print(f"{r['m']:<10} {r['s']:<24} {r['wr']:<8.1f} {r['t']:<6}", flush=True)
-    
+            if k not in seen: seen.add(k); print(f"{r['m']:<10} {r['s']:<24} {r['wr']:<8.1f} {r['t']:<6}",flush=True)
     with open(Path(r"C:\Users\b0231\Desktop\step master")/"backtest_results.json","w") as f:
         json.dump(all_results,f,indent=2)
     print(f"\nDone: {time.time()-t_start:.0f}s, {len(all_results)} results",flush=True)
