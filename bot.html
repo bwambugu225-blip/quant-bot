@@ -501,9 +501,9 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
     </div>
 
     <!-- Chart -->
-    <div class="card" style="padding:4px">
-      <div style="overflow-x:auto;overflow-y:hidden">
-        <canvas id="liveChart" style="height:250px;display:block;cursor:crosshair"></canvas>
+    <div class="card" style="padding:4px; overflow:hidden;">
+      <div style="width:100%; overflow:hidden;">
+        <canvas id="liveChart" style="width:100%; height:250px; display:block; cursor:crosshair;"></canvas>
       </div>
     </div>
 
@@ -1953,7 +1953,11 @@ function drawChart(){
   const MUTED=clr('muted'), LINE=clr('line'), POS=clr('positive'), NEG=clr('negative');
   const sym = G.CURRENT_MARKET;
   const raw = G.MARKET.candles[sym] || [];
-  const c = raw.slice(-200);
+
+  const w = canvas.parentNode.clientWidth || canvas.clientWidth || 800;
+  const numCandles = Math.max(30, Math.min(120, Math.floor(w / 7.5)));
+  const c = raw.slice(-numCandles);
+
   const liveBuf = G.MARKET.tickBuf?.[sym] || [];
   const hasLive = liveBuf.length > 0;
   const liveCandle = hasLive ? {
@@ -1969,28 +1973,26 @@ function drawChart(){
   const cdlH = h - wrH;
   if(all.length<2){
     canvas.style.width = '100%'; canvas.style.minWidth = '';
-    const w = canvas.clientWidth; canvas.width = w*dpr; canvas.height = h*dpr;
+    canvas.width = w*dpr; canvas.height = h*dpr;
     const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
     ctx.fillStyle=MUTED; ctx.font='11px monospace';
     ctx.fillText('Waiting for data...',12,h/2);
     return;
   }
-  const FIXED_CW = Math.max(6, Math.min(10, 800 / all.length));
-  const totalW = all.length * FIXED_CW + 20;
-  canvas.style.width = totalW + 'px'; canvas.style.minWidth = totalW + 'px';
-  canvas.width = totalW * dpr; canvas.height = h * dpr;
+  canvas.style.width = '100%'; canvas.style.minWidth = '';
+  canvas.width = w * dpr; canvas.height = h * dpr;
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.clearRect(0,0,totalW,h);
+  ctx.clearRect(0,0,w,h);
   // ── Candlestick panel (top 80%) ──
   let lo=Infinity,hi=-Infinity;
   for(const k of all){if(k.low<lo)lo=k.low;if(k.high>hi)hi=k.high;}
   const pad=(hi-lo)*0.1||0.001, yMin=lo-pad, yMax=hi+pad;
   const ny=v=>cdlH-((v-yMin)/(yMax-yMin))*cdlH;
-  const cw=FIXED_CW;
+  const cw=w / all.length;
   ctx.strokeStyle=LINE; ctx.lineWidth=1;
-  for(let i=1;i<5;i++){const y=cdlH*i/5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(totalW,y);ctx.stroke();}
+  for(let i=1;i<5;i++){const y=cdlH*i/5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
   all.forEach((k,i)=>{
     const live = hasLive && i===all.length-1;
     const x=i*cw+cw/2, up=k.close>=k.open;
@@ -2055,21 +2057,21 @@ function drawChart(){
   const wrStart = all.length - wrArr.length;
   // OB/OS zones (values in standard 0-100 notation) using elegant terracotta/sage colors
   ctx.fillStyle = 'rgba(178,80,80,0.05)';
-  ctx.fillRect(0, wry(-20), totalW, wrY1 - wry(-20));
+  ctx.fillRect(0, wry(-20), w, wrY1 - wry(-20));
   ctx.fillStyle = 'rgba(74,110,81,0.05)';
-  ctx.fillRect(0, wrY0, totalW, wry(-80) - wrY0);
+  ctx.fillRect(0, wrY0, w, wry(-80) - wrY0);
   // Reference lines
   ctx.strokeStyle='rgba(178,80,80,0.3)'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
-  ctx.beginPath(); const obY=wry(-20); ctx.moveTo(0,obY); ctx.lineTo(totalW,obY); ctx.stroke();
+  ctx.beginPath(); const obY=wry(-20); ctx.moveTo(0,obY); ctx.lineTo(w,obY); ctx.stroke();
   ctx.fillStyle='rgba(178,80,80,0.6)'; ctx.font='9px monospace'; ctx.textAlign='right';
-  ctx.fillText('-20 OB', totalW-4, obY-2);
+  ctx.fillText('-20 OB', w-4, obY-2);
   ctx.strokeStyle='rgba(74,110,81,0.3)'; ctx.lineWidth=1;
-  ctx.beginPath(); const osY=wry(-80); ctx.moveTo(0,osY); ctx.lineTo(totalW,osY); ctx.stroke();
+  ctx.beginPath(); const osY=wry(-80); ctx.moveTo(0,osY); ctx.lineTo(w,osY); ctx.stroke();
   ctx.fillStyle='rgba(74,110,81,0.6)'; ctx.font='9px monospace';
-  ctx.fillText('-80 OS', totalW-4, osY-2);
+  ctx.fillText('-80 OS', w-4, osY-2);
   // Mid line
   ctx.strokeStyle='rgba(128,128,128,0.2)'; ctx.lineWidth=1;
-  ctx.beginPath(); const midY=wry(-50); ctx.moveTo(0,midY); ctx.lineTo(totalW,midY); ctx.stroke();
+  ctx.beginPath(); const midY=wry(-50); ctx.moveTo(0,midY); ctx.lineTo(w,midY); ctx.stroke();
   ctx.setLineDash([]);
   // WR line with elegant accent gold
   ctx.strokeStyle=clr('accent') || '#9c7c38'; ctx.lineWidth=1.5;
@@ -2081,20 +2083,20 @@ function drawChart(){
   ctx.stroke();
   // Divider between sections
   ctx.strokeStyle=LINE; ctx.lineWidth=1; ctx.setLineDash([]);
-  ctx.beginPath(); ctx.moveTo(0,cdlH); ctx.lineTo(totalW,cdlH); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,cdlH); ctx.lineTo(w,cdlH); ctx.stroke();
   // Labels
   ctx.fillStyle=MUTED; ctx.font='9px monospace'; ctx.textAlign='left';
   ctx.fillText('WR(10)', 4, cdlH+11);
   ctx.textAlign='left'; ctx.textBaseline='alphabetic';
   // ── Chart cursor ──
-  if(G._chartCursor && G._chartCursor.x >= 0 && G._chartCursor.x < totalW){
+  if(G._chartCursor && G._chartCursor.x >= 0 && G._chartCursor.x < w){
     const cx = G._chartCursor.x, cy = G._chartCursor.y;
     const ci = Math.round((cx - 10) / cw); // candle index
     const cdlX = ci * cw + cw/2;
     ctx.save();
     ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
     ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,cdlH); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(totalW,cy); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(w,cy); ctx.stroke();
     ctx.setLineDash([]);
     // Price label at crosshair
     if(cy >= 0 && cy <= cdlH){
