@@ -9,31 +9,32 @@
 <title>BTraders</title>
 <style>
 :root{
-  --bg:#f0f2f5;--surface:rgba(255,255,255,.85);--surface-2:rgba(255,255,255,.9);--line:rgba(0,0,0,.08);
-  --text:#1a1d23;--muted:#6b7280;--dim:#9ca3af;
-  --positive:#10b981;--negative:#ef4444;--accent:#2563eb;--warn:#f59e0b;
-  --pos-dim:rgba(16,185,129,.1);--neg-dim:rgba(239,68,68,.1);--acc-dim:rgba(37,99,235,.1);
-  --font:'JetBrains Mono','SF Mono','Fira Code',monospace;
-  --font-head:'Inter','Segoe UI',-apple-system,sans-serif;
-  --radius:10px;--radius-sm:6px;
-  --shadow:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
-  --logo:linear-gradient(135deg,#2563eb,#7c3aed);
+  --bg:#f4ebd0;--surface:#eae1c8;--surface-2:#e0d5ba;--line:#8a7b63;
+  --text:#2b231d;--muted:#6e5f4b;--dim:#998971;
+  --positive:#1b6e3c;--negative:#b52424;--accent:#c25508;--warn:#d68b00;
+  --pos-dim:rgba(27,110,60,.12);--neg-dim:rgba(181,36,36,.12);--acc-dim:rgba(194,85,8,.12);
+  --font:'JetBrains Mono','SF Mono','Courier New',monospace;
+  --font-head:'JetBrains Mono','SF Mono','Courier New',monospace;
+  --radius:4px;--radius-sm:2px;
+  --shadow:2px 2px 0px rgba(138,123,99,.15);
+  --logo:linear-gradient(135deg,#c25508,#2b231d);
 }
 .dark{
-  --bg:linear-gradient(135deg,#0f0f1a 0%,#1a1a2e 40%,#16213e 100%);
-  --surface:rgba(255,255,255,.04);--surface-2:rgba(255,255,255,.06);--line:rgba(255,255,255,.08);
-  --text:#d0d8e8;--muted:#6a7a9a;--dim:#3a4a6a;
-  --positive:#00c853;--negative:#ff1744;--accent:#f7971e;--warn:#ffd600;
-  --pos-dim:rgba(0,200,83,.12);--neg-dim:rgba(255,23,68,.12);--acc-dim:rgba(247,151,30,.12);
-  --shadow:0 2px 8px rgba(0,0,0,.3);
-  --logo:linear-gradient(135deg,#f7971e,#ffd200);
+  --bg:#120d08;--surface:#1b140d;--surface-2:#271e14;--line:#e59633;
+  --text:#f5cf97;--muted:#a67f53;--dim:#5c432a;
+  --positive:#5cd685;--negative:#ff5e62;--accent:#ff9f1c;--warn:#ffd166;
+  --pos-dim:rgba(92,214,133,.15);--neg-dim:rgba(255,94,98,.15);--acc-dim:rgba(255,159,28,.15);
+  --shadow:2px 2px 0px rgba(0,0,0,.4);
+  --logo:linear-gradient(135deg,#ff9f1c,#f5cf97);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:12px;overflow-x:hidden}
+html,body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:11px;overflow-x:hidden;position:relative}
 .dark html,.dark body{background-attachment:fixed}
-::-webkit-scrollbar{width:2px}
-::-webkit-scrollbar-track{background:var(--bg)}
-::-webkit-scrollbar-thumb{background:var(--dim)}
+body::before{content:" ";display:block;position:fixed;top:0;left:0;bottom:0;right:0;background:linear-gradient(rgba(18,16,16,0) 50%, rgba(138,123,99,0.06) 50%);background-size:100% 4px;z-index:99999;pointer-events:none}
+.dark body::before{background:linear-gradient(rgba(18,16,16,0) 50%, rgba(0,0,0,0.22) 50%);background-size:100% 4px}
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:var(--surface-2);border-left:1px solid var(--line)}
+::-webkit-scrollbar-thumb{background:var(--line);border:1px solid var(--surface-2)}
 .mtop{background:rgba(255,255,255,.03);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:6px 10px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
 .mtop-l{display:flex;align-items:center;gap:8px}
 .mtop-r{display:flex;align-items:center;gap:10px}
@@ -48,35 +49,37 @@ html,body{background:var(--bg);color:var(--text);font-family:var(--font);font-si
 .row{display:flex;gap:8px;padding:6px 10px}
 .col{flex:1}
 .col-2{flex:2}
-.card{background:var(--surface);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;box-shadow:var(--shadow)}
-.card-title{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;font-weight:700;margin-bottom:6px}
-.btn{border:1px solid var(--line);background:var(--surface);padding:7px 14px;font-weight:600;font-size:10px;cursor:pointer;color:var(--text);font-family:var(--font);border-radius:var(--radius-sm);transition:all .2s;text-transform:uppercase;letter-spacing:.4px}
-.btn:hover{opacity:.9;border-color:var(--muted)}
-.btn:active{transform:scale(.96)}
-.btn:disabled{opacity:.25;cursor:not-allowed}
-.btn-call{background:var(--positive);border-color:var(--positive);color:#fff;font-size:14px;font-weight:700;padding:11px;border-radius:var(--radius);text-shadow:0 1px 3px rgba(0,0,0,.3)}
-.btn-call:hover{background:#00e85e;box-shadow:0 0 20px rgba(0,200,83,.25)}
-.btn-put{background:var(--negative);border-color:var(--negative);color:#fff;font-size:14px;font-weight:700;padding:11px;border-radius:var(--radius);text-shadow:0 1px 3px rgba(0,0,0,.3)}
-.btn-put:hover{background:#ff2e55;box-shadow:0 0 20px rgba(255,23,68,.25)}
-.btn-accent{background:var(--accent);border-color:var(--accent);color:#fff}
-.btn-accent:hover{box-shadow:0 0 20px rgba(41,121,255,.25)}
-.btn-ghost{background:rgba(255,255,255,.03);border-color:var(--line);color:var(--muted)}
-.btn-ghost:hover{color:var(--text);border-color:var(--muted)}
-.inp{background:rgba(255,255,255,.06);border:1px solid var(--line);padding:6px 8px;color:var(--text);font-size:10px;width:100%;outline:none;font-family:var(--font);border-radius:var(--radius-sm)}
-.inp:focus{border-color:var(--muted)}
+.card{background:var(--surface);border:3px double var(--line);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;box-shadow:var(--shadow)}
+.card-title{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;font-weight:800;margin-bottom:8px;display:inline-block}
+.card-title::before{content:"[ "}
+.card-title::after{content:" ]"}
+.btn{border:2px solid var(--line);background:var(--surface-2);padding:6px 12px;font-weight:700;font-size:10px;cursor:pointer;color:var(--text);font-family:var(--font);border-radius:var(--radius-sm);transition:all .1s;text-transform:uppercase;letter-spacing:.5px;box-shadow:2px 2px 0px var(--line)}
+.btn:hover{background:var(--surface);border-color:var(--line);opacity:1}
+.btn:active{transform:translate(1px,1px);box-shadow:0px 0px 0px transparent}
+.btn:disabled{opacity:.35;cursor:not-allowed;box-shadow:none}
+.btn-call{background:var(--positive) !important;border-color:var(--line) !important;color:#fff !important;font-size:13px;font-weight:800;padding:8px 12px;border-radius:var(--radius-sm);text-shadow:1px 1px 0px rgba(0,0,0,.4);box-shadow:2px 2px 0px var(--line)}
+.btn-call:hover{background:var(--positive) !important;opacity:0.95;box-shadow:1px 1px 0px var(--line)}
+.btn-put{background:var(--negative) !important;border-color:var(--line) !important;color:#fff !important;font-size:13px;font-weight:800;padding:8px 12px;border-radius:var(--radius-sm);text-shadow:1px 1px 0px rgba(0,0,0,.4);box-shadow:2px 2px 0px var(--line)}
+.btn-put:hover{background:var(--negative) !important;opacity:0.95;box-shadow:1px 1px 0px var(--line)}
+.btn-accent{background:var(--accent) !important;border-color:var(--line) !important;color:#fff !important;box-shadow:2px 2px 0px var(--line)}
+.btn-accent:hover{opacity:0.9}
+.btn-ghost{background:var(--surface-2);border-color:var(--line);color:var(--muted);box-shadow:1px 1px 0px var(--line)}
+.btn-ghost:hover{color:var(--text);background:var(--surface)}
+.inp{background:var(--surface-2);border:2px solid var(--line);padding:6px 8px;color:var(--text);font-size:10px;width:100%;outline:none;font-family:var(--font);border-radius:var(--radius-sm)}
+.inp:focus{border-color:var(--accent);background:var(--surface)}
 .inp-sm{padding:4px 6px;font-size:9px}
-.kpi{text-align:center;padding:6px 4px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:var(--radius-sm)}
-.kpi .v{font-size:15px;font-weight:700;font-family:var(--font-head)}
-.kpi .l{font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
-.tag{display:inline-block;padding:1px 5px;font-size:7px;font-weight:600;border:1px solid;border-radius:2px}
-.tag-green{border-color:var(--positive);color:var(--positive)}
-.tag-red{border-color:var(--negative);color:var(--negative)}
-.tag-blue{border-color:var(--accent);color:var(--accent)}
-.acc-badge{display:inline-flex;align-items:center;gap:2px;padding:1px 5px;font-size:8px;font-weight:600;letter-spacing:.4px;border:1px solid;border-radius:3px}
-.acc-badge.demo{border-color:var(--accent);color:var(--accent)}
-.acc-badge.real{border-color:var(--positive);color:var(--positive)}
-.mode-tab{padding:4px 12px;font-size:9px;font-weight:600;cursor:pointer;border:1px solid var(--line);background:transparent;color:var(--muted);border-radius:12px;transition:.15s;font-family:var(--font-head)}
-.mode-tab.active{background:var(--surface-2);color:var(--text);border-color:var(--accent)}
+.kpi{text-align:center;padding:6px 4px;background:var(--surface-2);border:2px solid var(--line);border-radius:var(--radius-sm);box-shadow:1px 1px 0px var(--line)}
+.kpi .v{font-size:15px;font-weight:800;font-family:var(--font-head)}
+.kpi .l{font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;font-weight:700}
+.tag{display:inline-block;padding:2px 6px;font-size:8px;font-weight:700;border:2px solid;border-radius:2px;text-transform:uppercase;font-family:var(--font)}
+.tag-green{border-color:var(--positive);color:var(--positive);background:var(--pos-dim)}
+.tag-red{border-color:var(--negative);color:var(--negative);background:var(--neg-dim)}
+.tag-blue{border-color:var(--accent);color:var(--accent);background:var(--acc-dim)}
+.acc-badge{display:inline-flex;align-items:center;gap:2px;padding:2px 6px;font-size:8px;font-weight:800;letter-spacing:.5px;border:2px solid;border-radius:3px}
+.acc-badge.demo{border-color:var(--accent);color:var(--accent);background:var(--acc-dim)}
+.acc-badge.real{border-color:var(--positive);color:var(--positive);background:var(--pos-dim)}
+.mode-tab{padding:4px 12px;font-size:9px;font-weight:700;cursor:pointer;border:2px solid var(--line);background:var(--surface);color:var(--muted);border-radius:var(--radius-sm);transition:.1s;font-family:var(--font)}
+.mode-tab.active{background:var(--surface-2);color:var(--text);border-color:var(--accent);box-shadow:1px 1px 0px var(--line)}
 .mode-tab:hover{opacity:.8}
 .asset-item{display:flex;align-items:center;justify-content:space-between;padding:4px 6px;border-bottom:1px solid var(--line);cursor:pointer;transition:.1s;border-radius:2px}
 .asset-item:last-child{border-bottom:none}
@@ -94,6 +97,12 @@ html,body{background:var(--bg);color:var(--text);font-family:var(--font);font-si
 .console-box .s{color:var(--positive)}
 .console-box .i{color:var(--accent)}
 .console-box .t{color:var(--text)}
+#logBox div{padding:2px 0;font-family:var(--font);border-bottom:1px dashed rgba(138,123,99,0.1);color:var(--text)}
+#logBox .w{color:var(--warn) !important;font-weight:bold}
+#logBox .e{color:var(--negative) !important;font-weight:bold}
+#logBox .s{color:var(--positive) !important;font-weight:bold}
+#logBox .i{color:var(--accent) !important;font-weight:bold}
+#logBox .t{color:var(--text) !important}
 .recent-trade{font-size:9px;padding:3px 0;border-bottom:1px solid var(--line);display:flex;justify-content:space-between}
 .recent-trade:last-child{border-bottom:none}
 .footer{text-align:center;padding:10px;font-size:7px;color:var(--dim)}
@@ -128,11 +137,11 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
 .log-details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;text-transform:uppercase;letter-spacing:.5px;list-style:none;display:flex;align-items:center}
 .log-details summary::-webkit-details-marker{display:none}
 /* ── Login Overlay ── */
-.login-overlay{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f0f1a 0%,#1a1a2e 40%,#16213e 100%);transition:opacity .5s ease,visibility .5s ease}
+.login-overlay{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--bg);transition:opacity .5s ease,visibility .5s ease}
 .login-overlay.hidden{opacity:0;visibility:hidden;pointer-events:none}
-.login-card{background:rgba(255,255,255,.04);backdrop-filter:blur(16px);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:40px;width:340px;max-width:90vw;text-align:center;box-shadow:0 25px 60px rgba(0,0,0,.5)}
-.login-card h1{font-size:22px;font-weight:700;margin:0 0 4px;background:linear-gradient(135deg,#f7971e,#ffd200);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.login-card p{font-size:11px;color:var(--muted);margin:0 0 20px}
+.login-card{background:var(--surface);border:4px double var(--line);border-radius:var(--radius);padding:30px;width:340px;max-width:90vw;text-align:center;box-shadow:var(--shadow)}
+.login-card h1{font-size:22px;font-weight:800;margin:0 0 6px;color:var(--accent);font-family:var(--font-head)}
+.login-card p{font-size:11px;color:var(--muted);margin:0 0 20px;font-weight:700}
 .login-card input{width:100%;box-sizing:border-box;padding:10px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#fff;font-size:13px;outline:none;transition:border-color .2s;margin-bottom:12px}
 .login-card input:focus{border-color:#f7971e}
 .login-card input::placeholder{color:rgba(255,255,255,.3)}
@@ -146,7 +155,7 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
 /* ── Collapsible Sidebar ── */
 #app{display:flex;min-height:100vh;position:relative}
 .sidebar-overlay{display:none;position:fixed;inset:0;z-index:90;background:rgba(0,0,0,.5)}
-.sidebar{position:fixed;top:0;left:0;bottom:0;z-index:100;width:260px;background:rgba(255,255,255,.04);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-right:1px solid var(--line);overflow-y:auto;padding:0;display:flex;flex-direction:column;transition:transform .25s ease}
+.sidebar{position:fixed;top:0;left:0;bottom:0;z-index:100;width:260px;background:var(--surface);border-right:3px double var(--line);overflow-y:auto;padding:0;display:flex;flex-direction:column;transition:transform .25s ease}
 .sidebar .sidebar-header{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-bottom:1px solid var(--line);flex-shrink:0}
 .sidebar .sidebar-body{flex:1;overflow-y:auto;padding:8px}
 .sidebar .sidebar-body .card{margin-bottom:6px;padding:8px}
@@ -467,6 +476,34 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
       </div>
     </div>
 
+    <!-- Historical Signals Ledger -->
+    <div class="card" id="signalsLedgerCard">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div class="card-title" style="margin:0">Historical Signals Ledger</div>
+        <div id="ledgerStats" style="font-size:9px;font-weight:bold;color:var(--accent)">
+          [ Total: -- ] [ Wins: -- ] [ Losses: -- ] [ Win Rate: --% ]
+        </div>
+      </div>
+      <div style="max-height:220px;overflow-y:auto;border:1px solid var(--line);border-radius:var(--radius-sm)">
+        <table style="width:100%;border-collapse:collapse;font-family:var(--font);font-size:9px;text-align:left">
+          <thead>
+            <tr style="background:var(--surface-2);border-bottom:2px solid var(--line)">
+              <th style="padding:4px 6px;color:var(--muted)">TIME</th>
+              <th style="padding:4px 6px;color:var(--muted)">SIGNAL</th>
+              <th style="padding:4px 6px;color:var(--muted)">ENTRY</th>
+              <th style="padding:4px 6px;color:var(--muted)">EXIT</th>
+              <th style="padding:4px 6px;color:var(--muted)">RESULT</th>
+            </tr>
+          </thead>
+          <tbody id="ledgerBody">
+            <tr>
+              <td colspan="5" style="padding:8px 6px;text-align:center;color:var(--muted)">No chart signals yet...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- Trade History -->
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
@@ -474,6 +511,15 @@ details summary{font-size:8px;color:var(--muted);cursor:pointer;padding:2px 0;te
         <button class="btn btn-ghost" onclick="clearRecentTrades()" style="padding:2px 6px;font-size:7px">Clear</button>
       </div>
       <div id="recentTrades" style="font-size:9px;color:var(--muted);max-height:110px;overflow-y:auto;padding:2px 0">No trades yet</div>
+    </div>
+
+    <!-- Terminal Console Logs -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <div class="card-title" style="margin:0">System Console</div>
+        <button class="btn btn-ghost" onclick="clearLog()" style="padding:2px 6px;font-size:7px">Clear</button>
+      </div>
+      <div id="logBox" style="background:var(--surface-2);border:2px solid var(--line);border-radius:var(--radius-sm);padding:6px 8px;font-family:var(--font);font-size:9px;line-height:1.4;height:150px;overflow-y:auto;box-shadow:inset 1px 1px 3px rgba(0,0,0,0.15)"></div>
     </div>
 
   <!-- Toast notifications -->
@@ -643,6 +689,63 @@ function williamsR(highArr,lowArr,closeArr,p=14){
   if(closeArr.length<p) return null;
   const hh=max(highArr.slice(-p)); const ll=min(lowArr.slice(-p));
   return hh===ll? -50 : ((hh-closeArr[closeArr.length-1])/(hh-ll))*-100;
+}
+function getChartSignals(candles) {
+  if (!candles || candles.length < 15) return [];
+  const signals = [];
+  const p = 10;
+
+  const hi = candles.map(c => c.high);
+  const lo = candles.map(c => c.low);
+  const cl = candles.map(c => c.close);
+
+  const wr = (idx) => {
+    if (idx < p - 1) return -50;
+    const sliceHi = hi.slice(idx - p + 1, idx + 1);
+    const sliceLo = lo.slice(idx - p + 1, idx + 1);
+    const hh = max(sliceHi);
+    const ll = min(sliceLo);
+    return hh === ll ? -50 : ((hh - cl[idx]) / (hh - ll)) * -100;
+  };
+
+  for (let i = p; i < candles.length; i++) {
+    const pw = wr(i - 1);
+    const cw = wr(i);
+
+    let action = null;
+    if (pw < -80 && cw >= -80) {
+      action = 'RISE';
+    } else if (pw > -20 && cw <= -20) {
+      action = 'FALL';
+    }
+
+    if (action) {
+      const entryPrice = cl[i];
+      let exitPrice = null;
+      let status = 'PENDING';
+
+      if (i + 1 < candles.length) {
+        exitPrice = cl[i + 1];
+        if (action === 'RISE') {
+          status = exitPrice > entryPrice ? 'WON' : (exitPrice === entryPrice ? 'DRAW' : 'LOST');
+        } else {
+          status = exitPrice < entryPrice ? 'WON' : (exitPrice === entryPrice ? 'DRAW' : 'LOST');
+        }
+      }
+
+      signals.push({
+        index: i,
+        epoch: candles[i].epoch,
+        time: candles[i].epoch ? new Date(candles[i].epoch * 1000).toLocaleTimeString() : '—',
+        action,
+        entryPrice,
+        exitPrice,
+        status,
+        conf: 85
+      });
+    }
+  }
+  return signals;
 }
 function cci(c,p=14){
   if(c.length<p) return null;
@@ -1960,45 +2063,56 @@ function drawChart(){
     const bw=Math.max(1,cw*0.6), yo=ny(Math.max(k.open,k.close)), yc=ny(Math.min(k.open,k.close));
     ctx.fillRect(x-bw/2,yo,bw,Math.max(1,yc-yo));
   });
-  // Signal markers on candlestick panel
-  const allSigs = G._allSignals || [];
-  const sigIndex = new Map();
-  for(let j=0;j<allSigs.length;j++){
-    const s = allSigs[j];
-    if(!s || !s.sym) continue;
-    sigIndex.set(s.sym+':'+s.epoch, s);
-  }
-  const markerSize = Math.max(14, cw*1);
-  all.forEach((k,i)=>{
-    const sig = sigIndex.get(sym+':'+k.epoch);
-    if(!sig) return;
-    const x = i*cw+cw/2;
+  // Signal markers on candlestick panel - Dynamic historical scanner
+  const chartSignals = getChartSignals(all);
+  const signalsMap = new Map();
+  chartSignals.forEach(s => {
+    signalsMap.set(s.index, s);
+  });
+
+  const markerSize = Math.max(13, cw * 1.3);
+  all.forEach((k, i) => {
+    const sig = signalsMap.get(i);
+    if (!sig) return;
+    const x = i * cw + cw / 2;
     const isRise = sig.action === 'RISE';
-    const color = isRise ? POS : NEG;
-    const baseY = isRise ? ny(k.low) + 4 : ny(k.high) - 4;
-    const sy = Math.max(10, Math.min(cdlH-10, baseY));
+
+    let color = 'var(--warn)'; // PENDING
+    if (sig.status === 'WON') color = 'var(--positive)';
+    else if (sig.status === 'LOST') color = 'var(--negative)';
+    else if (sig.status === 'DRAW') color = 'var(--dim)';
+
+    const baseY = isRise ? ny(k.low) + 6 : ny(k.high) - 6;
+    const sy = Math.max(10, Math.min(cdlH - 10, baseY));
+
     ctx.save();
     ctx.shadowColor = color;
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = 6;
     ctx.fillStyle = color;
     ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    const hw = markerSize*0.45, hh = markerSize*0.4;
+    ctx.lineWidth = 1;
+    const hw = markerSize * 0.45, hh = markerSize * 0.4;
     ctx.beginPath();
-    if(isRise){
-      ctx.moveTo(x, sy); ctx.lineTo(x-hw, sy+hh); ctx.lineTo(x+hw, sy+hh);
+    if (isRise) {
+      ctx.moveTo(x, sy);
+      ctx.lineTo(x - hw, sy + hh);
+      ctx.lineTo(x + hw, sy + hh);
     } else {
-      ctx.moveTo(x, sy); ctx.lineTo(x-hw, sy-hh); ctx.lineTo(x+hw, sy-hh);
+      ctx.moveTo(x, sy);
+      ctx.lineTo(x - hw, sy - hh);
+      ctx.lineTo(x + hw, sy - hh);
     }
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
     ctx.restore();
+
     ctx.fillStyle = color;
-    ctx.font = `bold ${Math.max(8, markerSize*0.38)}px sans-serif`;
+    ctx.font = `bold 7px var(--font)`;
     ctx.textAlign = 'center';
     ctx.textBaseline = isRise ? 'top' : 'bottom';
-    ctx.fillText(sig.conf+'%', x, isRise ? sy+hh+2 : sy-hh-2);
+    const label = `${isRise ? '▲' : '▼'}${sig.status}`;
+    ctx.fillText(label, x, isRise ? sy + hh + 2 : sy - hh - 2);
   });
   // ── Williams %R panel (bottom 20%) ──
   const p=10;
@@ -2086,6 +2200,44 @@ function drawChart(){
       ctx.fillText(k.close>=k.open?'RISE':'FALL', 8, 32);
     }
     ctx.restore();
+  }
+
+  // Update historical signals ledger UI
+  const ledgerBody = document.getElementById('ledgerBody');
+  const ledgerStats = document.getElementById('ledgerStats');
+  if (ledgerBody) {
+    if (chartSignals.length === 0) {
+      ledgerBody.innerHTML = `<tr><td colspan="5" style="padding:8px 6px;text-align:center;color:var(--muted)">No chart signals yet...</td></tr>`;
+      if (ledgerStats) ledgerStats.textContent = `[ Total: 0 ] [ Wins: 0 ] [ Losses: 0 ] [ Win Rate: 0% ]`;
+    } else {
+      let wins = 0, losses = 0;
+      const rowsHtml = [...chartSignals].reverse().map(sig => {
+        let resCls = 'tag-gray';
+        let resText = sig.status;
+        if (sig.status === 'WON') { wins++; resCls = 'tag-green'; }
+        else if (sig.status === 'LOST') { losses++; resCls = 'tag-red'; }
+        else if (sig.status === 'DRAW') { resCls = 'tag-gray'; }
+        else if (sig.status === 'PENDING') { resCls = 'tag-blue'; }
+
+        const entry = sig.entryPrice !== null ? sig.entryPrice.toFixed(3) : '—';
+        const exit = sig.exitPrice !== null ? sig.exitPrice.toFixed(3) : '—';
+
+        return `<tr style="border-bottom:1px dashed rgba(138,123,99,0.15)">
+          <td style="padding:4px 6px;color:var(--muted);white-space:nowrap">${sig.time}</td>
+          <td style="padding:4px 6px;font-weight:bold;color:${sig.action==='RISE'?'var(--positive)':'var(--negative)'}">${sig.action}</td>
+          <td style="padding:4px 6px">${entry}</td>
+          <td style="padding:4px 6px">${exit}</td>
+          <td style="padding:4px 6px"><span class="tag ${resCls}" style="font-size:7px;padding:0px 4px">${resText}</span></td>
+        </tr>`;
+      }).join('');
+      ledgerBody.innerHTML = rowsHtml;
+
+      if (ledgerStats) {
+        const total = wins + losses;
+        const wr = total > 0 ? ((wins / total) * 100).toFixed(1) : '0.0';
+        ledgerStats.textContent = `[ Total: ${chartSignals.length} ] [ Wins: ${wins} ] [ Losses: ${losses} ] [ Win Rate: ${wr}% ]`;
+      }
+    }
   }
 }
 

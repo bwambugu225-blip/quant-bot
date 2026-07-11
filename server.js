@@ -1,5 +1,5 @@
 const fs=require('fs'),path=require('path'),https=require('https'),http=require('http');
-const dir='C:\\Users\\b0231\\Desktop\\step master';
+const dir=__dirname;
 const pfx=fs.readFileSync(path.join(dir,'server.pfx'));
 const opts={pfx,pfxPassphrase:'pass123'};
 const cache=new Map();
