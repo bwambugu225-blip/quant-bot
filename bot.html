@@ -478,12 +478,13 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
       </div>
       <div style="margin-bottom:6px">
         <div class="field">
-          <label>Trading Strategy (5 Premium Algos)</label>
+          <label>Trading Strategy (6 Premium Algos)</label>
           <select id="strategySelect" class="inp" onchange="selectStrategy(this.value)" style="font-size:10px;width:100%">
             <option value="WPR_TREND">⚡ Williams %R + Trend (Ultra Safe)</option>
             <option value="SRB">🏰 Pivot Support & Resistance Bounce</option>
             <option value="EMA_CROSS">🏹 EMA 5/20 Golden Cross + Momentum</option>
             <option value="MACD_PA">🌊 Reversal Confluence (MACD/RSI/Engulfing)</option>
+            <option value="RENKO_FLOW">🧱 Renko Volumetric Flow (Ultimate Winner)</option>
             <option value="ENS_XTREME" selected>💎 Ensemble Extreme (Max Accuracy)</option>
           </select>
         </div>
@@ -790,6 +791,9 @@ function initStrategies(){
     // FALL: was above -20 (overbought), now closes at/below -20
     if(pw>-20 && cw<=-20) return {action:'FALL', conf:85, src:'WPR'};
     return null;
+  }});
+  S.push({ name:'Renko Volumetric Flow', code:'RENKO_FLOW', analyze:(c)=>{
+    return null; // Evaluated dynamically in runStrategyAnalysis
   }});
   G.STRATEGY_ACTIVE = G.STRATEGIES.map(()=>true);
 }
@@ -1846,6 +1850,102 @@ function runStrategyAnalysis(sym, candles){
       }
       if (rsiVal > 65 && bearishEngulfing) {
         return { action: 'FALL', conf: 87, src: 'MACD_PA' };
+      }
+      break;
+    }
+    case 'RENKO_FLOW': {
+      // 1. Calculate dynamic brick size based on Average True Range (ATR) over last 14 candles
+      const atrPeriod = 14;
+      if (candles.length < atrPeriod + 2) break;
+      let trSum = 0;
+      for (let i = candles.length - atrPeriod; i < candles.length; i++) {
+        const high = candles[i].high;
+        const low = candles[i].low;
+        const prevClose = candles[i-1] ? candles[i-1].close : candles[i].open;
+        const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+        trSum += tr;
+      }
+      const atr = trSum / atrPeriod;
+
+      // Dynamic brick size: 0.75 * ATR, ensuring at least 0.01% of current price to prevent divide-by-zero
+      const brickSize = Math.max(atr * 0.75, last.close * 0.0001);
+
+      // 2. Build virtual Renko bricks from close prices and track volumetric tick weight
+      const bricks = []; // array of { type: 'UP'|'DOWN', price, volume, epoch }
+      let lastBrickPrice = candles[0].close;
+      let lastBrickType = 'UP';
+
+      for (let i = 1; i < candles.length; i++) {
+        const c = candles[i];
+        const price = c.close;
+        const diff = price - lastBrickPrice;
+        const volume = c.ticks || 10;
+
+        if (lastBrickType === 'UP') {
+          if (diff >= brickSize) {
+            const count = Math.floor(diff / brickSize);
+            for (let j = 0; j < count; j++) {
+              lastBrickPrice += brickSize;
+              bricks.push({ type: 'UP', price: lastBrickPrice, volume: volume / count, epoch: c.epoch });
+            }
+          } else if (diff <= -brickSize * 2) {
+            const count = Math.floor(Math.abs(diff) / brickSize) - 1;
+            lastBrickPrice -= brickSize * 2;
+            bricks.push({ type: 'DOWN', price: lastBrickPrice, volume: volume / (count + 1), epoch: c.epoch });
+            lastBrickType = 'DOWN';
+            for (let j = 0; j < count; j++) {
+              lastBrickPrice -= brickSize;
+              bricks.push({ type: 'DOWN', price: lastBrickPrice, volume: volume / (count + 1), epoch: c.epoch });
+            }
+          }
+        } else { // lastBrickType === 'DOWN'
+          if (diff <= -brickSize) {
+            const count = Math.floor(Math.abs(diff) / brickSize);
+            for (let j = 0; j < count; j++) {
+              lastBrickPrice -= brickSize;
+              bricks.push({ type: 'DOWN', price: lastBrickPrice, volume: volume / count, epoch: c.epoch });
+            }
+          } else if (diff >= brickSize * 2) {
+            const count = Math.floor(diff / brickSize) - 1;
+            lastBrickPrice += brickSize * 2;
+            bricks.push({ type: 'UP', price: lastBrickPrice, volume: volume / (count + 1), epoch: c.epoch });
+            lastBrickType = 'UP';
+            for (let j = 0; j < count; j++) {
+              lastBrickPrice += brickSize;
+              bricks.push({ type: 'UP', price: lastBrickPrice, volume: volume / (count + 1), epoch: c.epoch });
+            }
+          }
+        }
+      }
+
+      if (bricks.length < 3) break;
+
+      const latestBrick = bricks[bricks.length - 1];
+      const prevBrick = bricks[bricks.length - 2];
+
+      // 3. Volumetric Flow Check (tick flow momentum)
+      const avgCandleVolume = candles.slice(-10).reduce((acc, curr) => acc + (curr.ticks || 10), 0) / 10;
+      const latestBrickVolume = latestBrick.volume;
+      const isVolumeSurge = latestBrickVolume > avgCandleVolume * 1.12 || avgCandleVolume <= 1;
+
+      // 4. Trend Alignment (EMA 5/20/50 & RSI constraints)
+      const trendUp = ema20 > ema50 && ema5 > ema20;
+      const trendDn = ema20 < ema50 && ema5 < ema20;
+
+      const isBullishReversal = prevBrick.type === 'DOWN' && latestBrick.type === 'UP';
+      const isBearishReversal = prevBrick.type === 'UP' && latestBrick.type === 'DOWN';
+      const isBullishContinuation = prevBrick.type === 'UP' && latestBrick.type === 'UP';
+      const isBearishContinuation = prevBrick.type === 'DOWN' && latestBrick.type === 'DOWN';
+
+      if (trendUp && rsiVal < 68) {
+        if ((isBullishReversal && isVolumeSurge) || (isBullishContinuation && isVolumeSurge && rsiVal > 48)) {
+          return { action: 'RISE', conf: 92, src: 'RENKO_FLOW' };
+        }
+      }
+      if (trendDn && rsiVal > 32) {
+        if ((isBearishReversal && isVolumeSurge) || (isBearishContinuation && isVolumeSurge && rsiVal < 52)) {
+          return { action: 'FALL', conf: 92, src: 'RENKO_FLOW' };
+        }
       }
       break;
     }
