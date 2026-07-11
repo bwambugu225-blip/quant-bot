@@ -1039,7 +1039,7 @@ function evaluateDigitStrategy(sym){
     if(subMode === 'DIFF') {
       // Differ trade: place DIFF on the absolute lowest probability state transition digit combined with cold digit
       // This has a 99%+ statistical win rate!
-      const targetDigit = (lowestProb < 0.05) ? leastLikelyDigit : coldestOverallDigit;
+      const targetDigit = (lowestProb < 0.06) ? leastLikelyDigit : coldestOverallDigit;
       label = `🛡️ DIFFER from digit ${targetDigit} (prob=${(lowestProb*100).toFixed(1)}% count=${coldestCount})`;
       orderPayload = {
         contract_type: 'DIGITDIFF',
@@ -1085,7 +1085,7 @@ function evaluateDigitStrategy(sym){
           duration_unit: 't'
         };
       } else {
-        const targetDigit = (lowestProb < 0.05) ? leastLikelyDigit : coldestOverallDigit;
+        const targetDigit = (lowestProb < 0.06) ? leastLikelyDigit : coldestOverallDigit;
         label = `🛡️ AUTO-DIFFER from digit ${targetDigit} (prob=${(lowestProb*100).toFixed(1)}%)`;
         orderPayload = {
           contract_type: 'DIGITDIFF',
@@ -1116,20 +1116,20 @@ function evaluateDigitStrategy(sym){
       const underMid = mid.filter(d => d < b).length / mid.length;
       const underWeighted = underShort * 0.4 + underMid * 0.6;
 
-      // Prioritize extremely high winrates (> 70%)
-      if(overWeighted > maxWinProb && overWeighted > 0.70) {
+      // Prioritize extremely high winrates (> 74%)
+      if(overWeighted > maxWinProb && overWeighted > 0.74) {
         maxWinProb = overWeighted;
         bestBarrier = b;
         safestDirection = 'DIGITOVER';
       }
-      if(underWeighted > maxWinProb && underWeighted > 0.70) {
+      if(underWeighted > maxWinProb && underWeighted > 0.74) {
         maxWinProb = underWeighted;
         bestBarrier = b;
         safestDirection = 'DIGITUNDER';
       }
     }
 
-    if(maxWinProb > 0.70) {
+    if(maxWinProb > 0.74) {
       const dirLabel = safestDirection === 'DIGITOVER' ? 'OVER' : 'UNDER';
       label = `🌊 Dynamic OU: ${dirLabel} barrier=${bestBarrier} (win prob=${(maxWinProb*100).toFixed(1)}%)`;
       orderPayload = {
@@ -1166,7 +1166,7 @@ function evaluateDigitStrategy(sym){
     const eoWeighted = (eoShort.confidence * 4 + eoMid.confidence * 6) / 10;
     const eoEven = (eoShort.even * 4 + eoMid.even * 6) / 10;
 
-    if(eoWeighted >= 0.60) {
+    if(eoWeighted >= 0.64) {
       const contractType = eoEven > 0.5 ? 'DIGITEVEN' : 'DIGITODD';
       label = `🏹 EO: ${contractType==='DIGITEVEN'?'EVEN':'ODD'} (weighted conf=${(eoWeighted*100).toFixed(1)}%)`;
       orderPayload = {
@@ -1179,7 +1179,7 @@ function evaluateDigitStrategy(sym){
         duration_unit: 't'
       };
     } else {
-      log(`[DIGIT·AUTO] Even/Odd has no clear edge (${(eoWeighted*100).toFixed(1)}% < 60%) — skip`, 'i');
+      log(`[DIGIT·AUTO] Even/Odd has no clear edge (${(eoWeighted*100).toFixed(1)}% < 64%) — skip`, 'i');
       return;
     }
   }
@@ -1678,8 +1678,8 @@ function handleTick(data){
   _tickCount++;
   // Throttle heavy UI to every 3rd tick
   if((_tickCount&3)===0) updateDigitsUI();
-  if(G.TRADE_MODE==='DIGITS' && BotState.isTrading && G.ACTIVE_CONTRACTS.size===0 && BotState.tickHistory.length >= 30){
-    if((_tickCount&7)===0) setTimeout(()=>evaluateDigitStrategy(sym),0);
+  if(G.TRADE_MODE==='DIGITS' && BotState.isTrading && G.ACTIVE_CONTRACTS.size===0 && BotState.tickHistory.length >= 50){
+    evaluateDigitStrategy(sym);
   }
   let candles=G.MARKET.candles[sym]; if(!candles) G.MARKET.candles[sym]=candles=[];
   let buf=G.MARKET.tickBuf[sym]; if(!buf) G.MARKET.tickBuf[sym]=buf=[];
@@ -1710,8 +1710,8 @@ function handleTick(data){
     if(candle.ticks>=minT) evaluateAndTrade(sym);
     if(G._tradedCandle) G._tradedCandle[sym]=false;
   }
-  // Evaluate every tick for instant entry on cross (throttled to every 2nd)
-  if((_tickCount&1)===0 && buf.length >= 1) evaluateAndTrade(sym, buf);
+  // Evaluate every tick for instant entry on cross (no delay, no throttle!)
+  if(buf.length >= 1) evaluateAndTrade(sym, buf);
   if(sym===G.CURRENT_MARKET) {
     const lastEpochKey = '_lastChartEpoch_'+sym;
     const lastEpoch = G[lastEpochKey] || 0;
@@ -2226,9 +2226,9 @@ function drawChart(){
   chartCandles.forEach((k,i)=>{
     const live = hasLive && i===chartCandles.length-1;
     const x=i*cw+cw/2, up=k.close>=k.open;
-    ctx.strokeStyle=live?MUTED:(up?POS:NEG); ctx.lineWidth=live?1:1;
+    ctx.strokeStyle=up?POS:NEG; ctx.lineWidth=1;
     ctx.beginPath();ctx.moveTo(x,ny(k.high));ctx.lineTo(x,ny(k.low));ctx.stroke();
-    ctx.fillStyle=live?MUTED:(up?POS:NEG);
+    ctx.fillStyle=up?POS:NEG;
     const bw=Math.max(1, cw * (ChartSettings.bodyRatio || 0.6));
     const yo=ny(Math.max(k.open,k.close)), yc=ny(Math.min(k.open,k.close));
     ctx.fillRect(x-bw/2,yo,bw,Math.max(1,yc-yo));
