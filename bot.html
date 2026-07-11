@@ -374,13 +374,8 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
     </div>
 
     <!-- Telegram -->
-    <div class="card">
-      <div class="card-title">Telegram</div>
-      <div style="display:flex;flex-direction:column;gap:3px">
-        <input class="inp inp-sm" id="tgToken" type="password" placeholder="Token">
-        <input class="inp inp-sm" id="tgChatId" type="text" placeholder="Chat ID">
-      </div>
-    </div>
+    <input id="tgToken" type="hidden">
+    <input id="tgChatId" type="hidden">
 
     <!-- Copy Trading -->
     <div class="card">
@@ -480,12 +475,12 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
         <div class="field">
           <label>Trading Strategy (6 Premium Algos)</label>
           <select id="strategySelect" class="inp" onchange="selectStrategy(this.value)" style="font-size:10px;width:100%">
-            <option value="WPR_TREND">⚡ Williams %R + Trend (Ultra Safe)</option>
+            <option value="WPR_TREND">⚡ Williams %R + Trend</option>
             <option value="SRB">🏰 Pivot Support & Resistance Bounce</option>
             <option value="EMA_CROSS">🏹 EMA 5/20 Golden Cross + Momentum</option>
             <option value="MACD_PA">🌊 Reversal Confluence (MACD/RSI/Engulfing)</option>
-            <option value="RENKO_FLOW">🧱 Renko Volumetric Flow (Ultimate Winner)</option>
-            <option value="ENS_XTREME" selected>💎 Ensemble Extreme (Max Accuracy)</option>
+            <option value="RENKO_FLOW">🧱 Renko Volumetric Flow</option>
+            <option value="ENS_XTREME" selected>💎 Ensemble Extreme</option>
           </select>
         </div>
       </div>
@@ -537,6 +532,7 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
             <select id="settingChartType" class="inp" onchange="updateChartSetting('type', this.value)" style="font-size: 10px; padding: 4px 8px; width: 120px;">
               <option value="heiken-ashi" selected>Heiken Ashi</option>
               <option value="standard">Standard</option>
+              <option value="renko">Renko</option>
             </select>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
@@ -2284,7 +2280,7 @@ function drawChart(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,w,h);
 
-  // Heiken Ashi conversion
+  // Heiken Ashi & Renko conversion
   let chartCandles = all;
   if(ChartSettings.type === 'heiken-ashi'){
     const ha = [];
@@ -2311,6 +2307,108 @@ function drawChart(){
       });
     }
     chartCandles = ha;
+  } else if(ChartSettings.type === 'renko'){
+    let atrPeriod = 14;
+    let trSum = 0;
+    for (let i = 1; i < all.length; i++) {
+      const high = all[i].high;
+      const low = all[i].low;
+      const prevClose = all[i-1].close;
+      const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+      trSum += tr;
+    }
+    const atr = trSum / (all.length - 1 || 1);
+    const last = all[all.length - 1];
+    const brickSize = Math.max(atr * 0.75, (last ? last.close : 100) * 0.0001);
+
+    const renko = [];
+    let lastBrickPrice = all[0].close;
+    let lastBrickType = 'UP';
+    for (let i = 1; i < all.length; i++) {
+      const c = all[i];
+      const price = c.close;
+      const diff = price - lastBrickPrice;
+      if (lastBrickType === 'UP') {
+        if (diff >= brickSize) {
+          const count = Math.floor(diff / brickSize);
+          for (let j = 0; j < count; j++) {
+            lastBrickPrice += brickSize;
+            renko.push({
+              epoch: c.epoch,
+              open: lastBrickPrice - brickSize,
+              close: lastBrickPrice,
+              high: lastBrickPrice,
+              low: lastBrickPrice - brickSize,
+              type: 'UP'
+            });
+          }
+        } else if (diff <= -brickSize * 2) {
+          const count = Math.floor(Math.abs(diff) / brickSize) - 1;
+          lastBrickPrice -= brickSize * 2;
+          renko.push({
+            epoch: c.epoch,
+            open: lastBrickPrice + brickSize,
+            close: lastBrickPrice,
+            high: lastBrickPrice + brickSize,
+            low: lastBrickPrice,
+            type: 'DOWN'
+          });
+          lastBrickType = 'DOWN';
+          for (let j = 0; j < count; j++) {
+            lastBrickPrice -= brickSize;
+            renko.push({
+              epoch: c.epoch,
+              open: lastBrickPrice + brickSize,
+              close: lastBrickPrice,
+              high: lastBrickPrice + brickSize,
+              low: lastBrickPrice,
+              type: 'DOWN'
+            });
+          }
+        }
+      } else { // DOWN
+        if (diff <= -brickSize) {
+          const count = Math.floor(Math.abs(diff) / brickSize);
+          for (let j = 0; j < count; j++) {
+            lastBrickPrice -= brickSize;
+            renko.push({
+              epoch: c.epoch,
+              open: lastBrickPrice + brickSize,
+              close: lastBrickPrice,
+              high: lastBrickPrice + brickSize,
+              low: lastBrickPrice,
+              type: 'DOWN'
+            });
+          }
+        } else if (diff >= brickSize * 2) {
+          const count = Math.floor(diff / brickSize) - 1;
+          lastBrickPrice += brickSize * 2;
+          renko.push({
+            epoch: c.epoch,
+            open: lastBrickPrice - brickSize,
+            close: lastBrickPrice,
+            high: lastBrickPrice,
+            low: lastBrickPrice - brickSize,
+            type: 'UP'
+          });
+          lastBrickType = 'UP';
+          for (let j = 0; j < count; j++) {
+            lastBrickPrice += brickSize;
+            renko.push({
+              epoch: c.epoch,
+              open: lastBrickPrice - brickSize,
+              close: lastBrickPrice,
+              high: lastBrickPrice,
+              low: lastBrickPrice - brickSize,
+              type: 'UP'
+            });
+          }
+        }
+      }
+    }
+    if (renko.length > 0) {
+      chartCandles = renko;
+    }
   }
 
   // ── Candlestick panel (top 80%) ──
@@ -2327,7 +2425,9 @@ function drawChart(){
     const live = hasLive && i===chartCandles.length-1;
     const x=i*cw+cw/2, up=k.close>=k.open;
     ctx.strokeStyle=up?POS:NEG; ctx.lineWidth=1;
-    ctx.beginPath();ctx.moveTo(x,ny(k.high));ctx.lineTo(x,ny(k.low));ctx.stroke();
+    if (ChartSettings.type !== 'renko') {
+      ctx.beginPath();ctx.moveTo(x,ny(k.high));ctx.lineTo(x,ny(k.low));ctx.stroke();
+    }
     ctx.fillStyle=up?POS:NEG;
     const bw=Math.max(1, cw * (ChartSettings.bodyRatio || 0.6));
     const yo=ny(Math.max(k.open,k.close)), yc=ny(Math.min(k.open,k.close));
@@ -3098,6 +3198,7 @@ function initCopytrading(){
   if(tgChat) document.getElementById('tgChatId').value = tgChat;
   const mode = G.COPY_MODE || 'off';
   setCopyMode(mode);
+  updateCopyTradersList();
 }
 function setCopyMode(mode){
   G.COPY_MODE = mode;
@@ -3157,6 +3258,14 @@ function processCopySignal(text){
   if(G._processedCopySignals.has(sigId)) return;
   G._processedCopySignals.add(sigId);
   if(G._processedCopySignals.size > 500) G._processedCopySignals = new Set([...G._processedCopySignals].slice(-200));
+
+  // Age validation to prevent executing old, stale signals
+  const age = Date.now() - parseInt(ts);
+  if(isNaN(age) || age > 30000 || age < -5000){
+    log(`[COPY] Signal from ${tid} ignored (stale, age: ${Math.round(age/1000)}s)`,'i');
+    return;
+  }
+
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
   if(G.WS?.readyState !== WebSocket.OPEN) return;
   let stake = parseFloat(stakeStr) * (trader.stakeMult || 1);
