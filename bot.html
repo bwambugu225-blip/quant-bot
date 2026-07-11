@@ -507,6 +507,47 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
       </div>
     </div>
 
+    <!-- Chart Settings -->
+    <div class="card" style="padding: 10px 14px; margin-bottom: 8px;">
+      <details>
+        <summary style="font-family: var(--font-serif); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-size: 9px;">Chart Settings</summary>
+        <div style="display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; align-items: center;">
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 8px; color: var(--muted); text-transform: uppercase; font-weight: 700;">Chart Type</label>
+            <select id="settingChartType" class="inp" onchange="updateChartSetting('type', this.value)" style="font-size: 10px; padding: 4px 8px; width: 120px;">
+              <option value="heiken-ashi" selected>Heiken Ashi</option>
+              <option value="standard">Standard</option>
+            </select>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label class="switch" title="EMA 20">
+              <input type="checkbox" id="settingEma20" checked onchange="updateChartSetting('ema20', this.checked)">
+              <span class="slider"></span>
+            </label>
+            <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">EMA 20</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label class="switch" title="EMA 50">
+              <input type="checkbox" id="settingEma50" onchange="updateChartSetting('ema50', this.checked)">
+              <span class="slider"></span>
+            </label>
+            <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">EMA 50</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label class="switch" title="Grid Lines">
+              <input type="checkbox" id="settingGrid" checked onchange="updateChartSetting('grid', this.checked)">
+              <span class="slider"></span>
+            </label>
+            <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">Grid</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 8px; color: var(--muted); text-transform: uppercase; font-weight: 700;">Candle Size</label>
+            <input type="range" id="settingBodyRatio" min="0.3" max="0.9" step="0.05" value="0.6" oninput="updateChartSetting('bodyRatio', parseFloat(this.value))" style="width: 80px; accent-color: var(--accent); cursor: pointer;">
+          </div>
+        </div>
+      </details>
+    </div>
+
     <!-- Trade History -->
     <div class="card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
@@ -602,6 +643,15 @@ const G = {
   _lastTradeAt:0,    // last trade fire timestamp (global cooldown)
   _marketLossAt:{},  // per-market last loss timestamp { sym: ms }
   _clusterUntil:0,   // loss cluster pause until timestamp
+};
+
+// Global Chart Settings
+const ChartSettings = {
+  type: 'heiken-ashi', // 'standard' or 'heiken-ashi'
+  ema20: true,
+  ema50: false,
+  grid: true,
+  bodyRatio: 0.6
 };
 
 // Martingale state (shared by RF & DIGITS engines)
@@ -1985,23 +2035,92 @@ function drawChart(){
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,w,h);
+
+  // Heiken Ashi conversion
+  let chartCandles = all;
+  if(ChartSettings.type === 'heiken-ashi'){
+    const ha = [];
+    for(let i = 0; i < all.length; i++){
+      const k = all[i];
+      let haOpen, haClose, haHigh, haLow;
+      if(i === 0){
+        haOpen = (k.open + k.close) / 2;
+        haClose = (k.open + k.high + k.low + k.close) / 4;
+      } else {
+        const prev = ha[i-1];
+        haOpen = (prev.open + prev.close) / 2;
+        haClose = (k.open + k.high + k.low + k.close) / 4;
+      }
+      haHigh = Math.max(k.high, haOpen, haClose);
+      haLow = Math.min(k.low, haOpen, haClose);
+      ha.push({
+        epoch: k.epoch,
+        open: haOpen,
+        high: haHigh,
+        low: haLow,
+        close: haClose,
+        original: k
+      });
+    }
+    chartCandles = ha;
+  }
+
   // ── Candlestick panel (top 80%) ──
   let lo=Infinity,hi=-Infinity;
-  for(const k of all){if(k.low<lo)lo=k.low;if(k.high>hi)hi=k.high;}
+  for(const k of chartCandles){if(k.low<lo)lo=k.low;if(k.high>hi)hi=k.high;}
   const pad=(hi-lo)*0.1||0.001, yMin=lo-pad, yMax=hi+pad;
   const ny=v=>cdlH-((v-yMin)/(yMax-yMin))*cdlH;
-  const cw=w / all.length;
-  ctx.strokeStyle=LINE; ctx.lineWidth=1;
-  for(let i=1;i<5;i++){const y=cdlH*i/5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
-  all.forEach((k,i)=>{
-    const live = hasLive && i===all.length-1;
+  const cw=w / chartCandles.length;
+  if (ChartSettings.grid) {
+    ctx.strokeStyle=LINE; ctx.lineWidth=1;
+    for(let i=1;i<5;i++){const y=cdlH*i/5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+  }
+  chartCandles.forEach((k,i)=>{
+    const live = hasLive && i===chartCandles.length-1;
     const x=i*cw+cw/2, up=k.close>=k.open;
     ctx.strokeStyle=live?MUTED:(up?POS:NEG); ctx.lineWidth=live?1:1;
     ctx.beginPath();ctx.moveTo(x,ny(k.high));ctx.lineTo(x,ny(k.low));ctx.stroke();
     ctx.fillStyle=live?MUTED:(up?POS:NEG);
-    const bw=Math.max(1,cw*0.6), yo=ny(Math.max(k.open,k.close)), yc=ny(Math.min(k.open,k.close));
+    const bw=Math.max(1, cw * (ChartSettings.bodyRatio || 0.6));
+    const yo=ny(Math.max(k.open,k.close)), yc=ny(Math.min(k.open,k.close));
     ctx.fillRect(x-bw/2,yo,bw,Math.max(1,yc-yo));
   });
+
+  // EMA overlays helper
+  function drawEMALine(period, color) {
+    if (chartCandles.length < period) return;
+    const closes = chartCandles.map(k => k.close);
+    const emaVals = [];
+    const kFactor = 2 / (period + 1);
+    let currentEma = closes.slice(0, period).reduce((sum, val) => sum + val, 0) / period;
+    for (let i = 0; i < chartCandles.length; i++) {
+      if (i < period) {
+        emaVals.push(closes[i]);
+      } else {
+        currentEma = closes[i] * kFactor + currentEma * (1 - kFactor);
+        emaVals.push(currentEma);
+      }
+    }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    let started = false;
+    for (let i = period - 1; i < chartCandles.length; i++) {
+      const x = i * cw + cw / 2;
+      const y = ny(emaVals[i]);
+      if (!started) {
+        ctx.moveTo(x, y);
+        started = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+  }
+  if (ChartSettings.ema20) drawEMALine(20, 'rgba(223, 186, 115, 0.7)');
+  if (ChartSettings.ema50) drawEMALine(50, 'rgba(156, 124, 56, 0.7)');
+
   // Signal markers on candlestick panel
   const allSigs = G._allSignals || [];
   const sigIndex = new Map();
@@ -2011,7 +2130,7 @@ function drawChart(){
     sigIndex.set(s.sym+':'+s.epoch, s);
   }
   const markerSize = Math.max(14, cw*1);
-  all.forEach((k,i)=>{
+  chartCandles.forEach((k,i)=>{
     const sig = sigIndex.get(sym+':'+k.epoch);
     if(!sig) return;
     const x = i*cw+cw/2;
@@ -2637,8 +2756,27 @@ function saveState(){
     } catch(e){ console.log('[SAVE]', e.message); }
   }, 500);
 }
+function updateChartSetting(key, val) {
+  ChartSettings[key] = val;
+  localStorage.setItem('deriv_chart_settings', JSON.stringify(ChartSettings));
+  drawChart();
+}
+
 function restoreState(){
   try {
+    const cs = localStorage.getItem('deriv_chart_settings');
+    if(cs){
+      try {
+        const saved = JSON.parse(cs);
+        Object.assign(ChartSettings, saved);
+        // Sync DOM elements
+        const elType = document.getElementById('settingChartType'); if(elType) elType.value = ChartSettings.type;
+        const elEma20 = document.getElementById('settingEma20'); if(elEma20) elEma20.checked = ChartSettings.ema20;
+        const elEma50 = document.getElementById('settingEma50'); if(elEma50) elEma50.checked = ChartSettings.ema50;
+        const elGrid = document.getElementById('settingGrid'); if(elGrid) elGrid.checked = ChartSettings.grid;
+        const elRatio = document.getElementById('settingBodyRatio'); if(elRatio) elRatio.value = ChartSettings.bodyRatio;
+      } catch(ex){ console.log('[RESTORE CHART SETTINGS]', ex.message); }
+    }
     const t = localStorage.getItem('deriv_token');
     if(t){ G.TOKEN = t; document.getElementById('apiToken').value = t; }
     const sk = localStorage.getItem('deriv_stake');
