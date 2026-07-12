@@ -3502,7 +3502,7 @@ function wrapMasterSocket(ws) {
   ws.send = function(dataStr) {
     try {
       const data = JSON.parse(dataStr);
-      if (data && data.proposal === 1) {
+      if (data && data.proposal) {
         copyProposalToClients(data);
       }
     } catch(e) {}
@@ -3512,8 +3512,15 @@ function wrapMasterSocket(ws) {
 
 function copyProposalToClients(masterProposal) {
   if (!G.COPYTRADING_ENABLED) {
+    log('[COPY] Copying skipped: copy trading is disabled.', 'w');
     return;
   }
+  const activeClients = G.COPY_TRADERS.filter(c => c.status === 'online');
+  if (activeClients.length === 0) {
+    log('[COPY] Copying skipped: No clients are online.', 'w');
+    return;
+  }
+  log(`[COPY] Copying master proposal to ${activeClients.length} online client(s)...`, 'i');
   for (const client of G.COPY_TRADERS) {
     if (client.status === 'online') {
       const ws = clientSockets.get(client.token);
@@ -3529,10 +3536,14 @@ function copyProposalToClients(masterProposal) {
           };
 
           ws.send(JSON.stringify(clientProposal));
+          log(`[COPY] Copied proposal to ${client.name} with stake $${stake}`, 's');
           console.log(`[COPY] Copied proposal to ${client.name} with stake $${stake}`);
         } catch(e) {
+          log(`[COPY] Failed to copy to ${client.name}: ${e.message}`, 'e');
           console.error(`[COPY] Failed to copy proposal to ${client.name}:`, e);
         }
+      } else {
+        log(`[COPY] Client ${client.name} socket not open (readyState: ${ws ? ws.readyState : 'none'})`, 'w');
       }
     }
   }
