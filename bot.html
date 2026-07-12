@@ -381,7 +381,10 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
     <div class="card">
       <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
         <span>Copy Trading Clients</span>
-        <span id="copyClientCount" class="tag tag-gray" style="font-size:7px">0 Clients</span>
+        <div style="display:flex; gap:4px; align-items:center;">
+          <button id="toggleCopyBtn" class="btn btn-accent" onclick="toggleCopyTrading()" style="padding:2px 6px; font-size:7px; font-weight:600; line-height:1; height:16px; margin:0; text-transform:uppercase;">Copy: Enabled</button>
+          <span id="copyClientCount" class="tag tag-gray" style="font-size:7px">0 Clients</span>
+        </div>
       </div>
 
       <!-- Form to add client -->
@@ -651,6 +654,7 @@ const G = {
   SESSION_START_SENT:false,
   // Copytrading
   COPY_TRADERS:[], // [{token, name, addedAt, tradesCopied, wins, losses, pnl, status, accountType, accountId, balance, currency}]
+  COPYTRADING_ENABLED: true,
   // Trade history for session reports
   TRADE_OUTCOMES:[],
   TRADE_HISTORY:[],  // { time, action, strategy, stake, profit, won }
@@ -3108,6 +3112,7 @@ function saveState(){
       }));
       localStorage.setItem('deriv_selected_strategy', G.SELECTED_STRATEGY || 'ENS_XTREME');
       localStorage.setItem('deriv_copy_traders', JSON.stringify(G.COPY_TRADERS));
+      localStorage.setItem('deriv_copy_trading_enabled', G.COPYTRADING_ENABLED ? 'true' : 'false');
       const tgToken = document.getElementById('tgToken')?.value;
       const tgChat = document.getElementById('tgChatId')?.value;
       if(tgToken) localStorage.setItem('deriv_tg_token', tgToken);
@@ -3178,6 +3183,8 @@ function restoreState(){
     // Restore copy trading settings
     const ct = localStorage.getItem('deriv_copy_traders');
     if(ct) try{ G.COPY_TRADERS = JSON.parse(ct); }catch(e){}
+    const cte = localStorage.getItem('deriv_copy_trading_enabled');
+    G.COPYTRADING_ENABLED = (cte !== 'false');
     // Never auto-start trading on login — reset engines
     BotState.isTrading = false;
     G.RUNNING = false;
@@ -3189,7 +3196,29 @@ function restoreState(){
 // ============================================================
 const clientSockets = new Map();
 
+function updateCopyTradingToggleUI() {
+  const btn = document.getElementById('toggleCopyBtn');
+  if (!btn) return;
+  if (G.COPYTRADING_ENABLED) {
+    btn.textContent = 'Copy: Enabled';
+    btn.className = 'btn btn-accent';
+    btn.style.borderColor = 'var(--accent)';
+  } else {
+    btn.textContent = 'Copy: Disabled';
+    btn.className = 'btn btn-ghost';
+    btn.style.borderColor = 'var(--line)';
+  }
+}
+
+function toggleCopyTrading() {
+  G.COPYTRADING_ENABLED = !G.COPYTRADING_ENABLED;
+  saveState();
+  updateCopyTradingToggleUI();
+  log(`[COPY] Copy trading has been ${G.COPYTRADING_ENABLED ? 'ENABLED' : 'DISABLED'}`, G.COPYTRADING_ENABLED ? 's' : 'w');
+}
+
 function initCopytrading() {
+  updateCopyTradingToggleUI();
   updateCopyTradersList();
 
   // Establish WS connections for all configured clients
@@ -3482,6 +3511,9 @@ function wrapMasterSocket(ws) {
 }
 
 function copyProposalToClients(masterProposal) {
+  if (!G.COPYTRADING_ENABLED) {
+    return;
+  }
   for (const client of G.COPY_TRADERS) {
     if (client.status === 'online') {
       const ws = clientSockets.get(client.token);
