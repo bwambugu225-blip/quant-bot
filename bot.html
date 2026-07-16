@@ -588,6 +588,29 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
 .panel,.card{border:1px solid var(--line) !important;background:var(--surface) !important}
 .mtop{background:rgba(20,18,16,.96) !important}
 .sidebar{background:rgba(8,11,20,.98) !important}
+
+/* ===== Mobile app shell: bottom nav + tab views ===== */
+#views{display:block}
+.tab-view{display:none;animation:fadeView .25s ease}
+.tab-view.active{display:block}
+@keyframes fadeView{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+.bottomnav{position:fixed;left:0;right:0;bottom:0;height:56px;display:flex;z-index:200;
+  background:rgba(8,11,20,.98);border-top:1px solid var(--line);backdrop-filter:none;-webkit-backdrop-filter:none}
+.bottomnav .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  background:none;border:none;cursor:pointer;color:var(--muted);font-family:var(--font-head);font-size:8px;letter-spacing:1px;
+  text-transform:uppercase;transition:color .2s;border-top:2px solid transparent}
+.bottomnav .nav-btn .nav-ico{font-size:16px;line-height:1;text-shadow:0 0 8px rgba(54,225,255,0)}
+.bottomnav .nav-btn.active{color:var(--accent);border-top-color:var(--accent);text-shadow:0 0 8px rgba(54,225,255,0.4)}
+.bottomnav .nav-btn.active .nav-ico{text-shadow:0 0 12px rgba(54,225,255,0.7)}
+
+/* Slim top strip */
+.mtop{position:sticky;top:0;z-index:50;background:rgba(20,18,16,.96)!important;border-bottom:1px solid var(--line);
+  padding:8px 12px;display:flex;align-items:center;justify-content:space-between;min-height:42px;backdrop-filter:none;-webkit-backdrop-filter:none}
+#app{padding-bottom:56px}
+
+/* Chart canvas grows in its own tab */
+#tab-chart #liveChart{height:46vh}
 </style>
 </head>
 <body class="dark" style="margin:0">
@@ -606,247 +629,41 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
     <div class="login-footer">Requires <strong>Read</strong> + <strong>Trade</strong> scopes</div>
   </div>
 </div>
-<div id="app" style="display:none;min-height:100vh">
+<div id="app" style="display:none;min-height:100vh;padding-bottom:64px">
 
-<!-- Sidebar Overlay (mobile only) -->
-<div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
-
-<!-- LEFT COLLAPSIBLE SIDEBAR -->
-<div class="sidebar" id="sidebar">
-  <div class="sidebar-header">
+<!-- SLIM TOP STATUS STRIP -->
+<div class="mtop">
+  <div class="mtop-l">
     <div class="logo">B<span>TRADERS</span><span onclick="showAdminLogin()" title="Admin" style="cursor:pointer;opacity:0.25;font-size:10px;letter-spacing:1px;margin-left:6px;transition:opacity .2s;user-select:none;vertical-align:middle" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.25">&gt;&gt;&gt;</span></div>
-    <button class="sidebar-close" onclick="toggleSidebar()">✕</button>
+    <span id="connDot" class="conn r"></span>
+    <span id="engineStatus" class="status-pill">OFFLINE</span>
+    <span id="accBadge" class="tag tag-blue" style="font-size:7px;">DEMO</span>
+    <label class="switch" title="Live / Demo">
+      <input type="checkbox" id="accToggle" onchange="toggleAccount()">
+      <span class="slider"></span>
+    </label>
   </div>
-  <div class="sidebar-body">
-    <!-- Account info -->
-    <div class="section">
-      <div class="section-title">Account</div>
-      <div id="dashTarget" style="font-size:12px;font-weight:600">$0.00</div>
-      <div style="font-size:8px;color:var(--muted);margin-top:2px">Daily Stop</div>
-      <div id="dashLoss" style="font-size:12px;font-weight:600;color:var(--negative)">$0.00</div>
-    </div>
-
-    <!-- Mode tabs: RF stays in main, DIGITS expands sidebar -->
-    <div class="section">
-      <div class="section-title">Mode</div>
-      <div style="display:flex;gap:4px">
-        <button id="btnModeRF" class="mode-tab active" onclick="switchMode('RISEFALL')" style="flex:1">R/F</button>
-        <button id="btnModeDigits" class="mode-tab" onclick="switchMode('DIGITS')" style="flex:1">DIGITS</button>
-      </div>
-      <div style="display:flex;gap:4px;margin-top:4px">
-        <button class="btn btn-ghost" onclick="resetDemo()" style="flex:1;padding:3px 6px;font-size:7px">RESET DEMO</button>
-        <button class="btn btn-ghost" onclick="resetSession()" style="flex:1;padding:3px 6px;font-size:7px">RESET SESSION</button>
-      </div>
-      <div id="modeIndicator" style="font-size:8px;color:var(--muted);margin-top:3px">Auto</div>
-    </div>
-
-    <!-- Digits section -->
-    <div id="dgSection" class="section">
-      <div class="section-title">Digits <span id="dgModeLabel" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">OVER/UNDER</span></div>
-      <div style="display:flex;gap:4px;margin-bottom:6px">
-        <button id="dgModeOU" class="btn btn-ghost" onclick="setDigitContract('OU')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">OVER/UNDER</button>
-        <button id="dgModeEO" class="btn btn-ghost" onclick="setDigitContract('EO')" style="flex:1;padding:4px;font-size:8px">EVEN/ODD</button>
-        <button id="dgModeMC" class="btn btn-ghost" onclick="setDigitContract('MC')" style="flex:1;padding:4px;font-size:8px">MATCH</button>
-      </div>
-      <div style="display:flex;gap:4px;margin-bottom:4px">
-        <div class="field" style="flex:1"><label>Stake</label><input class="inp" id="dgBaseStake" type="number" value="1" min="0.5" step="0.5"></div>
-        <div class="field" style="flex:1"><label>Target</label><input class="inp" id="dgTakeProfit" type="number" value="10" min="1" step="1"></div>
-        <div class="field" style="flex:1"><label>Stop</label><input class="inp" id="dgStopLoss" type="number" value="5" min="1" step="1"></div>
-      </div>
-      <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center">
-        <label style="font-size:8px;color:var(--muted);white-space:nowrap">MARTINGALE</label>
-        <select id="dgMartMult" class="inp inp-sm" style="width:50px;font-size:9px;padding:2px">
-          <option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option>
-        </select>
-        <span style="font-size:7px;color:var(--muted)">× on loss</span>
-      </div>
-      <div id="dgTradeBtnsOU" class="trade-btn-row" style="flex-wrap:wrap;gap:3px">
-        <div style="display:flex;gap:3px;width:100%;margin-bottom:2px">
-          <span style="font-size:7px;color:var(--muted);align-self:center">Barrier:</span>
-          <select id="dgBarrier" class="inp inp-sm" style="width:50px;font-size:9px;padding:2px">
-            <option>0</option><option>1</option><option>2</option><option>3</option><option>4</option>
-            <option selected>5</option><option>6</option><option>7</option><option>8</option><option>9</option>
-          </select>
-        </div>
-        <button class="btn btn-call" onclick="placeDigitManual('DIGITOVER')" style="flex:1">OVER</button>
-        <button class="btn btn-put" onclick="placeDigitManual('DIGITUNDER')" style="flex:1">UNDER</button>
-      </div>
-      <div id="dgTradeBtnsEO" class="trade-btn-row" style="display:none">
-        <button class="btn btn-call" onclick="placeDigitManual('DIGITEVEN')" style="flex:1">EVEN</button>
-        <button class="btn btn-put" onclick="placeDigitManual('DIGITODD')" style="flex:1">ODD</button>
-      </div>
-      <div id="dgTradeBtnsMC" class="trade-btn-row" style="display:none; flex-direction:column; gap:4px; width:100%">
-        <div style="display:flex; gap:4px; align-items:center; width:100%">
-          <span style="font-size:8px; color:var(--muted)">Submode:</span>
-          <select id="dgMcSubMode" class="inp inp-sm" style="flex:1; font-size:9px; padding:2px" onchange="saveState()">
-            <option value="DIFF" selected>🛡️ Differ (99% ultra winrate)</option>
-            <option value="MATCH">🎯 Match (10x high payout)</option>
-            <option value="AUTO">🤖 Hybrid Intelligent (Auto-switch)</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- Engine + analysis block (keep as proper siblings to avoid DOM repair/overlap) -->
-      <div style="display:flex;gap:4px;margin-top:5px;align-items:center">
-        <span id="dgEngineStat"><span class="blink-dot gray"></span></span>
-        <span id="dgCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
-        <span id="dgSessionPnL" style="font-size:10px;font-weight:600;color:var(--muted)">$0.00</span>
-        <span id="dgWLRatio" style="font-size:9px;color:var(--muted)">0-0</span>
-        <button id="dgEngineBtn" class="btn btn-accent" onclick="toggleDigitEngine()" style="padding:3px 6px;font-size:7px;margin-left:auto">AUTO</button>
-        <button class="btn btn-ghost" onclick="resetDigitPnL()" style="padding:2px 4px;font-size:7px">RESET</button>
-      </div>
-
-      <div style="margin-top:6px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-          <span id="dgDistRange" style="font-size:7px;color:var(--muted)">Last 0 ticks</span>
-          <span id="dgMarketName" style="font-size:8px;color:var(--accent);font-weight:600"></span>
-        </div>
-        <div id="dgDigitCircles" style="display:grid;grid-template-columns:repeat(5,1fr);gap:2px;margin-bottom:4px"></div>
-        <div style="display:flex;gap:6px;font-size:7px;justify-content:center;margin-bottom:4px">
-          <span style="color:var(--positive);font-weight:700">HOT</span><span id="dgHottest" style="color:var(--positive)">--</span>
-          <span style="color:var(--negative);font-weight:700">COLD</span><span id="dgColdest" style="color:var(--negative)">--</span>
-          <span style="color:var(--text);font-weight:700">NOW</span><span id="dgNowDigit" style="color:var(--text)">--</span>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
-          <div style="background:var(--bg);padding:3px 4px;border:1px solid var(--line);border-radius:var(--radius-sm)">
-            <div style="font-size:7px;color:var(--muted);text-transform:uppercase;margin-bottom:2px">Odd/Even</div>
-            <div style="display:flex;gap:6px">
-              <span style="font-size:10px;font-weight:700;color:var(--accent)" id="dgAEven">--</span>
-              <span style="font-size:10px;font-weight:700;color:#c084fc" id="dgAOdd">--</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:7px;margin-top:2px">
-              <span style="color:var(--muted)">Streak</span><span id="dgAEOStr" style="font-weight:600">--</span>
-            </div>
-          </div>
-          <div style="background:var(--bg);padding:3px 4px;border:1px solid var(--line);border-radius:var(--radius-sm)">
-            <div style="font-size:7px;color:var(--muted);text-transform:uppercase;margin-bottom:2px">Over/Under</div>
-            <div style="display:flex;gap:6px">
-              <span style="font-size:10px;font-weight:700;color:var(--positive)" id="dgAOver">--</span>
-              <span style="font-size:10px;font-weight:700;color:var(--negative)" id="dgDUnder">--</span>
-            </div>
-            <div style="display:flex;justify-content:space-between;font-size:7px;margin-top:2px">
-              <span style="color:var(--muted)">Mid</span><span id="dgAMid" style="font-weight:600">--</span>
-            </div>
-          </div>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:4px">
-          <div style="background:var(--bg);padding:2px;text-align:center;border:1px solid var(--line);border-radius:var(--radius-sm)">
-            <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Ticks</div><div id="dgATicks" style="font-size:11px;font-weight:700">0</div>
-          </div>
-          <div style="background:var(--bg);padding:2px;text-align:center;border:1px solid var(--line);border-radius:var(--radius-sm)">
-            <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Chi-Sq</div><div id="dgChiSq" style="font-size:11px;font-weight:700">--</div>
-          </div>
-          <div style="background:var(--bg);padding:2px;text-align:center;border:1px solid var(--line);border-radius:var(--radius-sm)">
-            <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Streak</div>
-            <div style="display:flex;gap:3px;justify-content:center;font-size:9px;font-weight:700">
-              <span id="dgWinStreak" style="color:var(--positive)">W:0</span>
-              <span id="dgLossStreak" style="color:var(--negative)">L:0</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Telegram -->
-    <div class="section" style="display:none" id="tgSection">
-      <div class="section-title">Telegram Bot</div>
-      <div style="display:flex;align-items:center;gap:6px;font-size:9px">
-        <span id="tgStatusDot" class="blink-dot gray"></span>
-        <span id="tgBotName" style="color:var(--muted)">Not connected</span>
-        <input id="tgToken" type="hidden">
-        <input id="tgChatId" type="hidden">
-        <button class="btn btn-ghost" onclick="testTg()" style="padding:2px 6px;font-size:7px;margin-left:auto">Test</button>
-      </div>
-    </div>
-
-    <!-- Copy Trading -->
-    <div class="section">
-      <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
-        <span>Copy Trading Clients</span>
-        <div style="display:flex; gap:4px; align-items:center;">
-          <button id="toggleCopyBtn" class="btn btn-accent" onclick="toggleCopyTrading()" style="padding:2px 6px; font-size:7px; font-weight:600; line-height:1; height:16px; margin:0; text-transform:uppercase;">Copy: Enabled</button>
-          <span id="copyClientCount" class="tag tag-gray" style="font-size:7px">0 Clients</span>
-        </div>
-      </div>
-
-      <!-- Form to add client -->
-      <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid var(--line);">
-        <div style="display:flex; gap:3px;">
-          <input class="inp inp-sm" id="copyClientName" type="text" placeholder="Client Name" style="flex:1; font-size:8px">
-          <input class="inp inp-sm" id="copyClientToken" type="password" placeholder="PAT Token" style="flex:1.8; font-size:8px">
-        </div>
-        <div style="display:flex; gap:3px; align-items:center;">
-          <div style="flex:1; display:flex; align-items:center; gap:2px;">
-            <span style="font-size:7px; color:var(--muted);">Mult:</span>
-            <input class="inp inp-sm" id="copyClientMult" type="number" value="1.0" min="0.1" step="0.1" style="width:32px; font-size:8px; padding:2px;">
-          </div>
-          <div style="flex:1.5; display:flex; align-items:center; gap:2px;">
-            <span style="font-size:7px; color:var(--muted);">Acc:</span>
-            <select class="inp inp-sm" id="copyClientAccType" style="flex:1; font-size:8px; padding:2px;">
-              <option value="demo">Demo</option>
-              <option value="real">Real</option>
-            </select>
-          </div>
-          <button class="btn btn-accent" onclick="addNewCopyClient()" style="padding:3px 8px; font-size:8px; font-weight:600; line-height:1;">+ Add</button>
-        </div>
-      </div>
-
-      <!-- Clients List -->
-      <div id="copyClientsList" style="max-height:150px; overflow-y:auto; display:flex; flex-direction:column; gap:4px;">
-        <div style="font-size:7px;color:var(--muted);padding:4px;text-align:center;">No clients configured</div>
-      </div>
-    </div>
-
-    <!-- Markets Watchlist -->
-    <div class="section">
-      <details open>
-        <summary style="font-family:var(--font-serif); font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-size:9px;">Markets Watchlist</summary>
-        <div id="watchlistBody" style="max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; margin-top:8px;"></div>
-      </details>
-    </div>
-
-    <!-- Info -->
-    <div class="section">
-      <div class="section-title">Info</div>
-      <div id="watchTopMarket" style="font-size:8px;color:var(--muted)">Signal: --</div>
-    </div>
+  <div class="mtop-r">
+    <button onclick="toggleTheme()" title="Toggle theme" style="background:none;border:none;cursor:pointer;font-size:14px;line-height:1;padding:2px" id="themeBtn">🌙</button>
+    <button onclick="logout()" title="Save &amp; logout" style="background:none;border:1px solid var(--line);cursor:pointer;font-size:11px;line-height:1;padding:5px 8px;color:var(--text)">⏻</button>
   </div>
-  <div class="sidebar-footer">BTraders God Mode v2</div>
 </div>
 
-<!-- MAIN CONTENT -->
-<div id="main">
-  <!-- TOP BAR -->
-  <div class="mtop">
-    <div class="mtop-l">
-      <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">☰</button>
-      <div class="logo">B<span>TRADERS</span></div>
-      <span id="connDot" class="conn r"></span>
-      <span id="engineStatus" class="status-pill">OFFLINE</span>
-      <span id="accBadge" class="tag tag-blue" style="font-size:7px;">DEMO</span>
-      <label class="switch" title="Live / Demo">
-        <input type="checkbox" id="accToggle" onchange="toggleAccount()">
-        <span class="slider"></span>
-      </label>
-    </div>
-    <div class="mtop-r">
-      <button onclick="logout()" title="Save &amp; logout" style="background:none;border:1px solid var(--line);border-radius:6px;cursor:pointer;font-size:10px;line-height:1;padding:4px 8px;color:var(--text)">⏻ Logout</button>
-      <button onclick="toggleTheme()" title="Toggle theme" style="background:none;border:none;cursor:pointer;font-size:14px;line-height:1;padding:2px" id="themeBtn">🌙</button>
-    </div>
-  </div>
+<!-- ============ TAB VIEWS ============ -->
+<div id="views">
 
-  <!-- KPI ROW -->
-  <div class="kpi-row">
-    <div class="kpi"><div id="dashBalance" class="v" style="color:var(--positive)">$0.00</div><div class="l">Balance</div></div>
-    <div class="kpi"><div id="dashWinRate" class="v" style="color:var(--accent)">0%</div><div class="l">Win Rate</div></div>
-    <div class="kpi"><div id="dashPnl" class="v pnl">$0.00</div><div class="l">P&amp;L</div></div>
-    <div class="kpi"><div id="dashTrades" class="v" style="color:var(--text)">0</div><div class="l">Trades</div></div>
-    <div class="kpi"><div id="dashConsLoss" class="v" style="color:var(--negative)">0</div><div class="l">Streak</div></div>
-  </div>
+  <!-- TAB 1: HOME (metrics + trade controls + analysis) -->
+  <div class="tab-view active" id="tab-home">
+    <!-- KPI ROW -->
+    <div class="kpi-row">
+      <div class="kpi"><div id="dashBalance" class="v" style="color:var(--positive)">$0.00</div><div class="l">Balance</div></div>
+      <div class="kpi"><div id="dashWinRate" class="v" style="color:var(--accent)">0%</div><div class="l">Win Rate</div></div>
+      <div class="kpi"><div id="dashPnl" class="v pnl">$0.00</div><div class="l">P&amp;L</div></div>
+      <div class="kpi"><div id="dashTrades" class="v" style="color:var(--text)">0</div><div class="l">Trades</div></div>
+      <div class="kpi"><div id="dashConsLoss" class="v" style="color:var(--negative)">0</div><div class="l">Streak</div></div>
+    </div>
 
-  <!-- RF Controls + Chart + History -->
+    <!-- RF Controls -->
     <div id="rfSection" class="section">
       <div class="section-title">Rise/Fall <span id="rfModeBadge" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">AUTO</span></div>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
@@ -900,57 +717,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       </div>
     </div>
 
-    <!-- Chart -->
-    <div class="section" style="padding:8px 0; overflow:hidden;">
-      <div style="width:100%; overflow:hidden; background:rgba(6,9,18,0.4); border:1px solid var(--line); border-radius:0; padding:3px; transition:border-color 0.3s, box-shadow 0.3s; box-shadow:inset 0 0 24px rgba(54,225,255,0.05);">
-        <canvas id="liveChart" style="width:100%; height:180px; display:block; cursor:crosshair; border-radius:0;"></canvas>
-<style>@media(min-width:768px){#liveChart{height:250px!important}}</style>
-      </div>
-    </div>
-
-    <!-- Chart Settings -->
-    <div class="section">
-      <details>
-        <summary style="font-family: var(--font-serif); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-size: 9px;">Chart Settings</summary>
-        <div style="display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; align-items: center;">
-          <div style="display: flex; flex-direction: column; gap: 4px;">
-            <label style="font-size: 8px; color: var(--muted); text-transform: uppercase; font-weight: 700;">Chart Type</label>
-            <select id="settingChartType" class="inp" onchange="updateChartSetting('type', this.value)" style="font-size: 10px; padding: 4px 8px; width: 120px;">
-              <option value="heiken-ashi" selected>Heiken Ashi</option>
-              <option value="standard">Standard</option>
-              <option value="renko">Renko</option>
-            </select>
-          </div>
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <label class="switch" title="EMA 20">
-              <input type="checkbox" id="settingEma20" checked onchange="updateChartSetting('ema20', this.checked)">
-              <span class="slider"></span>
-            </label>
-            <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">EMA 20</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <label class="switch" title="EMA 50">
-              <input type="checkbox" id="settingEma50" onchange="updateChartSetting('ema50', this.checked)">
-              <span class="slider"></span>
-            </label>
-            <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">EMA 50</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <label class="switch" title="Grid Lines">
-              <input type="checkbox" id="settingGrid" checked onchange="updateChartSetting('grid', this.checked)">
-              <span class="slider"></span>
-            </label>
-            <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">Grid</span>
-          </div>
-          <div style="display: flex; flex-direction: column; gap: 4px;">
-            <label style="font-size: 8px; color: var(--muted); text-transform: uppercase; font-weight: 700;">Candle Size</label>
-            <input type="range" id="settingBodyRatio" min="0.3" max="0.9" step="0.05" value="0.6" oninput="updateChartSetting('bodyRatio', parseFloat(this.value))" style="width: 80px; accent-color: var(--accent); cursor: pointer;">
-          </div>
-        </div>
-      </details>
-    </div>
-
-    <!-- Hacky Vibe Analysis Panel -->
+    <!-- Analysis Panel -->
     <div class="section" style="padding:10px 0">
       <div class="hax-head">
         <span class="hax-ring" id="haxRing"><i></i><b id="haxDot"></b></span>
@@ -1001,6 +768,268 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       </div>
       <div id="recentTrades" style="font-size:9px;color:var(--muted);max-height:110px;overflow-y:auto">No trades yet</div>
     </div>
+  </div>
+
+  <!-- TAB 2: CHART -->
+  <div class="tab-view" id="tab-chart">
+    <div class="section" style="padding:8px 0; overflow:hidden;">
+      <div style="width:100%; overflow:hidden; background:rgba(6,9,18,0.4); border:1px solid var(--line); padding:3px;">
+        <canvas id="liveChart" style="width:100%; height:46vh; display:block; cursor:crosshair;"></canvas>
+      </div>
+    </div>
+    <div class="section">
+      <details open>
+        <summary style="font-family: var(--font-serif); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-size: 9px;">Chart Settings</summary>
+        <div style="display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; align-items: center;">
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 8px; color: var(--muted); text-transform: uppercase; font-weight: 700;">Chart Type</label>
+            <select id="settingChartType" class="inp" onchange="updateChartSetting('type', this.value)" style="font-size: 10px; padding: 4px 8px; width: 120px;">
+              <option value="heiken-ashi" selected>Heiken Ashi</option>
+              <option value="standard">Standard</option>
+              <option value="renko">Renko</option>
+            </select>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label class="switch" title="EMA 20">
+              <input type="checkbox" id="settingEma20" checked onchange="updateChartSetting('ema20', this.checked)">
+              <span class="slider"></span>
+            </label>
+            <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">EMA 20</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label class="switch" title="EMA 50">
+              <input type="checkbox" id="settingEma50" onchange="updateChartSetting('ema50', this.checked)">
+              <span class="slider"></span>
+            </label>
+            <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">EMA 50</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label class="switch" title="Grid Lines">
+              <input type="checkbox" id="settingGrid" checked onchange="updateChartSetting('grid', this.checked)">
+              <span class="slider"></span>
+            </label>
+            <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">Grid</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label style="font-size: 8px; color: var(--muted); text-transform: uppercase; font-weight: 700;">Candle Size</label>
+            <input type="range" id="settingBodyRatio" min="0.3" max="0.9" step="0.05" value="0.6" oninput="updateChartSetting('bodyRatio', parseFloat(this.value))" style="width: 80px; accent-color: var(--accent); cursor: pointer;">
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- TAB 3: DIGITS -->
+  <div class="tab-view" id="tab-digits">
+    <div id="dgSection" class="section">
+      <div class="section-title">Digits <span id="dgModeLabel" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">OVER/UNDER</span></div>
+      <div style="display:flex;gap:4px;margin-bottom:6px">
+        <button id="dgModeOU" class="btn btn-ghost" onclick="setDigitContract('OU')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">OVER/UNDER</button>
+        <button id="dgModeEO" class="btn btn-ghost" onclick="setDigitContract('EO')" style="flex:1;padding:4px;font-size:8px">EVEN/ODD</button>
+        <button id="dgModeMC" class="btn btn-ghost" onclick="setDigitContract('MC')" style="flex:1;padding:4px;font-size:8px">MATCH</button>
+      </div>
+      <div style="display:flex;gap:4px;margin-bottom:4px">
+        <div class="field" style="flex:1"><label>Stake</label><input class="inp" id="dgBaseStake" type="number" value="1" min="0.5" step="0.5"></div>
+        <div class="field" style="flex:1"><label>Target</label><input class="inp" id="dgTakeProfit" type="number" value="10" min="1" step="1"></div>
+        <div class="field" style="flex:1"><label>Stop</label><input class="inp" id="dgStopLoss" type="number" value="5" min="1" step="1"></div>
+      </div>
+      <div style="display:flex;gap:4px;margin-bottom:4px;align-items:center">
+        <label style="font-size:8px;color:var(--muted);white-space:nowrap">MARTINGALE</label>
+        <select id="dgMartMult" class="inp inp-sm" style="width:50px;font-size:9px;padding:2px">
+          <option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option>
+        </select>
+        <span style="font-size:7px;color:var(--muted)">× on loss</span>
+      </div>
+      <div id="dgTradeBtnsOU" class="trade-btn-row" style="flex-wrap:wrap;gap:3px">
+        <div style="display:flex;gap:3px;width:100%;margin-bottom:2px">
+          <span style="font-size:7px;color:var(--muted);align-self:center">Barrier:</span>
+          <select id="dgBarrier" class="inp inp-sm" style="width:50px;font-size:9px;padding:2px">
+            <option>0</option><option>1</option><option>2</option><option>3</option><option>4</option>
+            <option selected>5</option><option>6</option><option>7</option><option>8</option><option>9</option>
+          </select>
+        </div>
+        <button class="btn btn-call" onclick="placeDigitManual('DIGITOVER')" style="flex:1">OVER</button>
+        <button class="btn btn-put" onclick="placeDigitManual('DIGITUNDER')" style="flex:1">UNDER</button>
+      </div>
+      <div id="dgTradeBtnsEO" class="trade-btn-row" style="display:none">
+        <button class="btn btn-call" onclick="placeDigitManual('DIGITEVEN')" style="flex:1">EVEN</button>
+        <button class="btn btn-put" onclick="placeDigitManual('DIGITODD')" style="flex:1">ODD</button>
+      </div>
+      <div id="dgTradeBtnsMC" class="trade-btn-row" style="display:none; flex-direction:column; gap:4px; width:100%">
+        <div style="display:flex; gap:4px; align-items:center; width:100%">
+          <span style="font-size:8px; color:var(--muted)">Submode:</span>
+          <select id="dgMcSubMode" class="inp inp-sm" style="flex:1; font-size:9px; padding:2px" onchange="saveState()">
+            <option value="DIFF" selected>🛡️ Differ (99% ultra winrate)</option>
+            <option value="MATCH">🎯 Match (10x high payout)</option>
+            <option value="AUTO">🤖 Hybrid Intelligent (Auto-switch)</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:4px;margin-top:5px;align-items:center">
+        <span id="dgEngineStat"><span class="blink-dot gray"></span></span>
+        <span id="dgCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
+        <span id="dgSessionPnL" style="font-size:10px;font-weight:600;color:var(--muted)">$0.00</span>
+        <span id="dgWLRatio" style="font-size:9px;color:var(--muted)">0-0</span>
+        <button id="dgEngineBtn" class="btn btn-accent" onclick="toggleDigitEngine()" style="padding:3px 6px;font-size:7px;margin-left:auto">AUTO</button>
+        <button class="btn btn-ghost" onclick="resetDigitPnL()" style="padding:2px 4px;font-size:7px">RESET</button>
+      </div>
+
+      <div style="margin-top:6px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span id="dgDistRange" style="font-size:7px;color:var(--muted)">Last 0 ticks</span>
+          <span id="dgMarketName" style="font-size:8px;color:var(--accent);font-weight:600"></span>
+        </div>
+        <div id="dgDigitCircles" style="display:grid;grid-template-columns:repeat(5,1fr);gap:2px;margin-bottom:4px"></div>
+        <div style="display:flex;gap:6px;font-size:7px;justify-content:center;margin-bottom:4px">
+          <span style="color:var(--positive);font-weight:700">HOT</span><span id="dgHottest" style="color:var(--positive)">--</span>
+          <span style="color:var(--negative);font-weight:700">COLD</span><span id="dgColdest" style="color:var(--negative)">--</span>
+          <span style="color:var(--text);font-weight:700">NOW</span><span id="dgNowDigit" style="color:var(--text)">--</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+          <div style="background:var(--bg);padding:3px 4px;border:1px solid var(--line)">
+            <div style="font-size:7px;color:var(--muted);text-transform:uppercase;margin-bottom:2px">Odd/Even</div>
+            <div style="display:flex;gap:6px">
+              <span style="font-size:10px;font-weight:700;color:var(--accent)" id="dgAEven">--</span>
+              <span style="font-size:10px;font-weight:700;color:#c084fc" id="dgAOdd">--</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:7px;margin-top:2px">
+              <span style="color:var(--muted)">Streak</span><span id="dgAEOStr" style="font-weight:600">--</span>
+            </div>
+          </div>
+          <div style="background:var(--bg);padding:3px 4px;border:1px solid var(--line)">
+            <div style="font-size:7px;color:var(--muted);text-transform:uppercase;margin-bottom:2px">Over/Under</div>
+            <div style="display:flex;gap:6px">
+              <span style="font-size:10px;font-weight:700;color:var(--positive)" id="dgAOver">--</span>
+              <span style="font-size:10px;font-weight:700;color:var(--negative)" id="dgDUnder">--</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:7px;margin-top:2px">
+              <span style="color:var(--muted)">Mid</span><span id="dgAMid" style="font-weight:600">--</span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:4px">
+          <div style="background:var(--bg);padding:2px;text-align:center;border:1px solid var(--line)">
+            <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Ticks</div><div id="dgATicks" style="font-size:11px;font-weight:700">0</div>
+          </div>
+          <div style="background:var(--bg);padding:2px;text-align:center;border:1px solid var(--line)">
+            <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Chi-Sq</div><div id="dgChiSq" style="font-size:11px;font-weight:700">--</div>
+          </div>
+          <div style="background:var(--bg);padding:2px;text-align:center;border:1px solid var(--line)">
+            <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Streak</div>
+            <div style="display:flex;gap:3px;justify-content:center;font-size:9px;font-weight:700">
+              <span id="dgWinStreak" style="color:var(--positive)">W:0</span>
+              <span id="dgLossStreak" style="color:var(--negative)">L:0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Mode toggle -->
+    <div class="section">
+      <div class="section-title">Mode</div>
+      <div style="display:flex;gap:4px">
+        <button id="btnModeRF" class="mode-tab active" onclick="switchMode('RISEFALL')" style="flex:1">R/F</button>
+        <button id="btnModeDigits" class="mode-tab" onclick="switchMode('DIGITS')" style="flex:1">DIGITS</button>
+      </div>
+      <div style="display:flex;gap:4px;margin-top:4px">
+        <button class="btn btn-ghost" onclick="resetDemo()" style="flex:1;padding:3px 6px;font-size:7px">RESET DEMO</button>
+        <button class="btn btn-ghost" onclick="resetSession()" style="flex:1;padding:3px 6px;font-size:7px">RESET SESSION</button>
+      </div>
+      <div id="modeIndicator" style="font-size:8px;color:var(--muted);margin-top:3px">Auto</div>
+    </div>
+
+    <!-- Markets Watchlist -->
+    <div class="section">
+      <details open>
+        <summary style="font-family:var(--font-serif); font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-size:9px;">Markets Watchlist</summary>
+        <div id="watchlistBody" style="max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; margin-top:8px;"></div>
+      </details>
+    </div>
+  </div>
+
+  <!-- TAB 4: SETTINGS -->
+  <div class="tab-view" id="tab-settings">
+    <div class="section">
+      <div class="section-title">Account</div>
+      <div id="dashTarget" style="font-size:12px;font-weight:600">$0.00</div>
+      <div style="font-size:8px;color:var(--muted);margin-top:2px">Daily Stop</div>
+      <div id="dashLoss" style="font-size:12px;font-weight:600;color:var(--negative)">$0.00</div>
+    </div>
+
+    <!-- Telegram -->
+    <div class="section" style="display:none" id="tgSection">
+      <div class="section-title">Telegram Bot</div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:9px">
+        <span id="tgStatusDot" class="blink-dot gray"></span>
+        <span id="tgBotName" style="color:var(--muted)">Not connected</span>
+        <input id="tgToken" type="hidden">
+        <input id="tgChatId" type="hidden">
+        <button class="btn btn-ghost" onclick="testTg()" style="padding:2px 6px;font-size:7px;margin-left:auto">Test</button>
+      </div>
+    </div>
+
+    <!-- Copy Trading -->
+    <div class="section">
+      <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+        <span>Copy Trading Clients</span>
+        <div style="display:flex; gap:4px; align-items:center;">
+          <button id="toggleCopyBtn" class="btn btn-accent" onclick="toggleCopyTrading()" style="padding:2px 6px; font-size:7px; font-weight:600; line-height:1; height:16px; margin:0; text-transform:uppercase;">Copy: Enabled</button>
+          <span id="copyClientCount" class="tag tag-gray" style="font-size:7px">0 Clients</span>
+        </div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:8px; padding-bottom:8px; border-bottom:1px solid var(--line);">
+        <div style="display:flex; gap:3px;">
+          <input class="inp inp-sm" id="copyClientName" type="text" placeholder="Client Name" style="flex:1; font-size:8px">
+          <input class="inp inp-sm" id="copyClientToken" type="password" placeholder="PAT Token" style="flex:1.8; font-size:8px">
+        </div>
+        <div style="display:flex; gap:3px; align-items:center;">
+          <div style="flex:1; display:flex; align-items:center; gap:2px;">
+            <span style="font-size:7px; color:var(--muted);">Mult:</span>
+            <input class="inp inp-sm" id="copyClientMult" type="number" value="1.0" min="0.1" step="0.1" style="width:32px; font-size:8px; padding:2px;">
+          </div>
+          <div style="flex:1.5; display:flex; align-items:center; gap:2px;">
+            <span style="font-size:7px; color:var(--muted);">Acc:</span>
+            <select class="inp inp-sm" id="copyClientAccType" style="flex:1; font-size:8px; padding:2px;">
+              <option value="demo">Demo</option>
+              <option value="real">Real</option>
+            </select>
+          </div>
+          <button class="btn btn-accent" onclick="addNewCopyClient()" style="padding:3px 8px; font-size:8px; font-weight:600; line-height:1;">+ Add</button>
+        </div>
+      </div>
+      <div id="copyClientsList" style="max-height:200px; overflow-y:auto; display:flex; flex-direction:column; gap:4px;">
+        <div style="font-size:7px;color:var(--muted);padding:4px;text-align:center;">No clients configured</div>
+      </div>
+    </div>
+
+    <!-- Info -->
+    <div class="section">
+      <div class="section-title">Info</div>
+      <div id="watchTopMarket" style="font-size:8px;color:var(--muted)">Signal: --</div>
+    </div>
+  </div>
+
+</div><!-- /views -->
+
+<!-- ============ BOTTOM NAV ============ -->
+<div class="bottomnav">
+  <button class="nav-btn active" data-tab="home" onclick="switchTab('home')">
+    <span class="nav-ico">◉</span><span class="nav-lbl">HOME</span>
+  </button>
+  <button class="nav-btn" data-tab="chart" onclick="switchTab('chart')">
+    <span class="nav-ico">▤</span><span class="nav-lbl">CHART</span>
+  </button>
+  <button class="nav-btn" data-tab="digits" onclick="switchTab('digits')">
+    <span class="nav-ico">⥹</span><span class="nav-lbl">DIGITS</span>
+  </button>
+  <button class="nav-btn" data-tab="settings" onclick="switchTab('settings')">
+    <span class="nav-ico">⚙</span><span class="nav-lbl">SETTINGS</span>
+  </button>
+</div>
 
   <!-- Toast notifications -->
   <div id="toastContainer" style="position:fixed;top:12px;right:12px;z-index:99999;display:flex;flex-direction:column;gap:6px;pointer-events:none"></div>
@@ -1017,7 +1046,6 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
     <div id="dashStrategy"></div>
     <div id="dMarket"></div>
   </div>
-</div>
 
 </div><!-- end app -->
 
@@ -4082,13 +4110,17 @@ function toggleMarketMode(){
 // ============================================================
 // UI
 // ============================================================
-function toggleSidebar(){
-  document.body.classList.toggle('sidebar-open');
+function switchTab(tab){
+  document.querySelectorAll('.tab-view').forEach(v=>v.classList.remove('active'));
+  document.querySelectorAll('.bottomnav .nav-btn').forEach(b=>b.classList.remove('active'));
+  const view=document.getElementById('tab-'+tab); if(view) view.classList.add('active');
+  const btn=document.querySelector('.bottomnav .nav-btn[data-tab="'+tab+'"]'); if(btn) btn.classList.add('active');
+  // Keep chart canvas sized correctly when its tab becomes visible
+  if(tab==='chart' && typeof drawChart==='function'){ try{ drawChart(); }catch(e){} }
+  window.scrollTo(0,0);
 }
-// Close sidebar on Escape key
-document.addEventListener('keydown', e => {
-  if(e.key==='Escape' && document.body.classList.contains('sidebar-open')) toggleSidebar();
-});
+// No sidebar anymore — Escape does nothing special
+document.addEventListener('keydown', e => { if(e.key==='Escape'){} });
 function selectStrategy(val){
   G.SELECTED_STRATEGY = val;
   saveState();
@@ -5630,9 +5662,8 @@ function connectOTP(url){
 }
 function showApp(){
   document.getElementById('loginOverlay').classList.add('hidden');
-  document.getElementById('app').style.display='flex';
-  // Sidebar: open on desktop, closed on mobile
-  if(window.innerWidth >= 768) document.body.classList.add('sidebar-open');
+  document.getElementById('app').style.display='block';
+  switchTab('home');
 }
 function logout(){
   try {
