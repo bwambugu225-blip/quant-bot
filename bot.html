@@ -251,6 +251,181 @@ details summary:hover{color:var(--text)}
   .col{min-width:240px;flex:1}
   .col-2{min-width:300px;flex:1.8}
 }
+
+/* ============================================================
+   FUTURISTIC THEME LAYER
+   ============================================================ */
+:root{
+  --bg:#060912;
+  --surface:rgba(13,18,33,0.72);
+  --surface-2:rgba(20,28,48,0.55);
+  --line:rgba(94,140,255,0.18);
+  --text:#e8f0ff;
+  --muted:#7e8cb5;
+  --dim:#3a466b;
+  --positive:#36e0a6;
+  --negative:#ff5d73;
+  --accent:#36e1ff;
+  --warn:#ffc24b;
+  --pos-dim:rgba(54,224,166,0.12);
+  --neg-dim:rgba(255,93,115,0.12);
+  --acc-dim:rgba(54,225,255,0.12);
+  --logo:linear-gradient(135deg,#36e1ff,#7b6bff 55%,#ff5dd2);
+  --radius:14px;
+  --radius-sm:10px;
+  --shadow:0 10px 40px rgba(0,0,0,0.55);
+  --glow-acc:0 0 22px rgba(54,225,255,0.45);
+  --font:'JetBrains Mono','SF Mono','Fira Code',monospace;
+  --font-head:'Space Grotesk','Plus Jakarta Sans','Inter','Segoe UI',sans-serif;
+  --font-serif:'Orbitron','Space Grotesk','Plus Jakarta Sans',sans-serif;
+}
+html,body{background:var(--bg);color:var(--text);letter-spacing:0.2px}
+/* Animated cyber background: grid + drifting nebula */
+body::before{
+  background:
+    radial-gradient(circle at 20% 15%,rgba(54,225,255,0.10),transparent 45%),
+    radial-gradient(circle at 85% 80%,rgba(123,107,255,0.12),transparent 45%),
+    radial-gradient(circle at 50% 50%,rgba(255,93,210,0.06),transparent 60%);
+  animation:bgDrift 24s ease-in-out infinite alternate;
+}
+body::after{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:
+    linear-gradient(rgba(94,140,255,0.05) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(94,140,255,0.05) 1px,transparent 1px);
+  background-size:42px 42px;
+  mask-image:radial-gradient(ellipse 80% 70% at 50% 30%,#000 30%,transparent 85%);
+  -webkit-mask-image:radial-gradient(ellipse 80% 70% at 50% 30%,#000 30%,transparent 85%);
+  animation:gridMove 22s linear infinite;
+}
+@keyframes bgDrift{0%{filter:hue-rotate(0deg) saturate(1)}100%{filter:hue-rotate(35deg) saturate(1.25)}}
+@keyframes gridMove{0%{background-position:0 0,0 0}100%{background-position:42px 42px,42px 42px}}
+@keyframes neonFlicker{0%,100%{opacity:1}50%{opacity:.82}}
+@keyframes spinSlow{to{transform:rotate(360deg)}}
+@keyframes sheen{0%{transform:translateX(-120%)}100%{transform:translateX(120%)}}
+
+#app{position:relative;z-index:1}
+.mtop{
+  background:rgba(10,14,26,0.6);
+  backdrop-filter:blur(18px) saturate(1.4);
+  -webkit-backdrop-filter:blur(18px) saturate(1.4);
+  border-bottom:1px solid var(--line);
+  box-shadow:0 1px 0 rgba(54,225,255,0.08),0 8px 30px rgba(0,0,0,0.4);
+}
+.logo{
+  font-family:var(--font-serif);font-size:17px;letter-spacing:3px;
+  background:var(--logo);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  filter:drop-shadow(0 0 10px rgba(54,225,255,0.4));
+}
+.logo span{-webkit-text-fill-color:currentColor;color:var(--accent);text-shadow:0 0 12px rgba(54,225,255,0.6);font-weight:500}
+.conn{width:8px;height:8px;border-radius:50%;box-shadow:0 0 12px currentColor,0 0 4px currentColor}
+.conn.g{background:var(--positive);color:var(--positive)}
+.conn.r{background:var(--negative);color:var(--negative)}
+.conn.y{background:var(--warn);color:var(--warn)}
+.status-pill{
+  font-size:7px;letter-spacing:1.5px;padding:3px 9px;border-radius:20px;
+  background:var(--surface-2);color:var(--muted);border:1px solid var(--line);
+  box-shadow:inset 0 0 8px rgba(54,225,255,0.06);
+}
+.section-title{
+  font-family:var(--font-serif);font-size:9px;letter-spacing:2px;color:var(--accent);
+  text-shadow:0 0 10px rgba(54,225,255,0.35);text-transform:uppercase;
+}
+.btn{
+  border:1px solid var(--line);background:var(--surface-2);
+  border-radius:var(--radius-sm);color:var(--text);
+  box-shadow:0 0 0 rgba(54,225,255,0);transition:all .25s cubic-bezier(0.16,1,0.3,1);
+  text-transform:uppercase;letter-spacing:1.2px;backdrop-filter:blur(6px);
+}
+.btn:hover{border-color:var(--accent);color:var(--accent);background:var(--acc-dim);box-shadow:0 0 18px rgba(54,225,255,0.25);transform:translateY(-1px)}
+.btn:active{transform:scale(.96)}
+.btn-call{background:linear-gradient(135deg,#1bd49a,#36e0a6);box-shadow:0 6px 22px rgba(54,224,166,0.35),inset 0 0 12px rgba(255,255,255,0.12);color:#04130d}
+.btn-call:hover{box-shadow:0 8px 30px rgba(54,224,166,0.6),inset 0 0 14px rgba(255,255,255,0.18)}
+.btn-put{background:linear-gradient(135deg,#ff3e5c,#ff5d73);box-shadow:0 6px 22px rgba(255,93,115,0.35),inset 0 0 12px rgba(255,255,255,0.12);color:#1a0408}
+.btn-put:hover{box-shadow:0 8px 30px rgba(255,93,115,0.6),inset 0 0 14px rgba(255,255,255,0.18)}
+.btn-accent{background:linear-gradient(135deg,#36e1ff,#7b6bff);color:#04121f;box-shadow:0 6px 22px rgba(54,225,255,0.4),inset 0 0 12px rgba(255,255,255,0.18);border:none;overflow:hidden;position:relative}
+.btn-accent:hover{box-shadow:0 8px 34px rgba(54,225,255,0.7),inset 0 0 14px rgba(255,255,255,0.25)}
+.btn-ghost{background:transparent;border-color:var(--line);color:var(--muted)}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent);background:var(--acc-dim);box-shadow:0 0 14px rgba(54,225,255,0.2)}
+.inp,.login-card input{
+  background:rgba(8,12,22,0.7);border:1px solid var(--line);
+  box-shadow:inset 0 1px 8px rgba(0,0,0,0.4);transition:border-color .25s,box-shadow .25s;
+}
+.inp:focus,.login-card input:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--acc-dim),0 0 18px rgba(54,225,255,0.25)}
+.kpi-row{gap:12px}
+.kpi{padding:10px 6px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface);backdrop-filter:blur(10px);box-shadow:inset 0 0 18px rgba(54,225,255,0.04);position:relative;overflow:hidden}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.5}
+.kpi .v{font-family:var(--font-serif);font-size:21px;letter-spacing:0.5px;text-shadow:0 0 14px rgba(54,225,255,0.25)}
+.kpi .l{font-size:7px;letter-spacing:1.5px;color:var(--muted)}
+.tag{border:1px solid var(--line);box-shadow:0 0 10px rgba(54,225,255,0.1)}
+.tag-green{border-color:var(--positive);color:var(--positive);background:var(--pos-dim);box-shadow:0 0 10px rgba(54,224,166,0.2)}
+.tag-red{border-color:var(--negative);color:var(--negative);background:var(--neg-dim);box-shadow:0 0 10px rgba(255,93,115,0.2)}
+.tag-blue{border-color:var(--accent);color:var(--accent);background:var(--acc-dim);box-shadow:0 0 10px rgba(54,225,255,0.2)}
+.acc-badge.demo{border-color:var(--accent);color:var(--accent);background:var(--acc-dim);box-shadow:0 0 12px rgba(54,225,255,0.25)}
+.acc-badge.real{border-color:var(--positive);color:var(--positive);background:var(--pos-dim);box-shadow:0 0 12px rgba(54,224,166,0.25)}
+.mode-tab{border:1px solid var(--line);color:var(--muted);background:var(--surface-2);border-radius:24px;text-transform:uppercase}
+.mode-tab.active{background:linear-gradient(135deg,#36e1ff,#7b6bff);color:#04121f;border-color:transparent;box-shadow:0 0 18px rgba(54,225,255,0.45);font-weight:800}
+.asset-item,.watch-item{border-radius:var(--radius-sm);border:1px solid transparent}
+.asset-item:hover,.asset-item.selected,.watch-item:hover,.watch-item.selected{background:var(--surface-2);border-color:var(--line);box-shadow:inset 0 0 14px rgba(54,225,255,0.06)}
+.asset-item .sym,.watch-item .sym{font-family:var(--font-serif);letter-spacing:0.5px}
+.console-box{
+  background:rgba(4,7,14,0.85);border:1px solid var(--line);border-radius:var(--radius-sm);
+  box-shadow:inset 0 0 24px rgba(0,0,0,0.6),inset 0 0 14px rgba(54,225,255,0.04);
+  font-family:var(--font);text-shadow:0 0 6px rgba(120,160,255,0.15);
+}
+.console-box .s{color:var(--positive);text-shadow:0 0 8px rgba(54,224,166,0.4)}
+.console-box .e{color:var(--negative);text-shadow:0 0 8px rgba(255,93,115,0.4)}
+.console-box .i,.console-box .w{color:var(--accent);text-shadow:0 0 8px rgba(54,225,255,0.4)}
+.recent-trade{border-bottom:1px solid var(--line)}
+.footer{color:var(--muted);font-family:var(--font-serif);letter-spacing:2px;text-shadow:0 0 10px rgba(54,225,255,0.2)}
+/* Login screen futuristic treatment */
+.login-overlay{background:radial-gradient(ellipse 80% 60% at 50% 30%,rgba(54,225,255,0.06),transparent),var(--bg)}
+.login-overlay::before{
+  background:
+    radial-gradient(circle at 30% 20%,rgba(54,225,255,0.10),transparent 40%),
+    radial-gradient(circle at 75% 80%,rgba(123,107,255,0.12),transparent 40%);
+  animation:bgDrift 18s ease-in-out infinite alternate;
+}
+.login-card{
+  background:rgba(10,14,26,0.72);border:1px solid var(--line);border-radius:20px;
+  backdrop-filter:blur(22px) saturate(1.4);-webkit-backdrop-filter:blur(22px) saturate(1.4);
+  box-shadow:0 30px 90px rgba(0,0,0,0.7),0 0 60px rgba(54,225,255,0.12),inset 0 1px 0 rgba(255,255,255,0.06);
+  position:relative;overflow:hidden;
+}
+.login-card::after{content:'';position:absolute;top:0;left:0;width:40%;height:100%;background:linear-gradient(90deg,transparent,rgba(54,225,255,0.08),transparent);animation:sheen 6s ease-in-out infinite}
+.login-card h1{font-family:var(--font-serif);font-size:28px;letter-spacing:4px;background:var(--logo);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;filter:drop-shadow(0 0 18px rgba(54,225,255,0.5));animation:neonFlicker 4s infinite}
+.login-card .btn-login{background:linear-gradient(135deg,#36e1ff,#7b6bff);color:#04121f;box-shadow:0 8px 28px rgba(54,225,255,0.4),inset 0 0 14px rgba(255,255,255,0.2);overflow:hidden;position:relative}
+.login-card .btn-login:hover{box-shadow:0 10px 40px rgba(54,225,255,0.7),inset 0 0 16px rgba(255,255,255,0.3)}
+.login-card .acc-btn{border:1px solid var(--line);background:var(--surface-2);backdrop-filter:blur(6px)}
+.login-card .acc-btn:hover{border-color:var(--accent);color:var(--accent);box-shadow:0 0 16px rgba(54,225,255,0.25)}
+.sidebar{background:rgba(8,11,20,0.85);border-right:1px solid var(--line);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);box-shadow:4px 0 40px rgba(0,0,0,0.5)}
+.sidebar-header{border-bottom:1px solid var(--line);box-shadow:0 1px 0 rgba(54,225,255,0.05)}
+.sidebar-footer{color:var(--dim);font-family:var(--font-serif);letter-spacing:2px;text-shadow:0 0 10px rgba(54,225,255,0.15)}
+.sidebar-toggle,.sidebar-close{border:1px solid var(--line);color:var(--text);background:var(--surface)}
+.sidebar-toggle:hover,.sidebar-close:hover{border-color:var(--accent);color:var(--accent);box-shadow:0 0 14px rgba(54,225,255,0.25)}
+.switch input:checked+.slider{border-color:var(--accent);background:var(--acc-dim);box-shadow:0 0 14px rgba(54,225,255,0.3)}
+.switch input:checked+.slider:before{background:var(--accent);box-shadow:0 0 10px var(--accent)}
+.dg-circle .c svg{filter:drop-shadow(0 0 6px rgba(54,225,255,0.4))}
+.blink-dot.green{background:var(--positive);box-shadow:0 0 10px var(--positive)}
+.blink-dot.amber{background:var(--warn);box-shadow:0 0 10px var(--warn)}
+/* Scrollbar neon */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-thumb{background:var(--dim);border-radius:3px;box-shadow:0 0 8px rgba(54,225,255,0.3)}
+::-webkit-scrollbar-thumb:hover{background:var(--accent)}
+/* Selection */
+::selection{background:rgba(54,225,255,0.3);color:#fff}
+/* All overlay modals get glass + neon */
+#adminLoginOverlay>div,#adminReasonOverlay>div,#usernameOverlay>div,#warnPopup>div,#blockPopup>div{
+  background:rgba(10,14,26,0.8);border:1px solid var(--line);border-radius:16px;
+  backdrop-filter:blur(18px);box-shadow:0 20px 70px rgba(0,0,0,0.7),0 0 50px rgba(54,225,255,0.12);
+}
+/* Animated connection status ring around logo */
+.mtop-l .conn{position:relative}
+.mtop-l .conn::after{content:'';position:absolute;inset:-4px;border-radius:50%;border:1px solid currentColor;opacity:.4;animation:pulse 1.6s infinite}
+/* KPI value subtle glow on positive/negative */
+.kpi .v[style*="positive"],.kpi .pnl{text-shadow:0 0 14px rgba(54,224,166,0.35)}
+/* Buttons sheen */
+.btn-accent::after{content:'';position:absolute;top:0;left:0;width:40%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.25),transparent);animation:sheen 5s ease-in-out infinite}
 </style>
 </head>
 <body class="dark" style="margin:0">
