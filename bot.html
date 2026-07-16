@@ -3060,7 +3060,7 @@ function sendTradeResult(r) {
     `📈 PnL: ${pf >= 0 ? '+' : ''}$${pf.toFixed(2)}\n` +
     `💡 ${r.strategy} \\| 💰 Balance: $${(+r.balance||0).toFixed(2)}`;
   sendTelegramAlert(msg);
-  if(G._tgTradeChat){ tgReply(G._tgTradeChat, msg); G._tgTradeChat = null; }
+  if(G._tgTradeChat){ tgSend(G._tgTradeChat, msg, tgMainKeyboard()); G._tgTradeChat = null; }
 }
 
 function sendSessionSummary(final) {
@@ -3081,18 +3081,47 @@ function sendSessionSummary(final) {
   sendTelegramAlert(header + lines.join('\n'));
 }
 
-// ── Telegram Command Polling (Trade Through Telegram) ──
+// ── Telegram Button Trading Engine ──
 G.TELEGRAM_OFFSET = 0;
 G._tgPollTimer = null;
-function tgSend(chatId, text){
+function tgMainKeyboard(){
+  return {
+    inline_keyboard: [
+      [{text:'🟢 CALL',callback_data:'call'},{text:'🔴 PUT',callback_data:'put'}],
+      [{text:'🚀 Auto Start',callback_data:'start'},{text:'⏹ Auto Stop',callback_data:'stop'}],
+      [{text:'📊 Status',callback_data:'status'},{text:'💰 Balance',callback_data:'balance'}],
+      [{text:'📈 Switch Market',callback_data:'market'},{text:'⚙️ Stake',callback_data:'stake'}],
+      [{text:'🔄 Reset Demo',callback_data:'reset'},{text:'❓ Help',callback_data:'help'}]
+    ]
+  };
+}
+function tgSend(chatId, text, kb){
   const token = document.getElementById('tgToken')?.value || G.TELEGRAM_BOT_TOKEN;
   if(!token || !chatId) return;
+  const body = { chat_id:chatId, text, parse_mode:'Markdown' };
+  if(kb) body.reply_markup = JSON.stringify(kb);
   fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({ chat_id:chatId, text, parse_mode:'Markdown' })
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
   }).catch(()=>{});
 }
-function tgReply(chatId, text){ tgSend(chatId, text); }
+function tgReply(chatId, text){ tgSend(chatId, text, tgMainKeyboard()); }
+function tgAnswerCb(id, text){
+  const token = document.getElementById('tgToken')?.value || G.TELEGRAM_BOT_TOKEN;
+  if(!token) return;
+  fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ callback_query_id:id, text:text||'', show_alert:false })
+  }).catch(()=>{});
+}
+function tgEdit(chatId, msgId, text, kb){
+  const token = document.getElementById('tgToken')?.value || G.TELEGRAM_BOT_TOKEN;
+  if(!token || !chatId) return;
+  const body = { chat_id:chatId, message_id:msgId, text, parse_mode:'Markdown' };
+  if(kb) body.reply_markup = JSON.stringify(kb);
+  fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)
+  }).catch(()=>{});
+}
 async function pollTelegram(){
   const token = document.getElementById('tgToken')?.value || G.TELEGRAM_BOT_TOKEN;
   if(!token || !G.AUTH){ G._tgPollTimer = setTimeout(pollTelegram, 5000); return; }
@@ -3102,12 +3131,24 @@ async function pollTelegram(){
     if(data.ok && data.result){
       for(const u of data.result){
         G.TELEGRAM_OFFSET = u.update_id + 1;
+        if(u.callback_query){
+          const cq = u.callback_query;
+          tgAnswerCb(cq.id, '');
+          const chatId = cq.message.chat.id;
+          const msgId = cq.message.message_id;
+          const data = cq.data;
+          processTgAction(data, chatId, msgId);
+          continue;
+        }
         const msg = u.message || u.channel_post;
         if(!msg || !msg.text || !msg.chat) continue;
         const chatId = msg.chat.id;
         const text = msg.text.trim();
-        if(!text.startsWith('/')) continue;
-        handleTgCommand(text, chatId);
+        if(text.startsWith('/')){
+          handleTgCommand(text, chatId);
+        } else if(!u.my_chat_member){
+          tgSend(chatId, `🤖 *BTraders*\nTap a button below to trade`, tgMainKeyboard());
+        }
       }
     }
   } catch(e){ /* polling timeout is normal */ }
@@ -3116,98 +3157,104 @@ async function pollTelegram(){
 function startTgPolling(){ if(G._tgPollTimer) return; pollTelegram(); }
 function stopTgPolling(){ if(G._tgPollTimer){ clearTimeout(G._tgPollTimer); G._tgPollTimer = null; } }
 
+function processTgAction(action, chatId, msgId){
+  const symName = G.CURRENT_MARKET || 'R_50';
+  const marketName = (SYMBOLS.find(s=>s.sym===symName)||{}).name || symName;
+  const stakeEl = document.getElementById('rfStake');
+  const curStake = stakeEl ? parseFloat(stakeEl.value)||1 : 1;
+  switch(action){
+    case 'call':{
+      if(G.ACTIVE_CONTRACTS.size>=1){ tgEdit(chatId, msgId, `⏳ Contract active — wait`, tgMainKeyboard()); break; }
+      G._tgTradeChat = chatId;
+      execTrade({ action:'RISE', conf:100, src:'TG', sym:symName, lastPrice:0 });
+      tgEdit(chatId, msgId, `🟢 *CALL* $${curStake.toFixed(2)} on ${marketName}\n⏳ Waiting for result...`, tgMainKeyboard());
+      break;
+    }
+    case 'put':{
+      if(G.ACTIVE_CONTRACTS.size>=1){ tgEdit(chatId, msgId, `⏳ Contract active — wait`, tgMainKeyboard()); break; }
+      G._tgTradeChat = chatId;
+      execTrade({ action:'FALL', conf:100, src:'TG', sym:symName, lastPrice:0 });
+      tgEdit(chatId, msgId, `🔴 *PUT* $${curStake.toFixed(2)} on ${marketName}\n⏳ Waiting for result...`, tgMainKeyboard());
+      break;
+    }
+    case 'start':
+      if(G.TRADE_MODE!=='RISEFALL') switchMode('RISEFALL');
+      startBot();
+      tgEdit(chatId, msgId, `🚀 *Bot Started*\n📊 ${marketName}\n💰 $${G.BALANCE.toFixed(2)}`, tgMainKeyboard());
+      break;
+    case 'stop':
+      stopBot();
+      tgEdit(chatId, msgId, `⏹ *Bot Stopped*\n📊 ${G.WINS+G.LOSSES} trades \\| ✅ ${G.WINS} \\| ❌ ${G.LOSSES}`, tgMainKeyboard());
+      break;
+    case 'status':{
+      const total = G.WINS+G.LOSSES;
+      const wr = total ? Math.round(G.WINS/total*100) : 0;
+      const pnl = G.PNL||0;
+      const cc = G.ACTIVE_CONTRACTS.size;
+      tgEdit(chatId, msgId,
+        `📊 *Status*\n📈 ${marketName}\n💰 Balance: $${G.BALANCE.toFixed(2)}\n`+
+        `📊 PnL: ${pnl>=0?'+':''}$${pnl.toFixed(2)}\n`+
+        `🎯 ${total} trades \\| ✅ ${G.WINS} \\| ❌ ${G.LOSSES} \\| ${wr}%\n`+
+        `🔥 Streak: ${G.CONS_LOSS||0}L\n${G.RUNNING?'🟢 Running':'⏸ Stopped'} \\| ${cc} active`,
+        tgMainKeyboard());
+      break;
+    }
+    case 'balance':
+      tgEdit(chatId, msgId, `💰 *Balance*\n$${G.BALANCE.toFixed(2)} (${G.ACCOUNT_TYPE||'demo'})`, tgMainKeyboard());
+      break;
+    case 'market':
+      tgEdit(chatId, msgId,
+        `📍 *Current Market:* ${marketName}\n\n`+
+        `Send /market R_100 to switch.\n\nAvailable: R_10, R_25, R_50, R_75, R_100, 1HZ10V, 1HZ25V, 1HZ50V, 1HZ75V, 1HZ100V`,
+        tgMainKeyboard());
+      break;
+    case 'stake':
+      tgEdit(chatId, msgId, `⚙️ *Current Stake:* $${curStake.toFixed(2)}\n\nSend /stake 2.0 to change.`, tgMainKeyboard());
+      break;
+    case 'reset':
+      if(G.ACCOUNT_TYPE!=='demo'){ tgEdit(chatId, msgId, `❌ Reset only works on demo accounts`, tgMainKeyboard()); break; }
+      resetDemo();
+      setTimeout(() => tgEdit(chatId, msgId, `✅ Demo reset to $${G.BALANCE.toFixed(2)}`, tgMainKeyboard()), 1500);
+      break;
+    case 'help':
+      tgEdit(chatId, msgId,
+        `🤖 *BTraders Bot*\n\n`+
+        `🟢 *CALL* — Place a RISE trade\n🔴 *PUT* — Place a FALL trade\n`+
+        `🚀 *Auto Start* — Start engine\n⏹ *Auto Stop* — Stop engine\n`+
+        `📊 *Status* — Session stats\n💰 *Balance* — Account balance\n`+
+        `📈 *Market* — Switch symbol\n⚙️ *Stake* — View/change stake\n`+
+        `🔄 *Reset* — Reset demo account`,
+        tgMainKeyboard());
+      break;
+  }
+}
+
 function handleTgCommand(text, chatId){
   const parts = text.split(/\s+/);
   const cmd = parts[0].toLowerCase();
   const args = parts.slice(1);
   const symName = G.CURRENT_MARKET || 'R_50';
-  const mk = SYMBOLS.find(s=>s.sym===symName);
-  const marketName = mk ? mk.name : symName;
-  switch(cmd){
-    case '/start':
-      if(G.TRADE_MODE!=='RISEFALL') switchMode('RISEFALL');
-      startBot();
-      tgReply(chatId, `🚀 *Bot Started*\n📊 ${marketName}\n💰 $${G.BALANCE.toFixed(2)}`);
-      break;
-    case '/stop':
-      stopBot();
-      tgReply(chatId, `⏹ *Bot Stopped*\n📊 ${G.WINS+G.LOSSES} trades \\| ✅ ${G.WINS} \\| ❌ ${G.LOSSES}`);
-      break;
-    case '/rise':
-    case '/call':
-      if(G.ACTIVE_CONTRACTS.size>=1){ tgReply(chatId, '⏳ Contract active — wait'); break; }
-      G._tgTradeChat = chatId;
-      execTrade({ action:'RISE', conf:100, src:'TG', sym:symName, lastPrice:0 });
-      tgReply(chatId, `🟢 *CALL* $${(document.getElementById('rfStake')?.value||1)} on ${marketName}`);
-      break;
-    case '/fall':
-    case '/put':
-      if(G.ACTIVE_CONTRACTS.size>=1){ tgReply(chatId, '⏳ Contract active — wait'); break; }
-      G._tgTradeChat = chatId;
-      execTrade({ action:'FALL', conf:100, src:'TG', sym:symName, lastPrice:0 });
-      tgReply(chatId, `🔴 *PUT* $${(document.getElementById('rfStake')?.value||1)} on ${marketName}`);
-      break;
-    case '/status':{
-      const total = G.WINS+G.LOSSES;
-      const wr = total ? Math.round(G.WINS/total*100) : 0;
-      const pnl = G.PNL||0;
-      const activeCount = G.ACTIVE_CONTRACTS.size;
-      tgReply(chatId,
-        `📊 *Status*\n`+
-        `📈 ${marketName}\n`+
-        `💰 Balance: $${G.BALANCE.toFixed(2)}\n`+
-        `📊 PnL: ${pnl>=0?'+':''}$${pnl.toFixed(2)}\n`+
-        `🎯 ${total} trades \\| ✅ ${G.WINS} \\| ❌ ${G.LOSSES} \\| ${wr}%\n`+
-        `🔥 Streak: ${G.CONS_LOSS||0}L\n`+
-        `${G.RUNNING?'🟢 Running':'⏸ Stopped'} \\| ${activeCount} active`
-      );
-      break;
-    }
-    case '/balance':
-      tgReply(chatId, `💰 *Balance*\n$${G.BALANCE.toFixed(2)} (${G.ACCOUNT_TYPE||'demo'})`);
-      break;
-    case '/market':{
-      const q = args.join(' ').toUpperCase();
-      if(!q){ tgReply(chatId, `📍 Current: ${marketName}\n\nUsage: /market R_50`); break; }
-      const found = SYMBOLS.find(s=>s.sym===q || s.name?.toUpperCase().includes(q));
-      if(!found){ tgReply(chatId, `❌ Market not found. Try: R_10, R_25, R_50, R_75, R_100, 1HZ10V, 1HZ25V, 1HZ50V, 1HZ75V, 1HZ100V`); break; }
-      G.CURRENT_MARKET = found.sym;
-      G.SELECTED_MARKET = found.sym;
-      updateDash();
-      tgReply(chatId, `✅ Switched to *${found.name||found.sym}*`);
-      break;
-    }
-    case '/stake':{
-      const s = parseFloat(args[0]);
-      if(!s || s<0.35){ tgReply(chatId, 'Usage: /stake 1.0 (min 0.35)'); break; }
-      const el = document.getElementById('rfStake');
-      if(el){ el.value = s; }
-      tgReply(chatId, `✅ Stake set to $${s.toFixed(2)}`);
-      break;
-    }
-    case '/reset':
-      if(G.ACCOUNT_TYPE!=='demo'){ tgReply(chatId, '❌ Reset only works on demo accounts'); break; }
-      resetDemo();
-      setTimeout(() => tgReply(chatId, `✅ Demo reset to $${G.BALANCE.toFixed(2)}`), 1500);
-      break;
-    case '/help':
-      tgReply(chatId,
-        `🤖 *Trading Commands*\n\n`+
-        `/start — Start auto trading\n`+
-        `/stop — Stop auto trading\n`+
-        `/rise — Place CALL trade\n`+
-        `/fall — Place PUT trade\n`+
-        `/status — Account & session stats\n`+
-        `/balance — Current balance\n`+
-        `/market <sym> — Switch market\n`+
-        `/stake <amount> — Set stake size\n`+
-        `/reset — Reset demo balance\n`+
-        `/help — This message`
-      );
-      break;
-    default:
-      tgReply(chatId, `❓ Unknown: ${cmd}\nUse /help for commands`);
+  const marketName = (SYMBOLS.find(s=>s.sym===symName)||{}).name || symName;
+  const stakeEl = document.getElementById('rfStake');
+  const curStake = stakeEl ? parseFloat(stakeEl.value)||1 : 1;
+  if(cmd==='/help'){ tgReply(chatId, `🤖 *BTraders Bot*\n\nTap any button below to trade.`, tgMainKeyboard()); return; }
+  if(cmd==='/start'){ tgReply(chatId, `🚀 Tap *Auto Start* to begin\nOr use *CALL* / *PUT* for manual trades`, tgMainKeyboard()); return; }
+  if(cmd==='/market' && args.length){
+    const q = args.join(' ').toUpperCase();
+    const found = SYMBOLS.find(s=>s.sym===q || s.name?.toUpperCase().includes(q));
+    if(!found){ tgReply(chatId, `❌ Market not found. Use /market R_50`, tgMainKeyboard()); return; }
+    G.CURRENT_MARKET = found.sym; G.SELECTED_MARKET = found.sym; updateDash();
+    tgReply(chatId, `✅ Switched to *${found.name||found.sym}*`, tgMainKeyboard());
+    return;
   }
+  if(cmd==='/stake' && args.length){
+    const s = parseFloat(args[0]);
+    if(!s || s<0.35){ tgReply(chatId, `Min stake $0.35. /stake 1.0`, tgMainKeyboard()); return; }
+    if(stakeEl) stakeEl.value = s;
+    tgReply(chatId, `✅ Stake set to $${s.toFixed(2)}`, tgMainKeyboard());
+    return;
+  }
+  tgReply(chatId, `🤖 *BTraders*\nTap a button below to trade`, tgMainKeyboard());
 }
 
 function toggleStrat(idx){ G.STRATEGY_ACTIVE[idx]=!G.STRATEGY_ACTIVE[idx]; renderStratList(); saveState(); }
