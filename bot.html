@@ -709,7 +709,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
         </label>
         <div style="display:none;gap:3px;align-items:center" id="rfMartOpts">
           <span style="font-size:8px;color:var(--muted)">x</span>
-          <input class="inp inp-sm" id="rfMartMult" type="number" value="2" min="2" max="10" step="1" style="width:35px">
+          <input class="inp inp-sm" id="rfMartMult" type="number" value="2" min="2" max="10" step="1" style="width:56px">
         </div>
         <span id="rfStatus"><span class="status-dot gray"></span></span>
         <span id="rfCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
@@ -989,7 +989,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
         <div style="display:flex; gap:3px; align-items:center;">
           <div style="flex:1; display:flex; align-items:center; gap:2px;">
             <span style="font-size:7px; color:var(--muted);">Mult:</span>
-            <input class="inp inp-sm" id="copyClientMult" type="number" value="1.0" min="0.1" step="0.1" style="width:32px; font-size:8px; padding:2px;">
+            <input class="inp inp-sm" id="copyClientMult" type="number" value="1.0" min="0.1" step="0.1" style="width:56px; font-size:8px; padding:2px;">
           </div>
           <div style="flex:1.5; display:flex; align-items:center; gap:2px;">
             <span style="font-size:7px; color:var(--muted);">Acc:</span>
@@ -1597,6 +1597,7 @@ async function renderAdminUsers(container){
   <table style="width:100%;border-collapse:collapse;font-size:10px">
     <thead><tr style="background:#1c1915;color:#8a7e6a;text-align:left">
       <th style="padding:6px 8px;border-bottom:1px solid #2a251f">Trader ID</th>
+      <th style="padding:6px 8px;border-bottom:1px solid #2a251f">Username</th>
       <th style="padding:6px 8px;border-bottom:1px solid #2a251f">Deriv ID</th>
       <th style="padding:6px 8px;border-bottom:1px solid #2a251f">Status</th>
       <th style="padding:6px 8px;border-bottom:1px solid #2a251f">Risk</th>
@@ -1615,6 +1616,7 @@ async function renderAdminUsers(container){
     const pnl = u.pnl||0;
     html += `<tr style="border-bottom:1px solid #1c1915">
       <td style="padding:4px 8px;font-weight:600;color:var(--accent)">${u.trader_id || '—'}</td>
+      <td style="padding:4px 8px;color:#f0e8da;font-weight:600">${u.username ? u.username.replace(/[<>&]/g,m=>m==='<'?'&lt;':m==='>'?'&gt;':'&amp;') : '<span style="color:#8a7e6a">—</span>'}</td>
       <td style="padding:4px 8px;color:#8a7e6a;font-size:9px">${u.deriv_id}</td>
       <td style="padding:4px 8px"><span style="color:${statusColor};font-weight:600">${u.status||'active'}</span></td>
       <td style="padding:4px 8px;color:${riskColor};font-weight:600">${u.risk_score||0}</td>
