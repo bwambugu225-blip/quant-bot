@@ -487,7 +487,6 @@ details summary:hover{color:var(--text)}
       <div class="logo">B<span>TRADERS</span></div>
       <span id="connDot" class="conn r"></span>
       <span id="engineStatus" style="font-size:8px;color:var(--muted);font-weight:600;">OFFLINE</span>
-      <span id="userStatusBadge" style="font-size:8px;font-weight:700;padding:2px 7px;border-radius:4px;margin-left:6px;display:none;letter-spacing:.5px"></span>
       <span id="traderIdBadge" class="tag tag-blue" style="font-size:7px;margin-left:6px;"></span>
     </div>
     <div class="mtop-r">
@@ -707,9 +706,6 @@ const G = {
   _clusterUntil:0,   // loss cluster pause until timestamp
   // Admin & User Control
   ADMIN_PASSWORD_HASH:'5344ac1bbf825b5e14960473ce646f5e179018226d737737126de68fd39807f8',
-  ACCOUNT_BLOCKED:false,        // true when current account is banned/suspended (trading locked)
-  ACCOUNT_BLOCKED_REASON:'',
-  ACCOUNT_BLOCKED_ACTION:null,
   SUSPICIOUS:{
     lossRateThreshold:0.80,   // flag if loss rate over last N trades > 80%
     lossRateWindow:20,        // lookback window for loss rate
@@ -898,7 +894,7 @@ async function sbUpdateUserStatus(derivId, status, reason){
     const { error } = await sb.from('users').update(upd).eq('deriv_id', derivId);
     if(error){ console.error('[SB] Update status error',error); return false; }
     _userCache[derivId] = { ...(_userCache[derivId]||{}), status };
-    if(derivId === G.ACCOUNT_ID){ log(`[ADMIN] Your status changed to: ${status}`,'i'); updateUserStatusBadge(status); }
+    if(derivId === G.ACCOUNT_ID){ log(`[ADMIN] Your status changed to: ${status}`,'i'); }
     return true;
   } catch(e){ console.error('[SB] Update status error',e); return false; }
 }
@@ -1067,55 +1063,10 @@ async function adminUserAction(derivId, action, selEl){
   if(ok){
     const u = await sbGetUser(derivId);
     const traderId = u && u.trader_id ? u.trader_id : derivId;
+    // Brief dismissable confirmation notice — does NOT affect the admin's own session.
     showWarnPopup(action, derivId, traderId, reason);
-    // Only halt / restore THIS bot session if the targeted account is the one logged in here
-    if(derivId === G.ACCOUNT_ID){
-      updateUserStatusBadge(action);
-      if(action === 'banned' || action === 'suspended'){ haltAllTrading(action, reason, derivId); }
-      else if(action === 'active'){ clearAccountBlock(derivId); }
-    }
     renderAdminUsers(document.getElementById('adminContent'));
   }
-}
-function isAccountBlocked(){
-  const st = _userCache[G.ACCOUNT_ID] && _userCache[G.ACCOUNT_ID].status;
-  return st === 'banned' || st === 'suspended';
-}
-// Halt only applies to the account actually running in THIS browser session.
-function haltAllTrading(action, reason, derivId){
-  if(derivId !== G.ACCOUNT_ID) return; // targeted account is not this session — nothing to halt here
-  G.ACCOUNT_BLOCKED = true;
-  G.ACCOUNT_BLOCKED_REASON = reason || (action === 'banned' ? 'Account banned' : 'Account suspended');
-  G.ACCOUNT_BLOCKED_ACTION = action;
-  // Stop main bot
-  if(G.RUNNING) stopBot();
-  BotState.isTrading = false;
-  // Stop all copy clients
-  if(typeof G.COPY_TRADERS !== 'undefined'){
-    G.COPY_TRADERS.forEach(c => { c.status = 'blocked'; });
-    if(typeof clientSockets !== 'undefined'){
-      clientSockets.forEach(ws => { try { ws.close(); } catch(e){} });
-    }
-  }
-  G.ACTIVE_CONTRACTS.clear();
-  // Lock the engine start buttons
-  const sb = document.getElementById('rfStartBtn');
-  const dg = document.getElementById('dgEngineBtn');
-  if(sb){ sb.disabled = true; sb.style.opacity = '0.4'; sb.style.cursor = 'not-allowed'; }
-  if(dg){ dg.disabled = true; dg.style.opacity = '0.4'; dg.style.cursor = 'not-allowed'; }
-  log(`[HALT] All trading halted — account ${derivId} ${action}`,'e');
-}
-function clearAccountBlock(derivId){
-  if(derivId !== G.ACCOUNT_ID) return; // not this session
-  G.ACCOUNT_BLOCKED = false;
-  G.ACCOUNT_BLOCKED_REASON = '';
-  G.ACCOUNT_BLOCKED_ACTION = null;
-  const sb = document.getElementById('rfStartBtn');
-  const dg = document.getElementById('dgEngineBtn');
-  if(sb){ sb.disabled = false; sb.style.opacity = ''; sb.style.cursor = ''; }
-  if(dg){ dg.disabled = false; dg.style.opacity = ''; dg.style.cursor = ''; }
-  closeWarnPopup();
-  log('[RESUME] Account block lifted — trading re-enabled','s');
 }
 function adminActionReason(action){
   return new Promise(resolve => {
@@ -1160,41 +1111,19 @@ function cancelAdminReason(){
   if(el) el.remove();
   if(window._adminReasonResolve){ window._adminReasonResolve(null); window._adminReasonResolve = null; }
 }
-function updateUserStatusBadge(status){
-  const el = document.getElementById('userStatusBadge');
-  if(!el) return;
-  const map = {
-    banned:    { t:'BANNED',    bg:'#c45a5a', c:'#fff' },
-    suspended: { t:'SUSPENDED', bg:'#c49a3a', c:'#0d0c0a' },
-    flagged:   { t:'FLAGGED',   bg:'#c49a3a', c:'#0d0c0a' },
-    active:    { t:'',          bg:'',       c:'' }
-  };
-  const m = map[status] || map.active;
-  if(!m.t){ el.style.display = 'none'; return; }
-  el.textContent = m.t;
-  el.style.display = 'inline-block';
-  el.style.background = m.bg;
-  el.style.color = m.c;
-}
 function showWarnPopup(action, derivId, traderId, reason){
   const cfg = {
-    banned:    { title:'🚫 ACCOUNT BANNED',    color:'#c45a5a', icon:'🚫', lock:true },
-    suspended: { title:'⏸ ACCOUNT SUSPENDED', color:'#c49a3a', icon:'⏸', lock:true },
-    flagged:   { title:'⚠ ACCOUNT FLAGGED',   color:'#c49a3a', icon:'⚠', lock:false },
-    active:    { title:'✅ ACCOUNT REACTIVATED', color:'#5a8f64', icon:'✅', lock:false }
+    banned:    { title:'🚫 ACCOUNT BANNED',    color:'#c45a5a', icon:'🚫' },
+    suspended: { title:'⏸ ACCOUNT SUSPENDED', color:'#c49a3a', icon:'⏸' },
+    flagged:   { title:'⚠ ACCOUNT FLAGGED',   color:'#c49a3a', icon:'⚠' },
+    active:    { title:'✅ ACCOUNT REACTIVATED', color:'#5a8f64', icon:'✅' }
   };
   const c = cfg[action] || cfg.flagged;
-  // Only make the popup undismissable when the targeted account is THIS session's account.
-  const lock = c.lock && derivId === G.ACCOUNT_ID;
-  window._warnBlockDerivId = lock ? derivId : null;
   const existing = document.getElementById('warnPopup');
   if(existing) existing.remove();
   const el = document.createElement('div');
   el.id = 'warnPopup';
-  el.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100002;background:rgba(120,0,0,0.45);display:flex;align-items:center;justify-content:center;font-family:var(--font,monospace);animation:wpulse 1.2s ease-in-out infinite';
-  const dismissBtn = lock
-    ? `<div style="font-size:11px;color:#c45a5a;margin-top:6px">⛔ This notice cannot be dismissed while your account is ${action}. Unban / unsuspend to clear it.</div>`
-    : `<button onclick="closeWarnPopup()" style="background:${c.color};border:none;color:#0d0c0a;padding:12px 40px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700">DISMISS</button>`;
+  el.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100002;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;font-family:var(--font,monospace)';
   el.innerHTML = `
     <div style="background:#0d0c0a;border:3px solid ${c.color};border-radius:14px;padding:34px 40px;max-width:480px;text-align:center;box-shadow:0 0 70px ${c.color}">
       <div style="font-size:54px;line-height:1;margin-bottom:14px">${c.icon}</div>
@@ -1202,25 +1131,14 @@ function showWarnPopup(action, derivId, traderId, reason){
       <div style="font-size:13px;color:#f0e8da;margin-bottom:8px">Trader: <b style="color:${c.color}">${traderId}</b></div>
       <div style="font-size:11px;color:#8a7e6a;margin-bottom:18px">Deriv ID: ${derivId}</div>
       ${reason ? `<div style="font-size:12px;color:#f0e8da;background:#1c1915;border:1px solid #2a251f;border-radius:6px;padding:10px 14px;margin-bottom:20px;word-break:break-word"><b>Reason:</b> ${reason}</div>` : ''}
-      ${dismissBtn}
+      <button onclick="closeWarnPopup()" style="background:${c.color};border:none;color:#0d0c0a;padding:12px 40px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700">DISMISS</button>
     </div>`;
   document.body.appendChild(el);
-  if(!document.getElementById('wpulseStyle')){
-    const st = document.createElement('style');
-    st.id = 'wpulseStyle';
-    st.textContent = '@keyframes wpulse{0%,100%{background:rgba(120,0,0,0.45)}50%{background:rgba(120,0,0,0.7)}}';
-    document.head.appendChild(st);
-  }
-  if(!lock) setTimeout(closeWarnPopup, 6000);
+  setTimeout(closeWarnPopup, 5000);
 }
 function closeWarnPopup(){
-  // Refuse to close while THIS session's account is hard-blocked
-  if(window._warnBlockDerivId && window._warnBlockDerivId === G.ACCOUNT_ID && G.ACCOUNT_BLOCKED){
-    return;
-  }
   const el = document.getElementById('warnPopup');
   if(el) el.remove();
-  window._warnBlockDerivId = null;
 }
 function filterAdminUsers(){
   const q = (document.getElementById('adminUserSearch')?.value||'').toLowerCase();
@@ -1670,8 +1588,6 @@ function placeDigitManual(contractType){
 
 function toggleDigitEngine(){
   const btn = document.getElementById('dgEngineBtn');
-  if(G.ACCOUNT_BLOCKED){ log(`[HALT] Cannot start digit engine — account is ${G.ACCOUNT_BLOCKED_ACTION}`,'e'); return; }
-  if(isAccountBlocked()){ log('[HALT] Cannot start digit engine — account status not active','e'); return; }
   BotState.isTrading = !BotState.isTrading;
   if(btn) btn.textContent = BotState.isTrading ? 'STOP' : 'AUTO';
   if(BotState.isTrading){
@@ -2774,10 +2690,6 @@ function evaluateAndTrade(sym, liveBuf){
 function execTrade(signal, asset){
   try {
   if(G.ACTIVE_CONTRACTS.size>=1) return;
-  if(G.ACCOUNT_BLOCKED){
-    log(`[HALT] Trade rejected — account is ${G.ACCOUNT_BLOCKED_ACTION} (${G.ACCOUNT_BLOCKED_REASON})`,'e');
-    return;
-  }
   if(G.ACCOUNT_ID && _userCache[G.ACCOUNT_ID] && _userCache[G.ACCOUNT_ID].status !== 'active'){
     log(`[BLOCK] Account ${G.ACCOUNT_ID} is ${_userCache[G.ACCOUNT_ID].status} — trade rejected`,'e');
     return;
@@ -2949,8 +2861,6 @@ function handleContract(c){
 // ============================================================
 function startBot(){
   if(!G.AUTH){ log('[ERROR] Authorize first','e'); return; }
-  if(G.ACCOUNT_BLOCKED){ log(`[HALT] Cannot start — account is ${G.ACCOUNT_BLOCKED_ACTION} (${G.ACCOUNT_BLOCKED_REASON})`,'e'); return; }
-  if(isAccountBlocked()){ log('[HALT] Cannot start — account status is not active','e'); return; }
   if(G.RUNNING) return;
   G.RUNNING=true;
   const raw = document.getElementById('rfDuration')?.value || '15';
