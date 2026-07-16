@@ -55,8 +55,8 @@ html,body{background:var(--bg);color:var(--text);font-family:var(--font-head);fo
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-track{background:var(--bg)}
 ::-webkit-scrollbar-thumb{background:var(--line);border-radius:2px}
-.mtop{background:rgba(245,240,228,.8);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--line);padding:8px 10px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;transition:background 0.3s;min-height:40px}
-.dark .mtop{background:rgba(30,26,22,.8)}
+.mtop{background:rgba(251,249,244,.7);backdrop-filter:blur(20px) saturate(1.2);-webkit-backdrop-filter:blur(20px) saturate(1.2);border-bottom:1px solid var(--line);padding:8px 14px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50;transition:background 0.3s,border-color 0.3s;min-height:44px}
+.dark .mtop{background:rgba(18,16,14,.75)}
 .mtop-l{display:flex;align-items:center;gap:6px}
 .mtop-r{display:flex;align-items:center;gap:6px}
 .logo{font-family:var(--font-serif);font-size:17px;font-weight:700;letter-spacing:1px;background:var(--logo);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;text-transform:uppercase}
@@ -70,27 +70,31 @@ html,body{background:var(--bg);color:var(--text);font-family:var(--font-head);fo
 .row{display:flex;gap:10px;padding:10px 14px}
 .col{flex:1}
 .col-2{flex:2}
-.section{padding:8px 0}
-.section-title{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:8px;font-family:var(--font-serif)}
+.section{padding:10px 0}
+.section-title{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;font-weight:700;margin-bottom:8px;font-family:var(--font-serif)}
 .btn{border:1px solid var(--line);background:var(--surface-2);padding:8px 16px;font-weight:600;font-size:10px;cursor:pointer;color:var(--text);font-family:var(--font-head);border-radius:var(--radius-sm);transition:all .2s;text-transform:uppercase;letter-spacing:0.8px}
 .btn:hover{background:var(--surface);border-color:var(--muted);color:var(--text)}
 .btn:active{transform:scale(.97)}
 .btn:disabled{opacity:.3;cursor:not-allowed}
-.btn-call{background:var(--positive);border-color:var(--positive);color:#fcfaf7;font-size:13px;font-weight:700;padding:10px;border-radius:var(--radius-sm);letter-spacing:1px;transition:all 0.2s}
-.btn-call:hover{background:#547c5c;border-color:#547c5c;box-shadow:0 4px 12px var(--pos-dim);transform:translateY(-1px)}
-.btn-put{background:var(--negative);border-color:var(--negative);color:#fcfaf7;font-size:13px;font-weight:700;padding:10px;border-radius:var(--radius-sm);letter-spacing:1px;transition:all 0.2s}
-.btn-put:hover{background:#bf5e5e;border-color:#bf5e5e;box-shadow:0 4px 12px var(--neg-dim);transform:translateY(-1px)}
+.btn-call{background:var(--positive);border-color:var(--positive);color:#fcfaf7;font-size:13px;font-weight:700;padding:10px;border-radius:var(--radius);letter-spacing:1px;transition:all 0.25s cubic-bezier(0.16,1,0.3,1)}
+.btn-call:hover{background:#547c5c;border-color:#547c5c;box-shadow:0 6px 20px var(--pos-dim);transform:translateY(-1px)}
+.btn-put{background:var(--negative);border-color:var(--negative);color:#fcfaf7;font-size:13px;font-weight:700;padding:10px;border-radius:var(--radius);letter-spacing:1px;transition:all 0.25s cubic-bezier(0.16,1,0.3,1)}
+.btn-put:hover{background:#bf5e5e;border-color:#bf5e5e;box-shadow:0 6px 20px var(--neg-dim);transform:translateY(-1px)}
 .btn-accent{background:var(--accent);border-color:var(--accent);color:#fcfaf7}
-.btn-accent:hover{background:#b08d48;border-color:#b08d48;box-shadow:0 4px 12px var(--acc-dim)}
+.btn-accent:hover{background:#b08d48;border-color:#b08d48;box-shadow:0 6px 20px var(--acc-dim)}
 .btn-ghost{background:transparent;border-color:var(--line);color:var(--muted)}
 .btn-ghost:hover{color:var(--text);border-color:var(--muted);background:var(--surface-2)}
 .inp{background:var(--surface-2);border:1px solid var(--line);padding:7px 10px;color:var(--text);font-size:11px;width:100%;outline:none;font-family:var(--font);border-radius:var(--radius-sm);transition:border-color 0.2s, background 0.2s}
 .inp:focus{border-color:var(--accent);background:var(--surface)}
 .inp-sm{padding:5px 8px;font-size:10px}
-.kpi{text-align:center;padding:10px 4px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius-sm);transition:transform 0.2s;min-width:0}
-.kpi:hover{transform:translateY(-1px)}
-.kpi .v{font-size:17px;font-weight:700;font-family:var(--font-head);letter-spacing:-0.5px}
-.kpi .l{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;margin-top:4px;font-weight:600}
+.kpi-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;padding:0 10px;margin-bottom:4px}
+.kpi{text-align:center;padding:12px 4px 10px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);transition:all 0.3s cubic-bezier(0.16,1,0.3,1);min-width:0;position:relative;overflow:hidden}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--line);opacity:0.4;transition:opacity 0.3s}
+.kpi:hover{transform:translateY(-2px);border-color:var(--accent);box-shadow:0 8px 24px rgba(0,0,0,0.08)}
+.kpi:hover::before{opacity:1;background:var(--accent)}
+.kpi .v{font-size:18px;font-weight:700;font-family:var(--font-head);letter-spacing:-0.5px;position:relative;transition:color 0.3s}
+.kpi .l{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;margin-top:5px;font-weight:600}
+.kpi .pnl{font-size:17px;font-weight:800;transition:all 0.4s cubic-bezier(0.16,1,0.3,1)}
 .tag{display:inline-block;padding:2px 6px;font-size:8px;font-weight:700;border:1px solid;border-radius:3px;letter-spacing:0.5px;text-transform:uppercase}
 .tag-green{border-color:var(--positive);color:var(--positive);background:var(--pos-dim)}
 .tag-red{border-color:var(--negative);color:var(--negative);background:var(--neg-dim)}
@@ -214,7 +218,7 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
   .bal{font-size:16px}
   .bal-label{font-size:7px}
   #main{padding:6px 6px 80px}
-  .kpi-row{grid-template-columns:1fr 1fr!important;gap:3px}
+  .kpi-row{grid-template-columns:1fr 1fr!important;gap:4px;padding:0 6px!important}
   .kpi{padding:6px 3px}
   .kpi .v{font-size:14px}
   .kpi .l{font-size:6px}
@@ -504,18 +508,14 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
         <div class="bal-label">Balance</div>
         <div id="dashBalance" class="bal">$0.00</div>
       </div>
-      <div style="text-align:right">
-        <div class="bal-label">P&amp;L</div>
-        <div id="dashPnl" style="font-size:14px;font-weight:700;color:var(--muted)">$0.00</div>
-      </div>
     </div>
   </div>
 
   <!-- KPI ROW -->
-  <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;padding:0 10px;margin-bottom:4px">
+  <div class="kpi-row">
     <div class="kpi"><div id="dashWinRate" class="v" style="color:var(--accent)">0%</div><div class="l">Win Rate</div></div>
+    <div class="kpi"><div id="dashPnl" class="v pnl">$0.00</div><div class="l">P&amp;L</div></div>
     <div class="kpi"><div id="dashTrades" class="v" style="color:var(--text)">0</div><div class="l">Trades</div></div>
-    <div class="kpi"><div id="dashActive" class="v" style="color:var(--warn)">0</div><div class="l">Active</div></div>
     <div class="kpi"><div id="dashConsLoss" class="v" style="color:var(--negative)">0</div><div class="l">Streak</div></div>
   </div>
 
@@ -573,9 +573,9 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
     </div>
 
     <!-- Chart -->
-    <div class="section" style="padding:4px; overflow:hidden;">
-      <div style="width:100%; overflow:hidden;">
-        <canvas id="liveChart" style="width:100%; height:180px; display:block; cursor:crosshair;"></canvas>
+    <div class="section" style="padding:4px 0; overflow:hidden;">
+      <div style="width:100%; overflow:hidden; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:2px; transition:border-color 0.3s;">
+        <canvas id="liveChart" style="width:100%; height:180px; display:block; cursor:crosshair; border-radius:calc(var(--radius) - 2px);"></canvas>
 <style>@media(min-width:768px){#liveChart{height:250px!important}}</style>
       </div>
     </div>
@@ -3006,11 +3006,14 @@ function updateDash(){
   const set = (id,val) => { const e=get(id); if(e) e.textContent=val; };
   set('dashBalance', fmt$(G.BALANCE));
   const pnlE = get('dashPnl');
-  if(pnlE){ pnlE.textContent = (G.PNL>=0?'+':'')+fmt$(G.PNL); pnlE.style.color = G.PNL>=0?'var(--positive)':'var(--negative)'; }
+  if(pnlE){
+    const pnl = G.PNL||0;
+    pnlE.textContent = (pnl>=0?'+':'')+fmt$(pnl);
+    pnlE.style.color = pnl>0?'var(--positive)':pnl<0?'var(--negative)':'var(--muted)';
+  }
   const total = G.WINS+G.LOSSES;
   set('dashWinRate', total?Math.round(G.WINS/total*100)+'%':'0%');
   set('dashTrades', String(G.TRADES));
-  set('dashActive', String(G.ACTIVE_CONTRACTS.size));
   set('dMarket', SYMBOLS.find(s=>s.sym===G.CURRENT_MARKET)?.name||G.CURRENT_MARKET);
   const sigE = get('dashSignal'); const strE = get('dashStrategy');
   if(G.LAST_SIGNAL && sigE && strE){
