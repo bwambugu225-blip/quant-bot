@@ -495,6 +495,7 @@ details summary:hover{color:var(--text)}
       </label>
     </div>
     <div class="mtop-r">
+      <button onclick="logout()" title="Save &amp; logout" style="background:none;border:1px solid var(--line);border-radius:6px;cursor:pointer;font-size:10px;line-height:1;padding:4px 8px;color:var(--text)">⏻ Logout</button>
       <button onclick="toggleTheme()" title="Toggle theme" style="background:none;border:none;cursor:pointer;font-size:14px;line-height:1;padding:2px" id="themeBtn">🌙</button>
     </div>
   </div>
@@ -4123,34 +4124,45 @@ function clearRecentTrades(){
 // SESSION PERSISTENCE (localStorage)
 // ============================================================
 let _saveTimer=0;
+function flushState(){
+  try {
+    localStorage.setItem('deriv_token', G.TOKEN);
+    localStorage.setItem('deriv_account_type', G.ACCOUNT_TYPE);
+    localStorage.setItem('deriv_telegram_token', G.TELEGRAM_BOT_TOKEN);
+    localStorage.setItem('deriv_telegram_chat_id', G.TELEGRAM_CHAT_ID);
+    localStorage.setItem('deriv_strategy_active', JSON.stringify(G.STRATEGY_ACTIVE));
+    localStorage.setItem('deriv_trade_history', JSON.stringify(G.TRADE_HISTORY.slice(-200)));
+    const stake = document.getElementById('rfStake')?.value;
+    if(stake) localStorage.setItem('deriv_stake', stake);
+    const bs = BotState;
+    localStorage.setItem('deriv_botstate', JSON.stringify({
+      isTrading: bs.isTrading, contractType: bs.contractType,
+      baseStake: bs.baseStake, targetProfit: bs.targetProfit, stopLoss: bs.stopLoss,
+      subMode: document.getElementById('dgMcSubMode')?.value || 'DIFF'
+    }));
+    localStorage.setItem('deriv_selected_strategy', G.SELECTED_STRATEGY || 'ENS_XTREME');
+    localStorage.setItem('deriv_trade_mode', G.TRADE_MODE || 'DIGITS');
+    localStorage.setItem('deriv_current_market', G.CURRENT_MARKET || 'R_50');
+    localStorage.setItem('deriv_trade_duration', String(G.TRADE_DURATION || 15));
+    localStorage.setItem('deriv_trade_duration_unit', G.TRADE_DURATION_UNIT || 's');
+    localStorage.setItem('deriv_martingale', JSON.stringify({
+      enabled: Martingale.enabled, mult: Martingale.mult,
+      baseStake: Martingale.baseStake, currentStake: Martingale.currentStake
+    }));
+    // Persist copy clients INCLUDING copyOnline eligibility flag
+    localStorage.setItem('deriv_copy_traders', JSON.stringify(G.COPY_TRADERS.map(c => ({ ...c }))));
+    localStorage.setItem('deriv_copy_trading_enabled', G.COPYTRADING_ENABLED ? 'true' : 'false');
+    const tgToken = document.getElementById('tgToken')?.value;
+    const tgChat = document.getElementById('tgChatId')?.value;
+    if(tgToken) localStorage.setItem('deriv_tg_token', tgToken);
+    if(tgChat) localStorage.setItem('deriv_tg_chat', tgChat);
+    const dur = document.getElementById('rfDuration')?.value;
+    if(dur) localStorage.setItem('deriv_duration', dur);
+  } catch(e){ console.log('[SAVE]', e.message); }
+}
 function saveState(){
   if(_saveTimer) clearTimeout(_saveTimer);
-  _saveTimer=setTimeout(()=>{
-    _saveTimer=0;
-    try {
-      localStorage.setItem('deriv_token', G.TOKEN);
-      localStorage.setItem('deriv_account_type', G.ACCOUNT_TYPE);
-      localStorage.setItem('deriv_telegram_token', G.TELEGRAM_BOT_TOKEN);
-      localStorage.setItem('deriv_telegram_chat_id', G.TELEGRAM_CHAT_ID);
-      localStorage.setItem('deriv_strategy_active', JSON.stringify(G.STRATEGY_ACTIVE));
-      localStorage.setItem('deriv_trade_history', JSON.stringify(G.TRADE_HISTORY.slice(-200)));
-      const stake = document.getElementById('rfStake')?.value;
-      if(stake) localStorage.setItem('deriv_stake', stake);
-      const bs = BotState;
-      localStorage.setItem('deriv_botstate', JSON.stringify({
-        isTrading: bs.isTrading, contractType: bs.contractType,
-        baseStake: bs.baseStake, targetProfit: bs.targetProfit, stopLoss: bs.stopLoss,
-        subMode: document.getElementById('dgMcSubMode')?.value || 'DIFF'
-      }));
-      localStorage.setItem('deriv_selected_strategy', G.SELECTED_STRATEGY || 'ENS_XTREME');
-      localStorage.setItem('deriv_copy_traders', JSON.stringify(G.COPY_TRADERS));
-      localStorage.setItem('deriv_copy_trading_enabled', G.COPYTRADING_ENABLED ? 'true' : 'false');
-      const tgToken = document.getElementById('tgToken')?.value;
-      const tgChat = document.getElementById('tgChatId')?.value;
-      if(tgToken) localStorage.setItem('deriv_tg_token', tgToken);
-      if(tgChat) localStorage.setItem('deriv_tg_chat', tgChat);
-    } catch(e){ console.log('[SAVE]', e.message); }
-  }, 500);
+  _saveTimer=setTimeout(()=>{ _saveTimer=0; flushState(); }, 500);
 }
 function updateChartSetting(key, val) {
   ChartSettings[key] = val;
@@ -4213,9 +4225,29 @@ function restoreState(){
         if(el) el.value = d.subMode;
       }
     }
-    // Restore copy trading settings
+    // Restore trade mode, market, duration, martingale
+    const tm = localStorage.getItem('deriv_trade_mode');
+    if(tm) G.TRADE_MODE = tm;
+    const cm = localStorage.getItem('deriv_current_market');
+    if(cm) G.CURRENT_MARKET = cm;
+    const td = localStorage.getItem('deriv_trade_duration');
+    if(td) G.TRADE_DURATION = parseInt(td, 10) || 15;
+    const tdu = localStorage.getItem('deriv_trade_duration_unit');
+    if(tdu) G.TRADE_DURATION_UNIT = tdu;
+    const mg = localStorage.getItem('deriv_martingale');
+    if(mg) try{ const m=JSON.parse(mg);
+      if(typeof m.enabled==='boolean') Martingale.enabled=m.enabled;
+      if(m.mult) Martingale.mult=m.mult;
+      if(m.baseStake) Martingale.baseStake=m.baseStake;
+      if(m.currentStake) Martingale.currentStake=m.currentStake;
+    }catch(e){}
+    const dur = localStorage.getItem('deriv_duration');
+    if(dur){ const el=document.getElementById('rfDuration'); if(el) el.value=dur; }
+    // Restore copy trading settings (preserve copyOnline eligibility)
     const ct = localStorage.getItem('deriv_copy_traders');
-    if(ct) try{ G.COPY_TRADERS = JSON.parse(ct); }catch(e){}
+    if(ct) try{ const arr=JSON.parse(ct);
+      G.COPY_TRADERS = arr.map(c => ({ ...c, copyOnline: !!c.copyOnline }));
+    }catch(e){}
     const cte = localStorage.getItem('deriv_copy_trading_enabled');
     G.COPYTRADING_ENABLED = (cte !== 'false');
     // Never auto-start trading on login — reset engines
@@ -4883,6 +4915,17 @@ function showApp(){
   // Sidebar: open on desktop, closed on mobile
   if(window.innerWidth >= 768) document.body.classList.add('sidebar-open');
 }
+function logout(){
+  try {
+    if(G.RUNNING) stopBot();
+    if(BotState.isTrading){ BotState.isTrading=false; const b=document.getElementById('dgEngineBtn'); if(b) b.textContent='AUTO'; }
+    if(G.WS) try{ G.WS.close(); }catch(e){}
+    flushState();
+  } catch(e){}
+  document.getElementById('app').style.display='none';
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  log('[SYSTEM] Logged out — settings saved', 'i');
+}
 
 // ============================================================
 // INIT
@@ -4990,6 +5033,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if(btn) btn.textContent = 'AUTO';
     }
     if(G.WS) try{ G.WS.close(); }catch(e){}
+    flushState();
   });
   // Global error handler to catch any unhandled crashes
   window.onerror = (msg, url, line, col, err) => {
