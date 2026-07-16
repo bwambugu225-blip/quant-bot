@@ -26,9 +26,9 @@
   --font:'JetBrains Mono','SF Mono','Fira Code',monospace;
   --font-head:'Plus Jakarta Sans','Inter','Segoe UI',sans-serif;
   --font-serif:'Playfair Display','Cinzel','Georgia',serif;
-  --radius:8px;
-  --radius-sm:6px;
-  --shadow:0 8px 32px rgba(0,0,0,0.6);
+  --radius:0;
+  --radius-sm:0;
+  --shadow:none;
   --glow-acc:0 0 20px rgba(212,168,75,0.15);
   --logo:linear-gradient(135deg,#d4a84b,#f0d080);
 }
@@ -569,6 +569,25 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
 
 /* Section-title neon already set; ensure headings use serif */
 .section-title{font-family:var(--font-serif);color:var(--accent);text-shadow:0 0 10px rgba(54,225,255,0.35)}
+
+/* ============================================================
+   FLAT / SHARP-EDGE GLOBAL OVERRIDE — match the analysis panel
+   (no rounded corners, no card shadows, no glass panels)
+   ============================================================ */
+*{border-radius:0 !important}
+.panel,.card,.login-card,.kpi,.console-box,.section,.hud,.mtop,
+.sidebar,.sidebar-header,.inp,.btn,.tag,.acc-badge,.status-pill,
+.mode-tab,.asset-item,.watch-item,.recent-trade,.hax-mx,.strat-chip,
+.switch,.slider,input,select,textarea{
+  box-shadow:none !important;
+  backdrop-filter:none !important;
+  -webkit-backdrop-filter:none !important;
+}
+.login-card{border:1px solid var(--line) !important;background:var(--surface) !important}
+.kpi{border-top:2px solid var(--line) !important}
+.panel,.card{border:1px solid var(--line) !important;background:var(--surface) !important}
+.mtop{background:rgba(20,18,16,.96) !important}
+.sidebar{background:rgba(8,11,20,.98) !important}
 </style>
 </head>
 <body class="dark" style="margin:0">
@@ -4348,8 +4367,14 @@ function updateAnalysisPanel(){
       const rfTxt = biasCls==='rise'?'▲ RISE':biasCls==='fall'?'▼ FALL':'· HOLD';
       if(rfE){ rfE.textContent=rfTxt; rfE.className='hax-rf '+(biasCls||'flat'); }
       if(sigE){ sigE.textContent='—'; sigE.className='hax-sig'; }
-      const cb=document.getElementById('haxConf'); if(cb) cb.style.width='0%';
-      set('haxConfTxt','0%');
+      // Live confidence from RSI bias: further from 50 = stronger conviction (40–90%)
+      let liveConf = 0;
+      if(r!=null){
+        const dev = Math.abs(r-50);
+        liveConf = Math.min(90, Math.max(40, Math.round(50 + dev*0.8)));
+      }
+      const cb=document.getElementById('haxConf'); if(cb) cb.style.width=liveConf+'%';
+      set('haxConfTxt', liveConf+'%');
       set('haxSrc','bias');
       set('haxStake','$0.00');
     }
