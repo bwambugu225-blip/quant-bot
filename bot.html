@@ -162,7 +162,7 @@ details summary:hover{color:var(--text)}
 .login-card .acc-btn:hover{background:var(--surface);border-color:var(--accent)}
 /* ── Collapsible Sidebar ── */
 #app{display:flex;min-height:100vh;position:relative}
-.sidebar-overlay{display:none;position:fixed;inset:0;z-index:90;background:rgba(18,16,14,.4)}
+.sidebar-overlay{display:none;position:fixed;inset:0;z-index:90;background:rgba(18,16,14,.4);pointer-events:auto}
 .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:100;width:280px;max-width:85vw;background:rgba(20,18,16,.95);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-right:1px solid var(--line);overflow-y:auto;padding:0;display:flex;flex-direction:column;transition:transform .3s cubic-bezier(0.16,1,0.3,1);-webkit-overflow-scrolling:touch}
 .sidebar .sidebar-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line);flex-shrink:0}
 .sidebar .sidebar-body{flex:1;overflow-y:auto;padding:12px}
@@ -924,14 +924,45 @@ function sbGetAdminHash(){
 // ── Admin Panel ──
 let _adminAuthed = false;
 function showAdminLogin(){
-  const pw = prompt('Enter admin password:');
-  if(!pw) return;
-  hashPassword(pw).then(hash => {
-    if(hash === sbGetAdminHash()){
-      _adminAuthed = true;
-      renderAdminPanel();
-    } else { alert('Wrong password'); }
-  });
+  if(_adminAuthed){
+    renderAdminPanel();
+    return;
+  }
+  const el = document.createElement('div');
+  el.id = 'adminLoginOverlay';
+  el.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;background:rgba(0,0,0,0.88);display:flex;align-items:center;justify-content:center;font-family:var(--font,monospace)';
+  el.innerHTML = `
+    <div style="background:#141210;border:1px solid #2a251f;border-radius:8px;padding:24px;width:300px;text-align:center">
+      <div style="font-size:14px;color:var(--accent,#d4a84b);font-weight:600;margin-bottom:16px">⚙ Admin Login</div>
+      <input id="adminPwInput" type="password" placeholder="Admin password" style="width:100%;box-sizing:border-box;background:#1c1915;border:1px solid #2a251f;color:#f0e8da;padding:8px 10px;border-radius:4px;font-size:12px;margin-bottom:12px">
+      <button onclick="submitAdminLogin()" style="width:100%;background:var(--accent,#d4a84b);border:none;color:#0d0c0a;padding:8px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600">Login</button>
+      <div id="adminLoginErr" style="font-size:10px;color:#c45a5a;margin-top:10px;min-height:12px"></div>
+      <div style="font-size:9px;color:#8a7e6a;margin-top:12px;cursor:pointer" onclick="closeAdminLogin()">Cancel</div>
+    </div>`;
+  document.body.appendChild(el);
+  const inp = document.getElementById('adminPwInput');
+  inp.addEventListener('keydown', e => { if(e.key === 'Enter') submitAdminLogin(); });
+  setTimeout(() => inp.focus(), 50);
+}
+function closeAdminLogin(){
+  const el = document.getElementById('adminLoginOverlay');
+  if(el) el.remove();
+}
+async function submitAdminLogin(){
+  const inp = document.getElementById('adminPwInput');
+  const err = document.getElementById('adminLoginErr');
+  const pw = (inp?.value || '').trim();
+  if(!pw){ err.textContent = 'Enter password'; return; }
+  const hash = await hashPassword(pw);
+  if(hash === sbGetAdminHash()){
+    _adminAuthed = true;
+    closeAdminLogin();
+    renderAdminPanel();
+  } else {
+    err.textContent = 'Wrong password';
+    inp.value = '';
+    inp.focus();
+  }
 }
 function closeAdminPanel(){
   const el = document.getElementById('adminPanel');
@@ -974,7 +1005,9 @@ function switchAdminTab(tab){
 }
 async function renderAdminUsers(container){
   container.innerHTML = '<div style="padding:20px;text-align:center;color:#8a7e6a">Loading users...</div>';
-  const users = await sbGetAllUsers();
+  let users = [];
+  try { users = await sbGetAllUsers(); }
+  catch(e){ container.innerHTML = '<div style="padding:20px;text-align:center;color:#c45a5a">Failed to load users: ' + (e && e.message ? e.message : e) + '</div>'; return; }
   let html = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
     <span style="font-size:12px;color:#8a7e6a">${users.length} user${users.length!==1?'s':''}</span>
     <input id="adminUserSearch" placeholder="Search trader ID or name..." oninput="filterAdminUsers()" style="background:#1c1915;border:1px solid #2a251f;color:#f0e8da;padding:4px 8px;border-radius:4px;font-size:10px;width:200px">
@@ -1085,15 +1118,6 @@ async function saveAdminPassword(){
   await sbChangeAdminPassword(pw1);
   st.textContent = '✓ Password updated (stored in browser)'; st.style.color = '#5a8f64';
 }
-// Global Chart Settings
-const ChartSettings = {
-  type: 'heiken-ashi', // 'standard' or 'heiken-ashi'
-  ema20: true,
-  ema50: false,
-  grid: true,
-  bodyRatio: 0.6
-};
-
 // Global Chart Settings
 const ChartSettings = {
   type: 'heiken-ashi', // 'standard' or 'heiken-ashi'
@@ -4273,7 +4297,6 @@ function copyProposalToClients(masterProposal) {
         }
       }
     }
-  }
 }
 
 // ── Login Screen (Deriv OAuth2.0 PKCE flow) ──
@@ -4451,21 +4474,33 @@ function connectDirectWS(token){
     G.WS = ws;
     wrapMasterSocket(ws);
     G.AUTH = true;
+    G.CONNECTED = true;
     sbUpsertUser();
     saveState();
-    document.getElementById('loginOverlay').classList.add('hidden');
+    showApp();
     document.getElementById('loginPat').disabled=false;
     document.getElementById('oauthBtn').textContent='Login with Deriv';
     document.getElementById('loginError').textContent='';
+    document.getElementById('connDot').className='conn g';
+    document.getElementById('engineStatus').textContent='ONLINE';
     log('[AUTH] Authorized via direct WS','s');
     updateDash();
+    startHeartbeat();
+    setTimeout(subscribeAll, 200);
   };
   ws.onerror = () => {
     document.getElementById('loginError').textContent = 'WebSocket connection failed';
     document.getElementById('loginPat').disabled=false;
     document.getElementById('oauthBtn').textContent='Login with Deriv';
   };
-  ws.onclose = () => { if(G.WS === ws){ G.AUTH = false; } };
+  ws.onclose = () => { 
+    if(G.WS === ws){ 
+      G.AUTH = false; 
+      G.CONNECTED = false;
+      document.getElementById('connDot').className='conn r';
+      document.getElementById('engineStatus').textContent='OFFLINE';
+    } 
+  };
 }
 function connectOTP(url){
   G.TOKEN = document.getElementById('loginPat')?.value?.trim() || '';
