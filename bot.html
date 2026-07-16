@@ -428,33 +428,59 @@ body::after{
 .btn-accent::after{content:'';position:absolute;top:0;left:0;width:40%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.25),transparent);animation:sheen 5s ease-in-out infinite}
 
 /* ── Hacky Vibe Analysis Panel ── */
-.hax-panel{background:linear-gradient(160deg,rgba(10,14,26,0.85),rgba(14,20,38,0.7));border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;backdrop-filter:blur(12px);box-shadow:0 10px 40px rgba(0,0,0,0.5),inset 0 0 24px rgba(54,225,255,0.05),0 0 0 1px rgba(54,225,255,0.04);position:relative;overflow:hidden}
-.hax-panel::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(54,225,255,0.025) 0 1px,transparent 1px 3px);pointer-events:none;opacity:.5}
-.hax-head{display:flex;align-items:center;gap:8px;margin-bottom:10px;border-bottom:1px solid var(--line);padding-bottom:7px;position:relative}
-.hax-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);animation:pulse 1.4s infinite}
-.hax-title{font-family:var(--font-serif);font-size:10px;letter-spacing:2px;color:var(--accent);text-shadow:0 0 10px rgba(54,225,255,0.5);text-transform:uppercase}
-.hax-sub{font-size:8px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;flex:1}
-.hax-clk{font-family:var(--font);font-size:9px;color:var(--muted);letter-spacing:1px}
-.hax-grid{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:10px;position:relative}
-.hax-cell{display:flex;flex-direction:column;gap:1px;min-width:0}
-.hax-k{font-size:7px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;font-weight:700}
-.hax-k.sm{font-size:6px}
-.hax-v{font-family:var(--font-serif);font-size:18px;font-weight:700;letter-spacing:.5px;color:var(--text);line-height:1.15;text-shadow:0 0 12px rgba(54,225,255,0.25)}
-.hax-v.sm{font-size:11px;font-family:var(--font-head);letter-spacing:.5px}
-.hax-v.mono{font-family:var(--font);font-size:13px;color:var(--accent);text-shadow:0 0 8px rgba(54,225,255,0.3)}
-.hax-v.rise{color:var(--positive);text-shadow:0 0 12px rgba(54,224,166,0.5)}
-.hax-v.fall{color:var(--negative);text-shadow:0 0 12px rgba(255,93,115,0.5)}
-.hax-bar{height:5px;border-radius:3px;background:rgba(8,12,22,0.8);border:1px solid var(--line);overflow:hidden;margin-top:3px}
-.hax-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#36e1ff,#7b6bff);box-shadow:0 0 10px rgba(54,225,255,0.6);transition:width .4s cubic-bezier(0.16,1,0.3,1)}
-.hax-tape{margin-top:10px;border-top:1px solid var(--line);padding-top:8px;height:84px;overflow:hidden;font-family:var(--font);font-size:9px;line-height:1.5;color:#9fb0d8}
-.hax-tape .ln{padding:1px 0;border-bottom:1px dotted rgba(94,140,255,0.07);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hax-panel{background:linear-gradient(155deg,rgba(8,12,24,0.92),rgba(14,20,40,0.78));border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px 8px;backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3);box-shadow:0 14px 50px rgba(0,0,0,0.55),inset 0 0 30px rgba(54,225,255,0.06),0 0 0 1px rgba(54,225,255,0.05);position:relative;overflow:hidden}
+.hax-panel::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(54,225,255,0.022) 0 1px,transparent 1px 4px);pointer-events:none;opacity:.6}
+.hax-panel::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 18% 0%,rgba(54,225,255,0.10),transparent 45%);pointer-events:none}
+.hax-corner{position:absolute;width:14px;height:14px;border:2px solid var(--accent);opacity:.55;pointer-events:none;filter:drop-shadow(0 0 4px rgba(54,225,255,0.6))}
+.hax-corner.tl{top:6px;left:6px;border-right:none;border-bottom:none}
+.hax-corner.tr{top:6px;right:6px;border-left:none;border-bottom:none}
+.hax-corner.bl{bottom:6px;left:6px;border-right:none;border-top:none}
+.hax-corner.br{bottom:6px;right:6px;border-left:none;border-top:none}
+.hax-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px;position:relative;z-index:2}
+.hax-ring{position:relative;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+.hax-ring i{position:absolute;inset:0;border-radius:50%;border:2px solid transparent;border-top-color:var(--accent);border-right-color:var(--accent);animation:spinSlow 2.4s linear infinite;box-shadow:0 0 8px rgba(54,225,255,0.4);opacity:.7}
+.hax-ring b{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);animation:pulse 1.4s infinite}
+.hax-title{font-family:var(--font-serif);font-size:11px;letter-spacing:3px;color:var(--accent);text-shadow:0 0 12px rgba(54,225,255,0.55);text-transform:uppercase}
+.hax-sub{font-size:8px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;flex:1;font-family:var(--font);position:relative;overflow:hidden;white-space:nowrap}
+.hax-sub::after{content:'';position:absolute;top:0;right:0;width:14px;height:100%;background:linear-gradient(90deg,transparent,var(--surface))}
+.hax-clk{font-family:var(--font);font-size:10px;color:var(--accent);letter-spacing:1px;text-shadow:0 0 8px rgba(54,225,255,0.4)}
+.hax-body{display:grid;grid-template-columns:1fr 1.25fr 0.85fr;gap:14px;position:relative;z-index:2;align-items:stretch}
+.hax-core{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px;border-right:1px solid var(--line);padding-right:12px}
+.hax-sig{font-family:var(--font-serif);font-size:34px;font-weight:800;letter-spacing:1px;color:var(--text);text-shadow:0 0 18px rgba(54,225,255,0.3);transition:color .3s,text-shadow .3s;line-height:1}
+.hax-sig.rise{color:var(--positive);text-shadow:0 0 22px rgba(54,224,166,0.6)}
+.hax-sig.fall{color:var(--negative);text-shadow:0 0 22px rgba(255,93,115,0.6)}
+.hax-conf-wrap{width:100%}
+.hax-conf-label{font-size:6px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;font-weight:700;text-align:center;margin-bottom:3px}
+.hax-conf-val{font-family:var(--font);font-size:10px;color:var(--accent);text-align:center;margin-top:3px;text-shadow:0 0 8px rgba(54,225,255,0.4)}
+.hax-price{font-family:var(--font);font-size:11px;color:var(--muted);margin-top:2px}
+.hax-meters{display:flex;flex-direction:column;gap:7px;justify-content:center}
+.hax-meter-top{display:flex;justify-content:space-between;font-size:7px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+.hax-meter-top .mv{font-family:var(--font);color:var(--accent);text-shadow:0 0 6px rgba(54,225,255,0.35);font-size:9px}
+.hax-track{height:6px;border-radius:4px;background:rgba(6,9,18,0.85);border:1px solid var(--line);overflow:hidden;position:relative}
+.hax-track i{position:absolute;left:0;top:0;height:100%;width:0;border-radius:4px;background:linear-gradient(90deg,#36e1ff,#7b6bff);box-shadow:0 0 10px rgba(54,225,255,0.6);transition:width .45s cubic-bezier(0.16,1,0.3,1),background .3s}
+.hax-track i.hot{background:linear-gradient(90deg,#ffc24b,#ff5d73);box-shadow:0 0 10px rgba(255,93,115,0.6)}
+.hax-track i.cold{background:linear-gradient(90deg,#36e0a6,#36e1ff);box-shadow:0 0 10px rgba(54,224,166,0.6)}
+.hax-spark{width:100%;height:46px;margin-top:4px;border:1px solid var(--line);border-radius:6px;background:rgba(6,9,18,0.6);display:block}
+.hax-side{display:flex;flex-direction:column;gap:5px;justify-content:center;border-left:1px solid var(--line);padding-left:12px}
+.hax-row{display:flex;justify-content:space-between;align-items:center;font-size:9px}
+.hax-row .k{color:var(--muted);letter-spacing:1px;text-transform:uppercase;font-weight:700;font-size:7px}
+.hax-row .v{font-family:var(--font-head);color:var(--text);font-weight:600}
+.hax-row .v.mono{font-family:var(--font);color:var(--accent);text-shadow:0 0 6px rgba(54,225,255,0.3)}
+.hax-tape{margin-top:12px;border-top:1px solid var(--line);padding-top:8px;height:92px;overflow:hidden;font-family:var(--font);font-size:9px;line-height:1.55;color:#9fb0d8;position:relative;z-index:2}
+.hax-tape .ln{padding:1px 0;border-bottom:1px dotted rgba(94,140,255,0.07);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:haxIn .3s ease}
 .hax-tape .ln .t{color:var(--dim)}
-.hax-tape .ln .p{color:var(--positive)}
-.hax-tape .ln .n{color:var(--negative)}
-.hax-tape .ln .a{color:var(--accent)}
-@keyframes haxFlick{0%,100%{opacity:1}50%{opacity:.7}}
-.hax-dot.alert{background:var(--negative);box-shadow:0 0 14px var(--negative);animation:pulse .8s infinite}
-@media(max-width:767px){.hax-grid{grid-template-columns:1fr 1fr}.hax-v{font-size:15px}.hax-tape{height:64px}}
+.hax-tape .ln .p{color:var(--positive);text-shadow:0 0 6px rgba(54,224,166,0.3)}
+.hax-tape .ln .n{color:var(--negative);text-shadow:0 0 6px rgba(255,93,115,0.3)}
+.hax-tape .ln .a{color:var(--accent);text-shadow:0 0 6px rgba(54,225,255,0.3)}
+@keyframes haxIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
+.hax-ring b.alert{background:var(--negative);box-shadow:0 0 14px var(--negative);animation:pulse .8s infinite}
+@media(max-width:767px){
+  .hax-body{grid-template-columns:1fr;gap:10px}
+  .hax-core{border-right:none;border-bottom:1px solid var(--line);padding-right:0;padding-bottom:10px}
+  .hax-side{border-left:none;border-top:1px solid var(--line);padding-left:0;padding-top:10px}
+  .hax-sig{font-size:28px}
+  .hax-tape{height:70px}
+}
 </style>
 </head>
 <body class="dark" style="margin:0">
@@ -819,34 +845,44 @@ body::after{
     <!-- Hacky Vibe Analysis Panel -->
     <div class="section" style="padding:6px 0">
       <div class="hax-panel" id="haxPanel">
+        <div class="hax-corner tl"></div><div class="hax-corner tr"></div>
+        <div class="hax-corner bl"></div><div class="hax-corner br"></div>
         <div class="hax-head">
-          <span class="hax-dot" id="haxDot"></span>
+          <span class="hax-ring" id="haxRing"><i></i><b id="haxDot"></b></span>
           <span class="hax-title">⟁ NEURAL ANALYSIS CORE</span>
-          <span class="hax-sub" id="haxSub">scanning…</span>
+          <span class="hax-sub" id="haxSub">initialising…</span>
           <span class="hax-clk" id="haxClk">--:--:--</span>
         </div>
-        <div class="hax-grid">
-          <div class="hax-cell">
-            <div class="hax-k">SIGNAL</div>
-            <div class="hax-v" id="haxSignal">—</div>
-            <div class="hax-bar"><i id="haxConf"></i></div>
-            <div class="hax-k sm" style="margin-top:3px">CONF <span id="haxConfTxt">0%</span></div>
+        <div class="hax-body">
+          <div class="hax-core">
+            <div class="hax-sig" id="haxSignal">—</div>
+            <div class="hax-conf-wrap">
+              <div class="hax-conf-label">CONFIDENCE</div>
+              <div class="hax-bar"><i id="haxConf"></i></div>
+              <div class="hax-conf-val" id="haxConfTxt">0%</div>
+            </div>
+            <div class="hax-price" id="haxPrice">—</div>
           </div>
-          <div class="hax-cell">
-            <div class="hax-k">RSI(14)</div>
-            <div class="hax-v mono" id="haxRsi">--</div>
-            <div class="hax-k">W%R(14)</div>
-            <div class="hax-v mono" id="haxWr">--</div>
-            <div class="hax-k">EMA20/50</div>
-            <div class="hax-v mono" id="haxEma">--/--</div>
+          <div class="hax-meters">
+            <div class="hax-meter">
+              <div class="hax-meter-top"><span>RSI·14</span><span id="haxRsi" class="mv">--</span></div>
+              <div class="hax-track"><i id="haxRsiBar"></i></div>
+            </div>
+            <div class="hax-meter">
+              <div class="hax-meter-top"><span>W%R·14</span><span id="haxWr" class="mv">--</span></div>
+              <div class="hax-track"><i id="haxWrBar"></i></div>
+            </div>
+            <div class="hax-meter">
+              <div class="hax-meter-top"><span>EMA SPREAD</span><span id="haxEma" class="mv">--/--</span></div>
+              <div class="hax-track"><i id="haxEmaBar"></i></div>
+            </div>
+            <canvas id="haxSpark" class="hax-spark" width="240" height="46"></canvas>
           </div>
-          <div class="hax-cell">
-            <div class="hax-k">SRC</div>
-            <div class="hax-v sm" id="haxSrc">—</div>
-            <div class="hax-k">MODE</div>
-            <div class="hax-v sm" id="haxMode">—</div>
-            <div class="hax-k">STAKE</div>
-            <div class="hax-v mono" id="haxStake">$0.00</div>
+          <div class="hax-side">
+            <div class="hax-row"><span class="k">SRC</span><span class="v" id="haxSrc">—</span></div>
+            <div class="hax-row"><span class="k">MODE</span><span class="v" id="haxMode">—</span></div>
+            <div class="hax-row"><span class="k">STAKE</span><span class="v mono" id="haxStake">$0.00</span></div>
+            <div class="hax-row"><span class="k">W·L</span><span class="v mono" id="haxWL">0 / 0</span></div>
           </div>
         </div>
         <div class="hax-tape" id="haxTape"></div>
@@ -2849,6 +2885,20 @@ function handleTick(data){
   _tickCount++;
   // Throttle heavy UI to every 3rd tick
   if((_tickCount&3)===0) updateDigitsUI();
+  // Stream live price ticks into the analysis tape (current market only)
+  if(sym===G.CURRENT_MARKET){
+    const prev=G._haxLastPrice;
+    const dir = prev==null?0:(price>prev?1:price<prev?-1:0);
+    G._haxLastPrice=price;
+    if(!G._haxTickThrottle) G._haxTickThrottle=0;
+    G._haxTickThrottle++;
+    if(G._haxTickThrottle>=4){
+      G._haxTickThrottle=0;
+      const arrow = dir>0?'▲':dir<0?'▼':'·';
+      const cls = dir>0?'p':dir<0?'n':'a';
+      haxPush(`TICK ${sym} ${arrow} ${price.toFixed(4)}`, cls);
+    }
+  }
   if(G.TRADE_MODE==='DIGITS' && BotState.isTrading && G.ACTIVE_CONTRACTS.size===0 && BotState.tickHistory.length >= 50){
     evaluateDigitStrategy(sym);
   }
@@ -4137,37 +4187,84 @@ function updateAnalysisPanel(){
   const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
   const sym=G.CURRENT_MARKET;
   const candles=G.MARKET.candles[sym]||[];
-  // Clock
   const d=new Date();
   set('haxClk',`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`);
-  // Live indicators
+  // Live indicators + meter bars
+  let r=null,w=null,e20=null,e50=null;
   if(candles.length>=15){
     const cl=candles.map(c=>c.close), hi=candles.map(c=>c.high), lo=candles.map(c=>c.low);
-    const r=rsi(cl,14), w=williamsR(hi,lo,cl,14), e20=ema(cl,20), e50=ema(cl,50);
-    if(r!=null){ set('haxRsi', r.toFixed(1)); const e=document.getElementById('haxRsi'); if(e) e.style.color = r<35?'var(--positive)':r>65?'var(--negative)':'var(--accent)'; }
-    if(w!=null){ set('haxWr', w.toFixed(1)); const e=document.getElementById('haxWr'); if(e) e.style.color = w<-80?'var(--positive)':w>-20?'var(--negative)':'var(--accent)'; }
-    if(e20&&e50) set('haxEma', `${e20.toFixed(3)} / ${e50.toFixed(3)}`);
+    r=rsi(cl,14); w=williamsR(hi,lo,cl,14); e20=ema(cl,20); e50=ema(cl,50);
+    if(r!=null){ set('haxRsi', r.toFixed(1));
+      const e=document.getElementById('haxRsi'); const b=document.getElementById('haxRsiBar');
+      const hot=r>65, cold=r<35;
+      if(e) e.style.color = hot?'var(--negative)':cold?'var(--positive)':'var(--accent)';
+      if(b){ b.style.width=Math.max(2,r)+'%'; b.className=hot?'hot':cold?'cold':''; }
+    }
+    if(w!=null){ set('haxWr', w.toFixed(1));
+      const e=document.getElementById('haxWr'); const b=document.getElementById('haxWrBar');
+      const hot=w>-20, cold=w<-80;
+      if(e) e.style.color = hot?'var(--negative)':cold?'var(--positive)':'var(--accent)';
+      if(b){ b.style.width=Math.max(2,(w+100)/2)+'%'; b.className=hot?'hot':cold?'cold':''; }
+    }
+    if(e20&&e50){ set('haxEma', `${e20.toFixed(3)} / ${e50.toFixed(3)}`);
+      const b=document.getElementById('haxEmaBar');
+      if(b){ const spread=Math.abs(e20-e50)/((e20+e50)/2||1)*100; b.style.width=Math.min(100,Math.max(3,spread*40))+'%'; b.className=e20>e50?'hot':'cold'; }
+    }
   }
+  // Live price
+  const pr=G.MARKET.prices[sym];
+  const lastP=pr&&pr.length?pr[pr.length-1]:(G._haxLastPrice||null);
+  if(lastP!=null) set('haxPrice', lastP.toFixed(4));
   // Signal + confidence
   const sigE=document.getElementById('haxSignal');
   if(G.LAST_SIGNAL){
-    if(sigE){ sigE.textContent=G.LAST_SIGNAL.action; sigE.className='hax-v '+(G.LAST_SIGNAL.action==='RISE'?'rise':'fall'); }
+    if(sigE){ sigE.textContent=G.LAST_SIGNAL.action; sigE.className='hax-sig '+(G.LAST_SIGNAL.action==='RISE'?'rise':'fall'); }
     const conf=G.LAST_SIGNAL.conf||0;
     const cb=document.getElementById('haxConf'); if(cb) cb.style.width=Math.min(100,conf)+'%';
     set('haxConfTxt', conf+'%');
     set('haxSrc', G.LAST_SIGNAL.src||'—');
     set('haxStake', fmt$(G.LAST_SIGNAL.stake||0));
   } else {
-    if(sigE){ sigE.textContent='—'; sigE.className='hax-v'; }
+    if(sigE){ sigE.textContent='—'; sigE.className='hax-sig'; }
     const cb=document.getElementById('haxConf'); if(cb) cb.style.width='0%';
     set('haxConfTxt','0%');
   }
   set('haxMode', G.TRADE_MODE||'—');
-  // Status dot / sub
+  set('haxWL', `${G.WINS||0} / ${G.LOSSES||0}`);
+  drawHaxSpark();
+  // Status ring / sub
   const dot=document.getElementById('haxDot'), sub=document.getElementById('haxSub');
-  if(G.RUNNING||BotState.isTrading){ if(dot) dot.className='hax-dot'; if(sub) sub.textContent='ENGINE ACTIVE'; }
-  else if(G.AUTH){ if(dot) dot.className='hax-dot'; if(sub) sub.textContent='idle · armed'; }
-  else { if(dot) dot.className='hax-dot alert'; if(sub) sub.textContent='offline'; }
+  if(G.RUNNING||BotState.isTrading){ if(dot) dot.className=''; if(sub) sub.textContent='⟐ ENGINE ACTIVE · scanning market'; }
+  else if(G.AUTH){ if(dot) dot.className=''; if(sub) sub.textContent='◌ IDLE · market stream live'; }
+  else { if(dot) dot.className='alert'; if(sub) sub.textContent='✕ OFFLINE · awaiting auth'; }
+  // Ambient scan line when idle so the panel always feels alive
+  if(!G.RUNNING && !BotState.isTrading){
+    G._haxScan = (G._haxScan||0)+1;
+    if(G._haxScan>=4){ G._haxScan=0; haxPush(`scan ${sym} · rsi=${r?r.toFixed(0):'--'} wr=${w?w.toFixed(0):'--'} · no edge`, 'a'); }
+  }
+}
+let _haxSparkBuf=[];
+function drawHaxSpark(){
+  const cv=document.getElementById('haxSpark'); if(!cv) return;
+  const ctx=cv.getContext('2d');
+  const sym=G.CURRENT_MARKET;
+  const pr=G.MARKET.prices[sym]||[];
+  const data = pr.length?pr.slice(-60):_haxSparkBuf;
+  if(pr.length) _haxSparkBuf = pr.slice(-60);
+  const W=cv.width, H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  if(data.length<2) return;
+  let lo=Math.min(...data), hi=Math.max(...data); if(hi===lo){ hi+=1; lo-=1; }
+  const up = data[data.length-1] >= data[0];
+  const col = up?'#36e0a6':'#ff5d73';
+  ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.shadowColor=col; ctx.shadowBlur=8;
+  ctx.beginPath();
+  data.forEach((v,i)=>{ const x=i/(data.length-1)*W; const y=H-((v-lo)/(hi-lo))*(H-8)-4; i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
+  ctx.stroke();
+  // fill gradient
+  ctx.shadowBlur=0; ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath();
+  const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0, up?'rgba(54,224,166,0.22)':'rgba(255,93,115,0.22)'); g.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=g; ctx.fill();
 }
 
 function genId(){ return ++G.RID; }
