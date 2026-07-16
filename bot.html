@@ -3202,7 +3202,7 @@ function calibrateThresholds(){
   const recent = G.TRADE_HISTORY.slice(-20);
   const wins = recent.filter(t=>t.won).length;
   const wr = wins / recent.length;
-  if(!G._calib) G._calib = { baseConf:58, baseMinConf:72 };
+  if(!G._calib) G._calib = { baseConf:62, baseMinConf:78 };
   if(wr > 0.7){
     G._calib.baseConf = Math.min(65, G._calib.baseConf + 1);
     G._calib.baseMinConf = Math.min(78, G._calib.baseMinConf + 1);
@@ -3213,8 +3213,8 @@ function calibrateThresholds(){
     G._calib.baseConf += G._calib.baseConf > 58 ? -0.5 : G._calib.baseConf < 58 ? 0.5 : 0;
     G._calib.baseMinConf += G._calib.baseMinConf > 72 ? -0.5 : G._calib.baseMinConf < 72 ? 0.5 : 0;
   }
-  G._calib.baseConf = Math.round(Math.max(50, Math.min(68, G._calib.baseConf)));
-  G._calib.baseMinConf = Math.round(Math.max(62, Math.min(80, G._calib.baseMinConf)));
+  G._calib.baseConf = Math.round(Math.max(60, Math.min(72, G._calib.baseConf)));
+  G._calib.baseMinConf = Math.round(Math.max(75, Math.min(82, G._calib.baseMinConf)));
   log(`[CALIB] WR=${(wr*100).toFixed(0)}% over ${recent.length} → conf≥${G._calib.baseConf} minConf≥${G._calib.baseMinConf}`,'i');
 }
 
@@ -3302,7 +3302,10 @@ function runStrategyAnalysis(sym, candles, liveBuf){
     else if(fallAvgConf > calibTie){ action = 'FALL'; finalConf = Math.round(fallAvgConf); finalSrc = fallSrcs.join('+'); }
   }
   if(!action) return null;
-  finalConf = Math.min(96, Math.max(55, finalConf));
+  // Decisiveness filter: winning side must clearly beat the loser (better winrate, fewer marginal calls)
+  const losingAvg = action === 'RISE' ? fallAvgConf : riseAvgConf;
+  if(riseAvgConf > 0 && fallAvgConf > 0 && Math.abs(riseAvgConf - fallAvgConf) < 4) return null;
+  finalConf = Math.min(96, Math.max(75, finalConf));
   // Volatility regime
   const mi = G.MARKET_STATS?.[sym];
   if(mi){
