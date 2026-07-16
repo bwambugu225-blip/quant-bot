@@ -4865,11 +4865,10 @@ function initTraderId() {
   }
   G.TRADER_ID = traderId;
   
-  // Update the badge (username + trader ID)
+  // Update the badge (trader ID only)
   const badge = document.getElementById('traderIdBadge');
   if (badge) {
-    const uname = localStorage.getItem('btr_username');
-    badge.textContent = (uname ? '@' + uname + ' · ' : '') + traderId;
+    badge.textContent = traderId;
   }
 
   return traderId;
