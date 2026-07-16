@@ -1012,7 +1012,7 @@ const G = {
   HEARTBEAT:null, PING_TIMEOUT:null, RECONN:null, RECONN_ATT:0, RECONN_ACTIVE:false,
   STRATEGIES:[], STRATEGY_ACTIVE:[],
   WINS:0, LOSSES:0, CONS_LOSS:0, PNL:0, TRADES:0,
-  MARKET:{ candles:{}, prices:{}, tickSubs:{}, tickBuf:{}, candleOpenAt:{}, lastCloseAt:{}, subOk:{}, cooldown:{} },
+  MARKET:{ candles:{}, prices:{}, tickSubs:{}, tickBuf:{}, candleOpenAt:{}, lastCloseAt:{}, subOk:{}, cooldown:{}, liveBuf:{}, lastPrice:{} },
   CURRENT_MARKET:'R_50',
   MARKET_SELECTION_MODE:'auto',
   SELECTED_MARKET:'R_50',
@@ -2797,8 +2797,8 @@ function subscribeAll(){
 function connectMarketWS(){
   if(G.MWS && (G.MWS.readyState===WebSocket.OPEN || G.MWS.readyState===WebSocket.CONNECTING)) return;
   if(G.MWS_RECONN){ clearTimeout(G.MWS_RECONN); G.MWS_RECONN=null; }
-  // Use legacy Deriv WS with public app_id 1089 for unauthenticated market data
-  const mws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=1089');
+  // Current Deriv WS + app_id (1089 legacy public app is unreliable for unauthenticated ticks)
+  const mws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=' + G.APP_ID);
   G.MWS = mws;
   mws.onopen = ()=>{
     G.MWS_CONNECTED = true;
@@ -4364,9 +4364,7 @@ function updateAnalysisPanel(){
       G._haxScan=(G._haxScan||0)+1;
       if(G._haxScan>=5){ G._haxScan=0; haxPush(`scan ${sym} · rsi=${r?r.toFixed(0):'--'} bias=${bias} · watching`, 'a'); }
     }
-    // Matrix is heavier (rebuilds all market cells) — refresh every 2s, core every 1s
-    G._haxMatrixTick=(G._haxMatrixTick||0)+1;
-    if(G._haxMatrixTick>=2){ G._haxMatrixTick=0; renderHaxMatrix(); }
+    renderHaxMatrix();
   } catch(e){ /* never let the panel blank the app */ }
 }
 // Compute + render a live matrix for EVERY market on each tick
