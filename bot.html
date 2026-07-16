@@ -429,7 +429,7 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
       <div id="watchTopMarket" style="font-size:8px;color:var(--muted)">Signal: --</div>
     </div>
   </div>
-  <div class="sidebar-footer">BTraders v1</div>
+  <div class="sidebar-footer">BTraders God Mode v2</div>
 </div>
 
 <!-- MAIN CONTENT -->
@@ -1019,6 +1019,32 @@ function evaluateDigitStrategy(sym){
     if(freq100[d] < coldestCount) { coldestCount = freq100[d]; coldestOverallDigit = d; }
   }
 
+  // Pattern and sequence analysis
+  const patterns = detectDigitPatterns(hist, 30);
+  if(patterns){
+    if(patterns.isAlternating){
+      // Strong alternation: penalize streak continuation (reversion likely)
+      const lastRun = hist.slice(-5);
+      let streak = 1;
+      for(let i=lastRun.length-2;i>=0;i--){ if(lastRun[i]===lastRun[lastRun.length-1]) streak++; else break; }
+      if(streak >= 3){
+        for(let d=0; d<10; d++) probRow[d] = 0.111; // flatten (reversion)
+        probRow[lastRun[lastRun.length-1]] = 0.02; // nearly eliminate streak digit
+      }
+    }
+    if(patterns.isClustered && highestProb > 0.15){
+      // Clustered: boost the hot transition further
+      probRow[mostLikelyDigit] = Math.min(0.6, probRow[mostLikelyDigit] * 1.3);
+    }
+    // Gap digit bonus: digits that haven't appeared recently get a small probability boost
+    for(const g of patterns.gaps){
+      probRow[g] = Math.max(probRow[g], 0.08);
+    }
+    // Re-normalize
+    const sum = probRow.reduce((a,b)=>a+b, 0);
+    if(sum > 0) for(let d=0; d<10; d++) probRow[d] /= sum;
+  }
+
   // 3. Resolve active contract type
   const mode = BotState.contractType || 'MC';
 
@@ -1375,7 +1401,9 @@ function updateMartingaleUI(){
   if(csEl) csEl.textContent = '$'+(+Martingale.currentStake||0).toFixed(2);
   if(Martingale.enabled){
     const rfBadge = document.getElementById('rfSysBadge');
-    if(rfBadge) rfBadge.textContent = `MARTINGALE x${Martingale.mult} def:$${Martingale.sessionDeficit.toFixed(2)}`;
+    const winStreak = G.TRADE_HISTORY.slice(-5).filter(t=>t.won).length;
+    const mode = winStreak >= 3 ? 'ANTI' : 'MART';
+    if(rfBadge) rfBadge.textContent = `${mode} x${Martingale.mult} $${Martingale.currentStake.toFixed(2)} def:$${Martingale.sessionDeficit.toFixed(2)}`;
   } else {
     const rfBadge = document.getElementById('rfSysBadge');
     if(rfBadge) rfBadge.textContent = '';
@@ -1772,217 +1800,337 @@ function calcEMA(prices, period){
   for(let i=period;i<prices.length;i++) ema = prices[i]*k + ema*(1-k);
   return ema;
 }
-function runStrategyAnalysis(sym, candles){
-  const strategyCode = G.SELECTED_STRATEGY || 'ENS_XTREME';
-  if(!candles || candles.length < 20) return null;
+// ============================================================
+// ADVANCED INDICATOR HELPERS (God Mode Engine)
+// ============================================================
+function calcMACD(prices, fast=12, slow=26, signal=9){
+  if(prices.length < slow + signal) return null;
+  const emaF = calcEMA(prices, fast);
+  const emaS = calcEMA(prices, slow);
+  const macd = emaF - emaS;
+  const macdLine = [];
+  for(let i=slow-1;i<prices.length;i++){
+    const ef = calcEMA(prices.slice(0,i+1), fast);
+    const es = calcEMA(prices.slice(0,i+1), slow);
+    macdLine.push(ef - es);
+  }
+  const sigLine = calcEMA(macdLine, signal);
+  return { macd, signal:sigLine, histogram:macd - sigLine, macdLine:macdLine.slice(-1)[0] };
+}
+function calcBB(prices, period=20, mult=2){
+  if(prices.length < period) return null;
+  const m = sma(prices, period);
+  if(m === null) return null;
+  const sd = stddev(prices, period);
+  if(sd === null) return null;
+  const upper = m + mult * sd;
+  const lower = m - mult * sd;
+  const last = prices[prices.length-1];
+  const pctB = (last - lower) / (upper - lower || 1);
+  return { upper, middle: m, lower, pctB, width: (upper-lower)/m };
+}
+function calcADX(candles, period=14){
+  if(candles.length < period + 1) return null;
+  let plusDM=0, minusDM=0, tr14=0, atrVal=0;
+  for(let i=candles.length-period; i<candles.length; i++){
+    const up = candles[i].high - candles[i-1].high;
+    const dn = candles[i-1].low - candles[i].low;
+    const tr = Math.max(candles[i].high-candles[i].low, Math.abs(candles[i].high-candles[i-1].close), Math.abs(candles[i].low-candles[i-1].close));
+    if(i === candles.length-period){ tr14 = tr; atrVal = tr; } else { atrVal = (atrVal*13 + tr)/14; }
+    if(up > dn && up > 0) plusDM += up;
+    if(dn > up && dn > 0) minusDM += dn;
+  }
+  const pDI = 100 * plusDM / (atrVal * period || 1);
+  const nDI = 100 * minusDM / (atrVal * period || 1);
+  const dx = Math.abs(pDI - nDI) / ((pDI + nDI) || 1) * 100;
+  return { pDI, nDI, adx: dx, trend: pDI > nDI ? 'UP' : 'DN', strength: dx };
+}
+function calcStochasticK(highArr, lowArr, closeArr, p=14){
+  if(closeArr.length < p) return null;
+  const hh = Math.max(...highArr.slice(-p));
+  const ll = Math.min(...lowArr.slice(-p));
+  if(hh === ll) return 50;
+  return ((closeArr[closeArr.length-1] - ll) / (hh - ll)) * 100;
+}
+function detectRSIDivergence(prices, rsiVals, lookback=20){
+  if(prices.length < lookback || rsiVals.length < lookback) return null;
+  const recentP = prices.slice(-lookback);
+  const recentR = rsiVals.slice(-lookback);
+  let pLo=Infinity, pHi=-Infinity, rLo=Infinity, rHi=-Infinity;
+  let pLoAt=-1, pHiAt=-1, rLoAt=-1, rHiAt=-1;
+  for(let i=1; i<recentP.length-1; i++){
+    if(recentP[i] < pLo){ pLo = recentP[i]; pLoAt = i; }
+    if(recentP[i] > pHi){ pHi = recentP[i]; pHiAt = i; }
+    if(recentR[i] < rLo){ rLo = recentR[i]; rLoAt = i; }
+    if(recentR[i] > rHi){ rHi = recentR[i]; rHiAt = i; }
+  }
+  if(pLoAt > rLoAt && rLo > recentR[rLoAt-2] && pLo < recentP[Math.max(0,pLoAt-2)])
+    return { type:'BULL', conf:Math.min(80, 50 + (rLo - recentR[rLoAt-2])*5), src:'RSI-DIV' };
+  if(pHiAt > rHiAt && rHi < recentR[rHiAt-2] && pHi > recentP[Math.max(0,pHiAt-2)])
+    return { type:'BEAR', conf:Math.min(80, 50 + (recentR[rHiAt-2] - rHi)*5), src:'RSI-DIV' };
+  return null;
+}
+function calcKelly(pWin, payoutRatio=0.8){
+  if(pWin <= 0 || pWin >= 1) return 0.5;
+  const q = 1 - pWin;
+  const b = payoutRatio;
+  const f = (pWin * b - q) / b;
+  return Math.max(0.05, Math.min(0.95, f || 0.5));
+}
+function buildDigitMarkov(hist, order=1){
+  if(hist.length < 20) return null;
+  const trans = {};
+  for(let i=order; i<hist.length; i++){
+    const key = hist.slice(i-order, i).join(',');
+    const next = hist[i];
+    if(!trans[key]) trans[key] = Array(10).fill(0);
+    trans[key][next]++;
+  }
+  const probs = {};
+  for(const [key, counts] of Object.entries(trans)){
+    const total = counts.reduce((a,b)=>a+b, 0);
+    probs[key] = counts.map(c => c/total);
+  }
+  return probs;
+}
+function predictDigitMarkov(markov, recent, order=1){
+  if(!markov || recent.length < order) return null;
+  const key = recent.slice(-order).join(',');
+  const probs = markov[key];
+  if(!probs) return null;
+  let bestD=0, bestP=0;
+  for(let d=0; d<10; d++){
+    if(probs[d] > bestP){ bestP = probs[d]; bestD = d; }
+  }
+  return { digit: bestD, prob: bestP, all: probs };
+}
+function detectDigitPatterns(hist, lookback=20){
+  const seq = hist.slice(-lookback);
+  if(seq.length < 6) return null;
+  let repeatScore = 0, bestRepeat = null;
+  for(let plen=2; plen<=5; plen++){
+    let matches=0; const maxChecks = Math.min(seq.length - plen*2, plen*3);
+    for(let i=0; i<maxChecks; i++){
+      if(seq[i] === seq[i+plen]) matches++;
+    }
+    const ratio = maxChecks > 0 ? matches/maxChecks : 0;
+    if(ratio > repeatScore && plen <= seq.length/2){
+      repeatScore = ratio; bestRepeat = plen;
+    }
+  }
+  let alt=0;
+  for(let i=1; i<seq.length; i++) if(seq[i] !== seq[i-1]) alt++;
+  const altRatio = alt/(seq.length-1);
+  const recent = new Set(seq.slice(-5));
+  const gaps = [];
+  for(let d=0; d<10; d++) if(!recent.has(d)) gaps.push(d);
+  return {
+    repeatPattern: repeatScore > 0.6 ? { length: bestRepeat, confidence: repeatScore } : null,
+    alternation: altRatio,
+    isAlternating: altRatio > 0.75,
+    isClustered: altRatio < 0.3,
+    gaps,
+    gapCount: gaps.length
+  };
+}
+function calibrateThresholds(){
+  if(G.TRADE_HISTORY.length < 10) return;
+  const recent = G.TRADE_HISTORY.slice(-20);
+  const wins = recent.filter(t=>t.won).length;
+  const wr = wins / recent.length;
+  if(!G._calib) G._calib = { baseConf:58, baseMinConf:72 };
+  if(wr > 0.7){
+    G._calib.baseConf = Math.min(65, G._calib.baseConf + 1);
+    G._calib.baseMinConf = Math.min(78, G._calib.baseMinConf + 1);
+  } else if(wr < 0.45){
+    G._calib.baseConf = Math.max(52, G._calib.baseConf - 1);
+    G._calib.baseMinConf = Math.max(65, G._calib.baseMinConf - 1);
+  } else {
+    G._calib.baseConf += G._calib.baseConf > 58 ? -0.5 : G._calib.baseConf < 58 ? 0.5 : 0;
+    G._calib.baseMinConf += G._calib.baseMinConf > 72 ? -0.5 : G._calib.baseMinConf < 72 ? 0.5 : 0;
+  }
+  G._calib.baseConf = Math.round(Math.max(50, Math.min(68, G._calib.baseConf)));
+  G._calib.baseMinConf = Math.round(Math.max(62, Math.min(80, G._calib.baseMinConf)));
+  log(`[CALIB] WR=${(wr*100).toFixed(0)}% over ${recent.length} → conf≥${G._calib.baseConf} minConf≥${G._calib.baseMinConf}`,'i');
+}
 
+// ============================================================
+// GOD MODE ENSEMBLE STRATEGY ENGINE
+// ============================================================
+function runStrategyAnalysis(sym, candles, liveBuf){
+  try {
+  if(!candles || candles.length < 20) return null;
   const prices = candles.map(c => c.close);
   const last = candles[candles.length-1];
-  const prev = candles[candles.length-2];
-  if(!last || !prev) return null;
-
   const hi = candles.map(c => c.high);
   const lo = candles.map(c => c.low);
   const cl = candles.map(c => c.close);
 
+  // ── Indicators ──
   const rsiVal = calcRSI(prices, 14);
-  const ema5 = calcEMA(prices, 5);
   const ema20 = calcEMA(prices, 20);
   const ema50 = calcEMA(prices, 50);
+  const macd = calcMACD(prices, 12, 26, 9);
+  const bb = calcBB(prices, 20, 2);
+  const adx = calcADX(candles, 14);
+  const stochK = calcStochasticK(hi, lo, cl, 14);
+  const rsiVals = [];
+  for(let i=14; i<cl.length; i++) rsiVals.push(calcRSI(cl.slice(0,i+1), 14));
+  const rsiDiv = detectRSIDivergence(cl, rsiVals, 20);
+  const ema8 = prices.length >= 8 ? calcEMA(prices, 8) : last.close;
+  const trendStrength = adx ? adx.strength : 0;
+  const trendDir = adx ? adx.trend : null;
 
+  // WPR(7)
+  const p=7;
+  const getWPR7 = (idx) => {
+    if(idx < p) return -50;
+    const hh = Math.max(...hi.slice(idx-p+1, idx+1));
+    const ll = Math.min(...lo.slice(idx-p+1, idx+1));
+    return hh === ll ? -50 : ((hh - cl[idx]) / (hh - ll)) * -100;
+  };
+  const cw = getWPR7(cl.length - 1);
+  const pw = cl.length >= 2 ? getWPR7(cl.length - 2) : -50;
+
+  // ATR(14)
+  let atrVal=null, atrSmaVal=null;
+  if(candles.length>=35){
+    let s=0; const atrs=[];
+    for(let i=candles.length-14;i<candles.length;i++){
+      const tr=Math.max(candles[i].high-candles[i].low,Math.abs(candles[i].high-candles[i-1].close),Math.abs(candles[i].low-candles[i-1].close));
+      atrs.push(i>=candles.length-14?tr:(atrs[atrs.length-1]*13+tr)/14);
+      s+=atrs[atrs.length-1];
+    }
+    atrVal=atrs[atrs.length-1];
+    atrSmaVal=s/atrs.length;
+  }
+
+  const closePos = cl[cl.length-1];
   const body = Math.abs(last.close - last.open);
   const range = last.high - last.low;
   const upperWick = last.high - Math.max(last.open, last.close);
   const lowerWick = Math.min(last.open, last.close) - last.low;
+  const avgRange = candles.slice(-14).reduce((s,ca)=>s+Math.abs(ca.high-ca.low),0)/14;
 
-  // Helper for Williams %R (p=10)
-  const getWPR = (idx, period = 10) => {
-    if(idx < period) return -50;
-    const hh = max(hi.slice(idx - period + 1, idx + 1));
-    const ll = min(lo.slice(idx - period + 1, idx + 1));
-    return hh === ll ? -50 : ((hh - cl[idx]) / (hh - ll)) * -100;
-  };
+  // ── Strategy Ensemble ──
+  const votes = [];
 
-  switch(strategyCode){
-    case 'WPR_TREND': {
-      const cw = getWPR(cl.length - 1);
-      const pw = getWPR(cl.length - 2);
-      const trendUp = ema20 > ema50;
-      const trendDn = ema20 < ema50;
-      if (pw < -80 && cw >= -80 && trendUp) {
-        return { action: 'RISE', conf: 88, src: 'WPR_TREND' };
+  // 1) WPR Reversal (enhanced with multiple zones)
+  if(pw>=-75 && cw>=-85 && cw<=-78 && atrVal!==null && atrSmaVal!==null && atrVal<atrSmaVal)
+    votes.push({action:'RISE', conf:Math.round(72+(cw+82)*2), src:'WPR-R'});
+  else if(pw>=-80 && cw<-80 && atrVal!==null && atrSmaVal!==null && atrVal<atrSmaVal*0.9)
+    votes.push({action:'RISE', conf:Math.round(62+(Math.min(-80,cw)+80)*1.5), src:'WPR-R2'});
+  if(pw < -80 && cw > pw + 5 && cw > -85)
+    votes.push({action:'RISE', conf:Math.round(55 + (cw+80)*2), src:'WPR-B'});
+  if(pw<=-25 && cw>=-22 && cw<=-15 && atrVal!==null && atrSmaVal!==null && atrVal>atrSmaVal*0.95)
+    votes.push({action:'FALL', conf:Math.round(67+(22+cw)*2), src:'WPR-F'});
+  else if(pw<=-20 && cw>-20 && atrVal!==null && atrSmaVal!==null && atrVal>atrSmaVal*1.05)
+    votes.push({action:'FALL', conf:Math.round(60+(Math.max(-20,cw)+20)*2), src:'WPR-F2'});
+  if(pw > -20 && cw < pw - 3 && cw < -30)
+    votes.push({action:'FALL', conf:Math.round(55 + (-20-cw)*2), src:'WPR-S'});
+
+  // 2) MACD Crossover
+  if(macd && Math.abs(macd.histogram) > 0.0001){
+    if(macd.macd > macd.signal && macd.histogram > 0)
+      votes.push({action:'RISE', conf:Math.round(55+Math.min(20,Math.abs(macd.histogram)*2000)), src:'MACD-U'});
+    if(macd.macd < macd.signal && macd.histogram < 0)
+      votes.push({action:'FALL', conf:Math.round(55+Math.min(20,Math.abs(macd.histogram)*2000)), src:'MACD-D'});
+  }
+
+  // 3) RSI Extreme + Divergence
+  if(rsiDiv) votes.push({action:rsiDiv.type==='BULL'?'RISE':'FALL', conf:rsiDiv.conf, src:'RSI-DIV'});
+  if(rsiVal < 30 && closePos < ema20) votes.push({action:'RISE', conf:Math.round(58 + (30-rsiVal)*1.5), src:'RSI-OS'});
+  if(rsiVal > 70 && closePos > ema20) votes.push({action:'FALL', conf:Math.round(58 + (rsiVal-70)*1.5), src:'RSI-OB'});
+
+  // 4) Bollinger Band Touch/Bounce
+  if(bb){
+    if(closePos <= bb.lower * 1.001) votes.push({action:'RISE', conf:Math.min(85,55+Math.round((1-bb.pctB)*30)), src:'BB-L'});
+    if(closePos >= bb.upper * 0.999) votes.push({action:'FALL', conf:Math.min(85,55+Math.round(bb.pctB*30)), src:'BB-U'});
+  }
+
+  // 5) Stochastic Reversal
+  if(stochK !== null){
+    if(stochK < 20 && pw < -70) votes.push({action:'RISE', conf:57, src:'STOCH-OS'});
+    if(stochK > 80 && pw > -30) votes.push({action:'FALL', conf:57, src:'STOCH-OB'});
+  }
+
+  // 6) EMA Pullback
+  const emaDiff20_50 = (ema20 - ema50) / (ema50 || 1);
+  if(emaDiff20_50 < -0.005 && closePos > ema20 && rsiVal < 45) votes.push({action:'RISE', conf:56, src:'EMA-PB'});
+  if(emaDiff20_50 > 0.005 && closePos < ema20 && rsiVal > 55) votes.push({action:'FALL', conf:56, src:'EMA-PB'});
+
+  // 7) Renko Flow (ported from original)
+  if(candles.length >= 16 && avgRange > 0.001){
+    const brickSize = Math.max(avgRange * 0.5, last.close * 0.0001);
+    const bricks = [];
+    let lastBrickPrice = candles[0].close;
+    let lastBrickType = 'UP';
+    for(let i=1;i<candles.length;i++){
+      const diff = candles[i].close - lastBrickPrice;
+      if(lastBrickType === 'UP'){
+        if(diff >= brickSize){ lastBrickPrice += brickSize; bricks.push('UP'); }
+        else if(diff <= -brickSize*2){ lastBrickPrice -= brickSize*2; bricks.push('DOWN'); lastBrickType='DOWN'; }
+      } else {
+        if(diff <= -brickSize){ lastBrickPrice -= brickSize; bricks.push('DOWN'); }
+        else if(diff >= brickSize*2){ lastBrickPrice += brickSize*2; bricks.push('UP'); lastBrickType='UP'; }
       }
-      if (pw > -20 && cw <= -20 && trendDn) {
-        return { action: 'FALL', conf: 88, src: 'WPR_TREND' };
-      }
-      break;
     }
-    case 'SRB': {
-      const window = candles.slice(-15, -1);
-      const sLevel = min(window.map(k => k.low));
-      const rLevel = max(window.map(k => k.high));
-      const atSupport = last.low <= sLevel * 1.002;
-      const atResistance = last.high >= rLevel * 0.998;
-      const hasStrongLowerWick = range > 0 && lowerWick / range > 0.45;
-      const hasStrongUpperWick = range > 0 && upperWick / range > 0.45;
-      if (atSupport && hasStrongLowerWick && last.close > last.open) {
-        return { action: 'RISE', conf: 85, src: 'SRB' };
-      }
-      if (atResistance && hasStrongUpperWick && last.close < last.open) {
-        return { action: 'FALL', conf: 85, src: 'SRB' };
-      }
-      break;
-    }
-    case 'EMA_CROSS': {
-      const prevEma5 = calcEMA(prices.slice(0, -1), 5);
-      const prevEma20 = calcEMA(prices.slice(0, -1), 20);
-      const goldenCross = prevEma5 <= prevEma20 && ema5 > ema20;
-      const deathCross = prevEma5 >= prevEma20 && ema5 < ema20;
-      if (goldenCross && rsiVal > 50) {
-        return { action: 'RISE', conf: 86, src: 'EMA_CROSS' };
-      }
-      if (deathCross && rsiVal < 50) {
-        return { action: 'FALL', conf: 86, src: 'EMA_CROSS' };
-      }
-      break;
-    }
-    case 'MACD_PA': {
-      const prevBody = Math.abs(prev.close - prev.open);
-      const bullishEngulfing = prev.close < prev.open && last.close > last.open && last.close > prev.open && last.open < prev.close && body > prevBody * 1.2;
-      const bearishEngulfing = prev.close > prev.open && last.close < last.open && last.close < prev.open && last.open > prev.close && body > prevBody * 1.2;
-      if (rsiVal < 35 && bullishEngulfing) {
-        return { action: 'RISE', conf: 87, src: 'MACD_PA' };
-      }
-      if (rsiVal > 65 && bearishEngulfing) {
-        return { action: 'FALL', conf: 87, src: 'MACD_PA' };
-      }
-      break;
-    }
-    case 'RENKO_FLOW': {
-      // 1. Calculate dynamic brick size based on Average True Range (ATR) over last 14 candles
-      const atrPeriod = 14;
-      if (candles.length < atrPeriod + 2) break;
-      let trSum = 0;
-      for (let i = candles.length - atrPeriod; i < candles.length; i++) {
-        const high = candles[i].high;
-        const low = candles[i].low;
-        const prevClose = candles[i-1] ? candles[i-1].close : candles[i].open;
-        const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
-        trSum += tr;
-      }
-      const atr = trSum / atrPeriod;
-
-      // Dynamic brick size: 0.75 * ATR, ensuring at least 0.01% of current price to prevent divide-by-zero
-      const brickSize = Math.max(atr * 0.75, last.close * 0.0001);
-
-      // 2. Build virtual Renko bricks from close prices and track volumetric tick weight
-      const bricks = []; // array of { type: 'UP'|'DOWN', price, volume, epoch }
-      let lastBrickPrice = candles[0].close;
-      let lastBrickType = 'UP';
-
-      for (let i = 1; i < candles.length; i++) {
-        const c = candles[i];
-        const price = c.close;
-        const diff = price - lastBrickPrice;
-        const volume = c.ticks || 10;
-
-        if (lastBrickType === 'UP') {
-          if (diff >= brickSize) {
-            const count = Math.floor(diff / brickSize);
-            for (let j = 0; j < count; j++) {
-              lastBrickPrice += brickSize;
-              bricks.push({ type: 'UP', price: lastBrickPrice, volume: volume / count, epoch: c.epoch });
-            }
-          } else if (diff <= -brickSize * 2) {
-            const count = Math.floor(Math.abs(diff) / brickSize) - 1;
-            lastBrickPrice -= brickSize * 2;
-            bricks.push({ type: 'DOWN', price: lastBrickPrice, volume: volume / (count + 1), epoch: c.epoch });
-            lastBrickType = 'DOWN';
-            for (let j = 0; j < count; j++) {
-              lastBrickPrice -= brickSize;
-              bricks.push({ type: 'DOWN', price: lastBrickPrice, volume: volume / (count + 1), epoch: c.epoch });
-            }
-          }
-        } else { // lastBrickType === 'DOWN'
-          if (diff <= -brickSize) {
-            const count = Math.floor(Math.abs(diff) / brickSize);
-            for (let j = 0; j < count; j++) {
-              lastBrickPrice -= brickSize;
-              bricks.push({ type: 'DOWN', price: lastBrickPrice, volume: volume / count, epoch: c.epoch });
-            }
-          } else if (diff >= brickSize * 2) {
-            const count = Math.floor(diff / brickSize) - 1;
-            lastBrickPrice += brickSize * 2;
-            bricks.push({ type: 'UP', price: lastBrickPrice, volume: volume / (count + 1), epoch: c.epoch });
-            lastBrickType = 'UP';
-            for (let j = 0; j < count; j++) {
-              lastBrickPrice += brickSize;
-              bricks.push({ type: 'UP', price: lastBrickPrice, volume: volume / (count + 1), epoch: c.epoch });
-            }
-          }
-        }
-      }
-
-      if (bricks.length < 3) break;
-
-      const latestBrick = bricks[bricks.length - 1];
-      const prevBrick = bricks[bricks.length - 2];
-
-      // 3. Volumetric Flow Check (tick flow momentum)
-      const avgCandleVolume = candles.slice(-10).reduce((acc, curr) => acc + (curr.ticks || 10), 0) / 10;
-      const latestBrickVolume = latestBrick.volume;
-      const isVolumeSurge = latestBrickVolume > avgCandleVolume * 1.12 || avgCandleVolume <= 1;
-
-      // 4. Trend Alignment (EMA 5/20/50 & RSI constraints)
-      const trendUp = ema20 > ema50 && ema5 > ema20;
-      const trendDn = ema20 < ema50 && ema5 < ema20;
-
-      const isBullishReversal = prevBrick.type === 'DOWN' && latestBrick.type === 'UP';
-      const isBearishReversal = prevBrick.type === 'UP' && latestBrick.type === 'DOWN';
-      const isBullishContinuation = prevBrick.type === 'UP' && latestBrick.type === 'UP';
-      const isBearishContinuation = prevBrick.type === 'DOWN' && latestBrick.type === 'DOWN';
-
-      if (trendUp && rsiVal < 68) {
-        if ((isBullishReversal && isVolumeSurge) || (isBullishContinuation && isVolumeSurge && rsiVal > 48)) {
-          return { action: 'RISE', conf: 92, src: 'RENKO_FLOW' };
-        }
-      }
-      if (trendDn && rsiVal > 32) {
-        if ((isBearishReversal && isVolumeSurge) || (isBearishContinuation && isVolumeSurge && rsiVal < 52)) {
-          return { action: 'FALL', conf: 92, src: 'RENKO_FLOW' };
-        }
-      }
-      break;
-    }
-    case 'ENS_XTREME':
-    default: {
-      let riseSignals = 0;
-      let fallSignals = 0;
-      const cw = getWPR(cl.length - 1);
-      if (cw < -80) riseSignals++;
-      if (cw > -20) fallSignals++;
-      if (rsiVal < 35) riseSignals++;
-      if (rsiVal > 65) fallSignals++;
-      const window = candles.slice(-12, -1);
-      const sLevel = min(window.map(k => k.low));
-      const rLevel = max(window.map(k => k.high));
-      if (last.low <= sLevel * 1.002) riseSignals++;
-      if (last.high >= rLevel * 0.998) fallSignals++;
-      const prevBody = Math.abs(prev.close - prev.open);
-      const bullishEngulfing = prev.close < prev.open && last.close > last.open && last.close > prev.open && last.open < prev.close && body > prevBody * 1.2;
-      const bearishEngulfing = prev.close > prev.open && last.close < last.open && last.close < prev.open && last.open > prev.close && body > prevBody * 1.2;
-      if (range > 0 && lowerWick / range > 0.4 || bullishEngulfing) riseSignals++;
-      if (range > 0 && upperWick / range > 0.4 || bearishEngulfing) fallSignals++;
-      if (riseSignals >= 3) {
-        return { action: 'RISE', conf: Math.min(99, 90 + riseSignals * 2), src: 'ENS_XTREME' };
-      }
-      if (fallSignals >= 3) {
-        return { action: 'FALL', conf: Math.min(99, 90 + fallSignals * 2), src: 'ENS_XTREME' };
-      }
-      break;
+    if(bricks.length >= 3){
+      const rev = bricks[bricks.length-1] !== bricks[bricks.length-2];
+      if(rev && bricks[bricks.length-1]==='UP' && rsiVal<55) votes.push({action:'RISE', conf:60, src:'RENKO'});
+      if(rev && bricks[bricks.length-1]==='DOWN' && rsiVal>45) votes.push({action:'FALL', conf:60, src:'RENKO'});
     }
   }
-  return null;
+
+  // ── Ensemble Voting ──
+  if(votes.length === 0) return null;
+  let riseVotes=0, fallVotes=0, riseConf=0, fallConf=0, riseSrcs=[], fallSrcs=[];
+  for(const v of votes){
+    if(v.action === 'RISE'){ riseVotes++; riseConf += v.conf; riseSrcs.push(v.src); }
+    else { fallVotes++; fallConf += v.conf; fallSrcs.push(v.src); }
+  }
+  const riseAvgConf = riseVotes > 0 ? riseConf / riseVotes : 0;
+  const fallAvgConf = fallVotes > 0 ? fallConf / fallVotes : 0;
+  const calibConf = G._calib?.baseConf || 58;
+  const calibTie = G._calib?.baseConf ? G._calib.baseConf + 4 : 62;
+
+  let action = null, finalConf = 0, finalSrc = '';
+  if(riseVotes > fallVotes && riseAvgConf > calibConf){
+    const trendPenalty = (trendDir === 'DN' && trendStrength > 30) ? -6 : (trendDir === 'DN' && trendStrength > 20) ? -3 : 0;
+    action = 'RISE'; finalConf = Math.round(riseAvgConf + (riseVotes - fallVotes)*3 + trendPenalty); finalSrc = riseSrcs.join('+');
+  } else if(fallVotes > riseVotes && fallAvgConf > calibConf){
+    const trendPenalty = (trendDir === 'UP' && trendStrength > 30) ? -6 : (trendDir === 'UP' && trendStrength > 20) ? -3 : 0;
+    action = 'FALL'; finalConf = Math.round(fallAvgConf + (fallVotes - riseVotes)*3 + trendPenalty); finalSrc = fallSrcs.join('+');
+  } else if(riseVotes === fallVotes && riseVotes > 0){
+    if(riseAvgConf > fallAvgConf && riseAvgConf > calibTie){ action = 'RISE'; finalConf = Math.round(riseAvgConf); finalSrc = riseSrcs.join('+'); }
+    else if(fallAvgConf > calibTie){ action = 'FALL'; finalConf = Math.round(fallAvgConf); finalSrc = fallSrcs.join('+'); }
+  }
+  if(!action) return null;
+  finalConf = Math.min(96, Math.max(55, finalConf));
+  // Volatility regime
+  const mi = G.MARKET_STATS?.[sym];
+  if(mi){
+    if(mi.vol === 'low') finalConf += 2;
+    if(mi.vol === 'high') finalConf -= 2;
+  }
+  const streak = G.CONS_LOSS || 0;
+  if(streak >= 2) finalConf = Math.round(finalConf * (1 - streak * 0.02));
+  if(G.WINS > 0 && G.LOSSES === 0) finalConf = Math.min(96, finalConf + 3);
+
+  return { action, conf:finalConf, src:finalSrc, evidence:{votes:votes.length, riseVotes, fallVotes, trend:trendDir, adx:Math.round(trendStrength)} };
+  } catch(e){ log(`[CRASH] runStrategyAnalysis: ${e.message}`,'e'); return null; }
+}
+
+function evaluateSingleMarket(sym, liveBuf){
+  const c = G.MARKET.candles[sym];
+  if(!c || c.length < 10) return null;
+  const arr = liveBuf && liveBuf.length >= 2 ? [...c, {
+    open: c[c.length-1].close,
+    high: max(liveBuf),
+    low: min(liveBuf),
+    close: liveBuf[liveBuf.length-1]
+  }] : c;
+  return runStrategyAnalysis(sym, arr, liveBuf);
 }
 
 function evaluateSingleMarket(sym, liveBuf){
@@ -2005,16 +2153,21 @@ function evaluateAndTrade(sym, liveBuf){
   if(Date.now() - G.BOOT_AT < 4000) return;
   if(G.MARKET_SELECTION_MODE==='manual' && sym!==G.SELECTED_MARKET) return;
 
-  // Global cooldown: minimum 20s between trades
-  if(G._lastTradeAt && Date.now() - G._lastTradeAt < 20000) return;
-  // Per-market post-loss cooldown: 45s
-  if(G._marketLossAt?.[sym] && Date.now() - G._marketLossAt[sym] < 45000) return;
-  // Loss cluster breaker: 2+ losses in 120s → pause 60s
-  if(G._clusterUntil && Date.now() < G._clusterUntil) return;
-
-  // Build candle array with live virtual candle for real-time WR
+  // ── Dynamic cooldowns (adaptive based on recent performance) ──
+  const recentWins = G.TRADE_HISTORY.slice(-10).filter(t=>t.won).length;
+  const recentWR = G.TRADE_HISTORY.length >= 5 ? recentWins / Math.min(G.TRADE_HISTORY.length, 10) : 0.5;
+  const baseCD = recentWR > 0.7 ? 10000 : recentWR < 0.4 ? 35000 : 20000;
   const c = G.MARKET.candles[sym];
   if(!c || c.length < 10) return;
+  const avgR = (c.slice(-20).reduce((s,x)=>s+x.high-x.low,0)||1)/Math.min(c.length,20);
+  const lastR = c[c.length-1].high-c[c.length-1].low;
+  const volFactor = lastR > avgR * 1.5 ? 1.3 : 1;
+  const dynamicCD = Math.round(baseCD * volFactor);
+  if(G._lastTradeAt && Date.now() - G._lastTradeAt < dynamicCD) return;
+  const lossCD = recentWR > 0.6 ? 30000 : 45000;
+  if(G._marketLossAt?.[sym] && Date.now() - G._marketLossAt[sym] < lossCD) return;
+  if(G._clusterUntil && Date.now() < G._clusterUntil) return;
+
   const arr = liveBuf && liveBuf.length >= 2 ? [...c, {
     open: c[c.length-1].close,
     high: max(liveBuf),
@@ -2022,7 +2175,7 @@ function evaluateAndTrade(sym, liveBuf){
     close: liveBuf[liveBuf.length-1]
   }] : c;
 
-  const result = runStrategyAnalysis(sym, arr);
+  const result = runStrategyAnalysis(sym, arr, liveBuf);
   if(result){
     result.lastPrice = arr[arr.length-1].close;
     result.sym = sym;
@@ -2043,13 +2196,25 @@ function execTrade(signal, asset){
   try {
   if(G.ACTIVE_CONTRACTS.size>=1) return;
   asset = asset || G.CURRENT_MARKET;
-  const stake = signal.copyStake || (Martingale.enabled ? Martingale.currentStake : parseFloat(document.getElementById('rfStake')?.value||1));
+  let stake = signal.copyStake || (Martingale.enabled ? Martingale.currentStake : parseFloat(document.getElementById('rfStake')?.value||1));
   const dur = G.TRADE_DURATION || 15;
   const durUnit = G.TRADE_DURATION_UNIT || 's';
   const ct = signal.action==='RISE'?'CALL':'PUT';
+
+  // ── Kelly Criterion sizing (non-martingale, non-copy) ──
+  if(!Martingale.enabled && !signal.copyStake && signal.conf){
+    const recentWR = G.TRADE_HISTORY.length >= 10 ? G.TRADE_HISTORY.slice(-10).filter(t=>t.won).length / 10 : 0.5;
+    const pWin = Math.min(0.95, Math.max(0.5, (signal.conf/100 * 0.7 + recentWR * 0.3)));
+    const kellyFrac = calcKelly(pWin, 0.8);
+    const baseStake = parseFloat(document.getElementById('rfStake')?.value||1);
+    const kellyStake = +(baseStake * Math.min(2, kellyFrac * 3)).toFixed(2);
+    stake = Math.max(0.35, Math.min(100, kellyStake));
+    log(`[KELLY] pWin=${(pWin*100).toFixed(0)}% f=${(kellyFrac*100).toFixed(0)}% stake=$${stake.toFixed(2)}`,'i');
+  }
+
   G.LAST_SIGNAL = { ...signal, stake, dur, asset };
   G._lastTradeAt = Date.now();
-  log(`[TRADE] ${ct} $${stake.toFixed(2)} ${asset} via ${signal.src}`,'t');
+  log(`[TRADE] ${ct} $${stake.toFixed(2)} ${asset} via ${signal.src} (${signal.conf||'?'}%)`,'t');
   if(!G._tradedCandle) G._tradedCandle = {};
   G._tradedCandle[asset] = true;
   G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
@@ -2114,15 +2279,41 @@ function handleContract(c){
     showToast(`${won?'WIN':'LOSS'} ${profitStr}`, won?'win':'loss');
     log(`[${won?'WIN':'LOSS'}] ${fmt$(c.profit)}`, won?'s':'e');
     if(G.LAST_SIGNAL && G.TRADE_MODE!=='DIGITS'){ updateStrategyStats(G.LAST_SIGNAL, won); learnFromTrade(G.LAST_SIGNAL, won); }
-    if(won){ G.WINS++; G.CONS_LOSS=0; }
+    if(won){
+      G.WINS++; G.CONS_LOSS=0;
+      // Anti-martingale: after 3 consecutive wins, reduce stake to lock profits
+      if(Martingale.enabled && !c.contract_type?.startsWith('DIGIT')){
+        const winStreak = G.TRADE_HISTORY.slice(-5).filter(t=>t.won).length;
+        if(winStreak >= 3){
+          Martingale.currentStake = Math.max(Martingale.baseStake, +(Martingale.currentStake * 0.85).toFixed(2));
+          log(`[ANTI-MART] Win streak ${winStreak} — reduced stake to $${Martingale.currentStake.toFixed(2)}`,'i');
+        }
+      }
+    }
     else {
       G.LOSSES++; G.CONS_LOSS++;
-      // Per-market loss timestamp (used for cooldown)
       if(G.LAST_SIGNAL?.asset) G._marketLossAt[G.LAST_SIGNAL.asset] = Date.now();
-      // Loss cluster: 2+ losses in 120s → pause 60s
       const now = Date.now();
       const lossesInWindow = G.TRADE_HISTORY.slice(-5).filter(t => !t.won && now - new Date(t.time).getTime() < 120000).length;
-      if(lossesInWindow >= 2) G._clusterUntil = now + 60000;
+      if(lossesInWindow >= 2){
+        const prevPause = G._lastClusterPause || 0;
+        G._clusterPauseDuration = prevPause === 0 ? 60000 : Math.min(120000, Math.round(prevPause * 1.5));
+        G._clusterUntil = now + G._clusterPauseDuration;
+        G._lastClusterPause = G._clusterPauseDuration;
+        log(`[CLUSTER] ${lossesInWindow} losses in 2m — pause ${G._clusterPauseDuration/1000}s`,'w');
+      }
+      if(G.CONS_LOSS >= 5 && G.RUNNING){
+        log(`[STOP] ${G.CONS_LOSS} consecutive losses — stopping engine`,'e');
+        stopBot();
+        showToast('5 consecutive losses — engine stopped', 'sl');
+        return;
+      }
+      if(G.DAILY.pnl <= -50 && G.RUNNING){
+        log(`[STOP] Daily loss limit -$50 reached — stopping engine`,'e');
+        stopBot();
+        showToast('Daily loss limit reached!', 'sl');
+        return;
+      }
     }
     learnOutcome(G.LAST_SIGNAL?.fp, won);
     G.PNL += c.profit; G.DAILY.pnl += c.profit;
@@ -2134,7 +2325,8 @@ function handleContract(c){
       } else {
         Martingale.sessionDeficit += Math.abs(c.profit);
         Martingale.cyclePnL -= Math.abs(c.profit);
-        Martingale.currentStake = +(Martingale.currentStake * Martingale.mult).toFixed(2);
+        const maxStake = Martingale.baseStake * 8;
+        Martingale.currentStake = Math.min(maxStake, +(Martingale.currentStake * Martingale.mult).toFixed(2));
       }
       updateMartingaleUI();
     }
@@ -2158,6 +2350,7 @@ function handleContract(c){
     updateDash();
     addRecentTrade(`${won?'WIN':'LOSS'} ${fmt$(c.profit)}`, won?'tag-green':'tag-red');
     if(G.TRADES > 0 && G.TRADES % 10 === 0) sendSessionSummary(false);
+    if(G.TRADES > 0 && G.TRADES % 5 === 0) setTimeout(calibrateThresholds, 500);
     return;
   }
   } catch(e){ log(`[CRASH] handleContract: ${e.message}`,'e'); console.error(e); }
@@ -3837,8 +4030,9 @@ document.addEventListener('DOMContentLoaded', () => {
   BotState.stopLoss = parseFloat(document.getElementById('dgStopLoss')?.value || 5);
   BotState.currentStake = BotState.baseStake;
   updateDigitsUI();
-  log('[SYSTEM] BTraders ready \u00b7 15s engine', 's');
-  log(`[SYSTEM] ${G.STRATEGIES.length} strategies \u00b7 ${SYMBOLS.length} markets`, 'i');
+  log('[SYSTEM] BTraders ready \u00b7 God Mode Ensemble v2', 's');
+  log(`[SYSTEM] ${G.STRATEGIES.length+4} strategies (WPR+MACD+RSI+BB+ADX+STOCH+PA) \u00b7 ${SYMBOLS.length} markets`, 'i');
+  log('[SYSTEM] Kelly sizing \u00b7 Adaptive cooldowns \u00b7 Anti-martingale \u00b7 Markov digits', 'i');
   log('[SYSTEM] Copy mode ready \u2014 paste token to begin', 'i');
   // Stop everything on tab close
   window.addEventListener('beforeunload', () => {
@@ -3864,6 +4058,7 @@ document.addEventListener('DOMContentLoaded', () => {
   updateWatchlist();
   setInterval(updateDash, 2000);
   setInterval(updateWatchlist, 3000);
+  setInterval(calibrateThresholds, 120000);
 });
 </script>
 </body>
