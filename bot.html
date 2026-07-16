@@ -481,6 +481,74 @@ body::after{
   .hax-sig{font-size:28px}
   .hax-tape{height:70px}
 }
+
+/* ============================================================
+   GLOBAL HUD COHESION — apply the analysis-core aesthetic everywhere
+   ============================================================ */
+/* Reusable HUD shell: glass + scanline + neon edge + corner brackets */
+.hud{position:relative;background:linear-gradient(155deg,rgba(8,12,24,0.90),rgba(14,20,40,0.72));border:1px solid var(--line);border-radius:var(--radius);backdrop-filter:blur(12px) saturate(1.25);-webkit-backdrop-filter:blur(12px) saturate(1.25);box-shadow:0 12px 44px rgba(0,0,0,0.5),inset 0 0 26px rgba(54,225,255,0.05),0 0 0 1px rgba(54,225,255,0.04);overflow:hidden}
+.hud::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(54,225,255,0.02) 0 1px,transparent 1px 4px);pointer-events:none;opacity:.5}
+.hud::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 12% 0%,rgba(54,225,255,0.08),transparent 48%);pointer-events:none}
+.hud>.hud-c{position:absolute;width:12px;height:12px;border:2px solid var(--accent);opacity:.5;pointer-events:none;filter:drop-shadow(0 0 4px rgba(54,225,255,0.6))}
+.hud>.hud-c.tl{top:6px;left:6px;border-right:none;border-bottom:none}
+.hud>.hud-c.tr{top:6px;right:6px;border-left:none;border-bottom:none}
+.hud>.hud-c.bl{bottom:6px;left:6px;border-right:none;border-top:none}
+.hud>.hud-c.br{bottom:6px;right:6px;border-left:none;border-top:none}
+
+/* Sections inherit the HUD glass + scanline + accent edge */
+.section{position:relative;background:linear-gradient(160deg,rgba(10,14,26,0.55),rgba(14,20,38,0.32));border:1px solid var(--line);border-radius:var(--radius);margin:0 0 10px;padding:12px 14px;backdrop-filter:blur(8px);box-shadow:inset 0 0 20px rgba(54,225,255,0.04)}
+.section::before{content:'';position:absolute;inset:0;border-radius:var(--radius);background:repeating-linear-gradient(0deg,rgba(54,225,255,0.015) 0 1px,transparent 1px 4px);pointer-events:none;opacity:.5}
+.section>.section-title:first-child{position:relative;display:inline-flex;align-items:center;gap:6px}
+.section>.section-title:first-child::before{content:'⟁';color:var(--accent);font-size:9px;opacity:.7;filter:drop-shadow(0 0 6px rgba(54,225,255,0.6))}
+
+/* CALL / PUT buttons: neon core glow + animated ring */
+.btn-call{background:linear-gradient(135deg,#1bd49a,#36e0a6);box-shadow:0 6px 22px rgba(54,224,166,0.35),inset 0 0 14px rgba(255,255,255,0.18),0 0 0 1px rgba(54,224,166,0.25);color:#04130d;border-radius:var(--radius-sm);position:relative;overflow:hidden}
+.btn-call:hover{box-shadow:0 8px 32px rgba(54,224,166,0.6),inset 0 0 18px rgba(255,255,255,0.25),0 0 0 1px rgba(54,224,166,0.5)}
+.btn-put{background:linear-gradient(135deg,#ff3e5c,#ff5d73);box-shadow:0 6px 22px rgba(255,93,115,0.35),inset 0 0 14px rgba(255,255,255,0.18),0 0 0 1px rgba(255,93,115,0.25);color:#1a0408;border-radius:var(--radius-sm);position:relative;overflow:hidden}
+.btn-put:hover{box-shadow:0 8px 32px rgba(255,93,115,0.6),inset 0 0 18px rgba(255,255,255,0.25),0 0 0 1px rgba(255,93,115,0.5)}
+.btn-call::after,.btn-put::after{content:'';position:absolute;top:0;left:-60%;width:50%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.35),transparent);animation:sheen 3.5s ease-in-out infinite}
+
+/* KPI cards: stronger HUD glass + corner glow */
+.kpi{background:linear-gradient(160deg,rgba(10,14,26,0.7),rgba(14,20,38,0.5));border:1px solid var(--line);border-radius:var(--radius);padding:12px 6px;position:relative;overflow:hidden;box-shadow:inset 0 0 22px rgba(54,225,255,0.06),0 8px 28px rgba(0,0,0,0.4)}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.6;box-shadow:0 0 10px rgba(54,225,255,0.5)}
+.kpi::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(54,225,255,0.02) 0 1px,transparent 1px 4px);pointer-events:none;opacity:.4}
+
+/* Console: full HUD terminal w/ scanline + neon prompt */
+.console-box{background:rgba(4,7,14,0.9);border:1px solid var(--line);border-radius:var(--radius-sm);box-shadow:inset 0 0 30px rgba(0,0,0,0.65),inset 0 0 16px rgba(54,225,255,0.05),0 0 0 1px rgba(54,225,255,0.04);font-family:var(--font);text-shadow:0 0 6px rgba(120,160,255,0.15);position:relative}
+.console-box::before{content:'';position:absolute;inset:0;border-radius:var(--radius-sm);background:repeating-linear-gradient(0deg,rgba(54,225,255,0.02) 0 1px,transparent 1px 3px);pointer-events:none;opacity:.5}
+.console-box .s{color:var(--positive);text-shadow:0 0 8px rgba(54,224,166,0.4)}
+.console-box .e{color:var(--negative);text-shadow:0 0 8px rgba(255,93,115,0.4)}
+.console-box .i,.console-box .w{color:var(--accent);text-shadow:0 0 8px rgba(54,225,255,0.4)}
+
+/* Recent trades + asset/watch rows: neon tinted */
+.recent-trade{border-bottom:1px solid var(--line);padding:6px 4px;transition:.15s}
+.recent-trade:hover{background:var(--surface-2);box-shadow:inset 0 0 14px rgba(54,225,255,0.05)}
+.asset-item,.watch-item{border:1px solid transparent;border-radius:var(--radius-sm)}
+.asset-item:hover,.asset-item.selected,.watch-item:hover,.watch-item.selected{background:var(--surface-2);border-color:var(--line);box-shadow:inset 0 0 14px rgba(54,225,255,0.06),0 0 12px rgba(54,225,255,0.1)}
+.asset-item .sym,.watch-item .sym{font-family:var(--font-serif);letter-spacing:0.5px}
+
+/* Mode tabs: neon pill */
+.mode-tab{border:1px solid var(--line);color:var(--muted);background:rgba(10,14,26,0.5);border-radius:24px;text-transform:uppercase;position:relative;overflow:hidden}
+.mode-tab.active{background:linear-gradient(135deg,#36e1ff,#7b6bff);color:#04121f;border-color:transparent;box-shadow:0 0 20px rgba(54,225,255,0.5),inset 0 0 14px rgba(255,255,255,0.2);font-weight:800}
+.mode-tab:hover:not(.active){background:var(--surface-2);border-color:var(--accent);color:var(--accent);box-shadow:0 0 14px rgba(54,225,255,0.2)}
+
+/* Inputs: cyan glow focus everywhere */
+.inp,.login-card input,.tgToken,.tgChatId{background:rgba(8,12,22,0.7);border:1px solid var(--line);box-shadow:inset 0 1px 10px rgba(0,0,0,0.45);transition:border-color .25s,box-shadow .25s}
+.inp:focus,.login-card input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--acc-dim),0 0 18px rgba(54,225,255,0.3)}
+
+/* Tables (admin): HUD rows */
+table th{color:var(--muted);font-family:var(--font-serif);letter-spacing:1px;text-transform:uppercase;font-size:8px;border-bottom:1px solid var(--line)}
+table tr{border-bottom:1px solid rgba(94,140,255,0.08)}
+table tr:hover{background:rgba(54,225,255,0.04)}
+
+/* Sidebar sections get the glass HUD feel */
+.sidebar .sidebar-body .section{background:linear-gradient(160deg,rgba(10,14,26,0.5),rgba(14,20,38,0.3));box-shadow:inset 0 0 18px rgba(54,225,255,0.04)}
+
+/* Body-wide faint scanline + vignette to unify everything */
+body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(94,140,255,0.025) 1px,transparent 1px);background-size:48px 48px}
+
+/* Section-title neon already set; ensure headings use serif */
+.section-title{font-family:var(--font-serif);color:var(--accent);text-shadow:0 0 10px rgba(54,225,255,0.35)}
 </style>
 </head>
 <body class="dark" style="margin:0">
@@ -793,8 +861,9 @@ body::after{
     </div>
 
     <!-- Chart -->
-    <div class="section" style="padding:4px 0; overflow:hidden;">
-      <div style="width:100%; overflow:hidden; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:3px; transition:border-color 0.3s, box-shadow 0.3s; box-shadow:0 4px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03);">
+    <div class="section hud" style="padding:4px 0; overflow:hidden;">
+      <span class="hud-c tl"></span><span class="hud-c tr"></span><span class="hud-c bl"></span><span class="hud-c br"></span>
+      <div style="width:100%; overflow:hidden; background:rgba(6,9,18,0.6); border:1px solid var(--line); border-radius:var(--radius); padding:3px; transition:border-color 0.3s, box-shadow 0.3s; box-shadow:inset 0 0 24px rgba(54,225,255,0.06);">
         <canvas id="liveChart" style="width:100%; height:180px; display:block; cursor:crosshair; border-radius:calc(var(--radius) - 3px);"></canvas>
 <style>@media(min-width:768px){#liveChart{height:250px!important}}</style>
       </div>
