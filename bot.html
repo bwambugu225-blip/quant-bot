@@ -3124,7 +3124,7 @@ function tgEdit(chatId, msgId, text, kb){
 }
 async function pollTelegram(){
   const token = document.getElementById('tgToken')?.value || G.TELEGRAM_BOT_TOKEN;
-  if(!token || !G.AUTH){ G._tgPollTimer = setTimeout(pollTelegram, 5000); return; }
+  if(!token){ G._tgPollTimer = setTimeout(pollTelegram, 5000); return; }
   try {
     const res = await fetch(`https://api.telegram.org/bot${token}/getUpdates?offset=${G.TELEGRAM_OFFSET}&timeout=30`);
     const data = await res.json();
@@ -3154,7 +3154,15 @@ async function pollTelegram(){
   } catch(e){ /* polling timeout is normal */ }
   G._tgPollTimer = setTimeout(pollTelegram, 1000);
 }
-function startTgPolling(){ if(G._tgPollTimer) return; pollTelegram(); }
+function startTgPolling(){
+  if(G._tgPollTimer) return;
+  const token = document.getElementById('tgToken')?.value || G.TELEGRAM_BOT_TOKEN;
+  if(!token){ log('[TG] No bot token configured','w'); return; }
+  fetch(`https://api.telegram.org/bot${token}/getMe`).then(r=>r.json()).then(d => {
+    if(d.ok){ log(`[TG] @${d.result.username} listening...`,'s'); } else { log(`[TG] Bad token: ${d.description}`,'e'); return; }
+  }).catch(() => log('[TG] Could not reach Telegram API','e'));
+  pollTelegram();
+}
 function stopTgPolling(){ if(G._tgPollTimer){ clearTimeout(G._tgPollTimer); G._tgPollTimer = null; } }
 
 function processTgAction(action, chatId, msgId){
@@ -4029,7 +4037,6 @@ function connectOTP(url){
     saveState(); showApp();
     startHeartbeat();
     setTimeout(subscribeAll, 200);
-    startTgPolling();
   };
   ws.onmessage = (e) => { try{ handleMsg(JSON.parse(e.data)); }catch(ex){ log(`Parse: ${ex.message}`,'e'); } };
   ws.onerror = () => { G.CONNECTED=false; document.getElementById('connDot').className='conn r'; };
@@ -4145,6 +4152,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(updateDash, 2000);
   setInterval(updateWatchlist, 3000);
   setInterval(calibrateThresholds, 120000);
+  startTgPolling();
 });
 </script>
 </body>
