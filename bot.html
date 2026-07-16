@@ -87,14 +87,11 @@ html,body{background:var(--bg);color:var(--text);font-family:var(--font-head);fo
 .inp{background:var(--surface-2);border:1px solid var(--line);padding:7px 10px;color:var(--text);font-size:11px;width:100%;outline:none;font-family:var(--font);border-radius:var(--radius-sm);transition:border-color 0.2s, background 0.2s}
 .inp:focus{border-color:var(--accent);background:var(--surface)}
 .inp-sm{padding:5px 8px;font-size:10px}
-.kpi-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;padding:0 10px;margin-bottom:4px}
-.kpi{text-align:center;padding:12px 4px 10px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);transition:all 0.3s cubic-bezier(0.16,1,0.3,1);min-width:0;position:relative;overflow:hidden}
-.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--line);opacity:0.4;transition:opacity 0.3s}
-.kpi:hover{transform:translateY(-2px);border-color:var(--accent);box-shadow:0 8px 24px rgba(0,0,0,0.08)}
-.kpi:hover::before{opacity:1;background:var(--accent)}
-.kpi .v{font-size:18px;font-weight:700;font-family:var(--font-head);letter-spacing:-0.5px;position:relative;transition:color 0.3s}
-.kpi .l{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;margin-top:5px;font-weight:600}
-.kpi .pnl{font-size:17px;font-weight:800;transition:all 0.4s cubic-bezier(0.16,1,0.3,1)}
+.kpi-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;padding:0 10px;margin-bottom:6px}
+.kpi{text-align:center;min-width:0}
+.kpi .v{font-size:19px;font-weight:700;font-family:var(--font-head);letter-spacing:-0.5px;line-height:1.2}
+.kpi .l{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:0.8px;margin-top:2px;font-weight:600}
+.kpi .pnl{font-size:18px;font-weight:800}
 .tag{display:inline-block;padding:2px 6px;font-size:8px;font-weight:700;border:1px solid;border-radius:3px;letter-spacing:0.5px;text-transform:uppercase}
 .tag-green{border-color:var(--positive);color:var(--positive);background:var(--pos-dim)}
 .tag-red{border-color:var(--negative);color:var(--negative);background:var(--neg-dim)}
