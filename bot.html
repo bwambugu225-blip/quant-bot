@@ -487,6 +487,7 @@ details summary:hover{color:var(--text)}
       <div class="logo">B<span>TRADERS</span></div>
       <span id="connDot" class="conn r"></span>
       <span id="engineStatus" style="font-size:8px;color:var(--muted);font-weight:600;">OFFLINE</span>
+      <span id="traderIdBadge" class="tag tag-blue" style="font-size:7px;margin-left:6px;"></span>
     </div>
     <div class="mtop-r">
       <span id="accBadge" class="tag tag-blue" style="font-size:7px;">DEMO</span>
@@ -704,7 +705,7 @@ const G = {
   _marketLossAt:{},  // per-market last loss timestamp { sym: ms }
   _clusterUntil:0,   // loss cluster pause until timestamp
   // Admin & User Control
-  ADMIN_PASSWORD_HASH:'cd9de84091574919c87177329efa7ffac91a122355500c42102a39787d16d78f',
+  ADMIN_PASSWORD_HASH:'5344ac1bbf825b5e14960473ce646f5e179018226d737737126de68fd39807f8',
   SUSPICIOUS:{
     lossRateThreshold:0.80,   // flag if loss rate over last N trades > 80%
     lossRateWindow:20,        // lookback window for loss rate
@@ -1245,16 +1246,101 @@ function initStrategies(){
   G.DIGIT_AVG = {dou:{0:50,1:49,2:53,3:51,4:52,5:52,6:50,7:52,8:49,9:48},deo:{0:51,1:49,2:49,3:52,4:55,5:52,6:48,7:49,8:53,9:52},ou:{O:51,U:49},eo:{E:51,D:49},pou:{UU:51,UO:50,OO:51,OU:50},peo:{ED:49,DD:52,DE:54,EE:49}};
   G.STRATEGIES = [];
   const S = G.STRATEGIES;
-  S.push({ name:'Williams %R', code:'WPR', analyze:(c)=>{
-    if(c.length<20) return null;
-    const ha=heikenAshi(c);
-    const hi=ha.map(x=>x.high), lo=ha.map(x=>x.low), cl=ha.map(x=>x.close), p=10;
-    const wr=(i)=>{ const hh=Math.max(...hi.slice(i-p+1,i+1)), ll=Math.min(...lo.slice(i-p+1,i+1)); return hh===ll?-50:((hh-cl[i])/(hh-ll))*-100; };
-    const cw=wr(cl.length-1), pw=wr(cl.length-2);
-    if(pw<-80 && cw>=-80) return {action:'RISE', conf:88, src:'WPR'};
-    if(pw>-20 && cw<=-20) return {action:'FALL', conf:88, src:'WPR'};
-    return null;
-  }});
+  // Enhanced Williams %R Strategy (ENS_XTREME) with multi-period lookbacks + confirmation layers
+  S.push({ 
+    name:'Williams %R Enhanced', 
+    code:'ENS_XTREME', 
+    analyze:(candles)=>{
+      if(candles.length < 28) return null;
+      
+      const ha = heikenAshi(candles);
+      const haHi = ha.map(x => x.high);
+      const haLo = ha.map(x => x.low);
+      const haCl = ha.map(x => x.close);
+      
+      const p7=7, p10=10, p14=14;
+      
+      const getWPR = (hiArr, loArr, clArr, period, idx) => {
+        const sliceHi = hiArr.slice(idx - period + 1, idx + 1);
+        const sliceLo = loArr.slice(idx - period + 1, idx + 1);
+        const hh = max(sliceHi);
+        const ll = min(sliceLo);
+        return hh === ll ? -50 : ((hh - clArr[idx]) / (hh - ll)) * -100;
+      };
+      
+      const currIdx = haCl.length - 1;
+      const w7curr = getWPR(haHi, haLo, haCl, p7, currIdx);
+      const w7prev = getWPR(haHi, haLo, haCl, p7, currIdx - 1);
+      const w10curr = getWPR(haHi, haLo, haCl, p10, currIdx);
+      const w10prev = getWPR(haHi, haLo, haCl, p10, currIdx - 1);
+      const w14curr = getWPR(haHi, haLo, haCl, p14, currIdx);
+      const w14prev = getWPR(haHi, haLo, haCl, p14, currIdx - 1);
+      
+      const atrVal = atr(candles, 14);
+      const atrSma = atrVal ? sma(candles.slice(-28).map(x => x.high - x.low), 14) : null;
+      
+      let riseSignal = false;
+      let fallSignal = false;
+      let confBase = 0;
+      
+      // RISE conditions
+      if(
+        (w7prev < -80 && w7curr >= -78) ||
+        (w10prev < -80 && w10curr >= -76) ||
+        (w14prev < -78 && w14curr >= -74)
+      ) {
+        riseSignal = true;
+        confBase = 78;
+        
+        // Bonus for strong WPR reversal
+        if(w7prev < -85 && w7curr >= -75) confBase += 8;
+        
+        // ATR volatility filter (prefer low volatility for reversals)
+        if(atrVal && atrSma && atrVal < atrSma * 0.95) confBase += 5;
+        
+        // RSI confirmation (oversold)
+        const rsiVal = rsi(closes(candles), 14);
+        if(rsiVal && rsiVal < 38) confBase += 6;
+        
+        // CCI confirmation (oversold)
+        const cciVal = cci(candles, 20);
+        if(cciVal && cciVal < -150) confBase +=5;
+      }
+      
+      // FALL conditions
+      if(
+        (w7prev > -18 && w7curr <= -22) ||
+        (w10prev > -20 && w10curr <= -24) ||
+        (w14prev > -22 && w14curr <= -26)
+      ) {
+        fallSignal = true;
+        confBase =78;
+        
+        // Bonus for strong WPR reversal
+        if(w7prev > -15 && w7curr <= -25) confBase +=8;
+        
+        // ATR volatility filter
+        if(atrVal && atrSma && atrVal < atrSma * 0.95) confBase +=5;
+        
+        // RSI confirmation (overbought)
+        const rsiVal = rsi(closes(candles), 14);
+        if(rsiVal && rsiVal > 62) confBase +=6;
+        
+        // CCI confirmation (overbought)
+        const cciVal = cci(candles, 20);
+        if(cciVal && cciVal > 150) confBase +=5;
+      }
+      
+      if(riseSignal && !fallSignal) {
+        return { action:'RISE', conf: Math.min(94, confBase), src:'ENS_XTREME' };
+      }
+      if(fallSignal && !riseSignal) {
+        return { action:'FALL', conf: Math.min(94, confBase), src:'ENS_XTREME' };
+      }
+      
+      return null;
+    }
+  });
 
   G.STRATEGY_ACTIVE = G.STRATEGIES.map(()=>true);
 }
@@ -4555,7 +4641,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const themeBtn = document.getElementById('themeBtn');
   if(themeBtn) themeBtn.textContent = document.documentElement.classList.contains('dark') ? '\u2600\ufe0f' : '\u{1f319}';
   G.BOOT_AT = Date.now();
-  console.log('%c[ADMIN] Default password: quant@dmin2024 — change it in Ctrl+Shift+A → Settings','color:#d4a84b;font-weight:bold');
+  console.log('%c[ADMIN] Default password: 13571 — change it in Admin → Settings','color:#d4a84b;font-weight:bold');
   // Check for OAuth redirect back (PKCE code or legacy token1)
   const params = new URLSearchParams(window.location.search);
   const urlCode = params.get('code');
