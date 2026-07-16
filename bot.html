@@ -535,14 +535,9 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
       </div>
       <div style="margin-bottom:6px">
         <div class="field">
-          <label>Trading Strategy (6 Premium Algos)</label>
+          <label>Trading Strategy</label>
           <select id="strategySelect" class="inp" onchange="selectStrategy(this.value)" style="font-size:10px;width:100%">
-            <option value="WPR_TREND">⚡ Williams %R + Trend</option>
-            <option value="SRB">🏰 Pivot Support & Resistance Bounce</option>
-            <option value="EMA_CROSS">🏹 EMA 5/20 Golden Cross + Momentum</option>
-            <option value="MACD_PA">🌊 Reversal Confluence (MACD/RSI/Engulfing)</option>
-            <option value="RENKO_FLOW">🧱 Renko Volumetric Flow</option>
-            <option value="ENS_XTREME" selected>💎 Ensemble Extreme</option>
+            <option value="ENS_XTREME" selected>💎 WPR Ranges + Reversal Confluence</option>
           </select>
         </div>
       </div>
@@ -835,7 +830,7 @@ function atr(c,p=14){
 }
 
 // ============================================================
-// WILLIAMS %R CROSSOVER STRATEGY
+// WILLIAMS %R STRATEGY
 // ============================================================
 function initStrategies(){
   G.DIGIT_PROBS = {"R_10":{"dc":[125,121,155,118,127,133,146,143,123,145],"ou":{"O":51,"U":48},"eo":{"E":49,"D":48},"pou":{"UU":52,"UO":51,"OO":51,"OU":52},"peo":{"ED":51,"DD":53,"DE":51,"EE":47},"dou":{"0":56,"1":49,"2":56,"3":48,"4":50,"5":54,"6":53,"7":50,"8":46,"9":52},"deo":{"0":42,"1":48,"2":49,"3":52,"4":55,"5":60,"6":51,"7":48,"8":49,"9":52},"dir":{"up":51,"dn":53}},"R_25":{"dc":[136,120,134,132,139,128,123,132,157,135],"ou":{"O":52,"U":51},"eo":{"E":52,"D":49},"pou":{"UU":49,"UO":53,"OU":48,"OO":52},"peo":{"EE":51,"ED":48,"DD":53,"DE":54},"dou":{"0":46,"1":39,"2":55,"3":51,"4":51,"5":48,"6":54,"7":55,"8":54,"9":51},"deo":{"0":53,"1":49,"2":46,"3":50,"4":53,"5":57,"6":56,"7":51,"8":54,"9":46},"dir":{"up":50,"dn":52}},"R_50":{"dc":[146,121,163,141,132,136,137,134,108,118],"ou":{"O":50,"U":55},"eo":{"E":51,"D":49},"pou":{"OO":50,"OU":47,"UU":43,"UO":50},"peo":{"ED":52,"DE":55,"EE":49,"DD":51},"dou":{"0":44,"1":48,"2":42,"3":44,"4":48,"5":49,"6":53,"7":55,"8":47,"9":44},"deo":{"0":60,"1":46,"2":48,"3":56,"4":53,"5":53,"6":45,"7":46,"8":52,"9":53},"dir":{"up":48,"dn":47}},"R_75":{"dc":[118,143,128,131,132,122,142,153,137,130],"ou":{"O":50,"U":47},"eo":{"E":50,"D":52},"pou":{"OU":52,"UU":54,"UO":52,"OO":48},"peo":{"DD":51,"DE":53,"EE":47,"ED":45},"dou":{"0":50,"1":43,"2":62,"3":56,"4":55,"5":58,"6":48,"7":51,"8":44,"9":48},"deo":{"0":50,"1":51,"2":49,"3":44,"4":56,"5":49,"6":44,"7":46,"8":53,"9":50},"dir":{"up":53,"dn":49}},"R_100":{"dc":[122,138,135,130,122,120,145,146,142,136],"ou":{"O":51,"U":48},"eo":{"E":50,"D":50},"pou":{"UO":48,"OU":50,"UU":54,"OO":54},"peo":{"ED":48,"DD":51,"DE":52,"EE":48},"dou":{"0":45,"1":55,"2":56,"3":48,"4":56,"5":50,"6":49,"7":51,"8":48,"9":58},"deo":{"0":50,"1":46,"2":48,"3":51,"4":55,"5":52,"6":43,"7":48,"8":54,"9":53},"dir":{"up":51,"dn":52}},"1HZ10V":{"dc":[59,80,75,53,79,56,72,50,75,70],"ou":{"O":47,"U":50},"eo":{"E":57,"D":49},"pou":{"OO":44,"OU":51,"UU":48,"UO":49},"peo":{"DD":49,"DE":64,"ED":53,"EE":51},"dou":{"0":39,"1":52,"2":61,"3":49,"4":44,"5":46,"6":54,"7":46,"8":43,"9":44},"deo":{"0":51,"1":50,"2":57,"3":51,"4":62,"5":52,"6":51,"7":44,"8":60,"9":56},"dir":{"up":47,"dn":49}},"1HZ25V":{"dc":[61,55,63,44,72,80,86,76,67,65],"ou":{"O":55,"U":43},"eo":{"E":48,"D":44},"pou":{"OU":57,"UO":50,"OO":59,"UU":58},"peo":{"DD":59,"DE":48,"EE":49,"ED":55},"dou":{"0":57,"1":60,"2":51,"3":61,"4":58,"5":54,"6":60,"7":53,"8":63,"9":42},"deo":{"0":56,"1":64,"2":46,"3":59,"4":56,"5":45,"6":36,"7":57,"8":52,"9":62},"dir":{"up":54,"dn":57}},"1HZ50V":{"dc":[61,60,76,77,73,76,51,68,61,66],"ou":{"O":47,"U":51},"eo":{"E":52,"D":55},"pou":{"OO":48,"OU":46,"UO":45,"UU":52},"peo":{"DE":54,"EE":50,"ED":41,"DD":48},"dou":{"0":54,"1":48,"2":41,"3":48,"4":56,"5":53,"6":35,"7":56,"8":35,"9":50},"deo":{"0":46,"1":42,"2":54,"3":40,"4":49,"5":51,"6":51,"7":50,"8":58,"9":41},"dir":{"up":50,"dn":46}},"1HZ75V":{"dc":[66,76,53,68,58,55,75,76,73,69],"ou":{"O":54,"U":50},"eo":{"E":49,"D":52},"pou":{"UU":51,"UO":53,"OO":54,"OU":50},"peo":{"EE":43,"ED":45,"DD":50,"DE":55},"dou":{"0":56,"1":43,"2":55,"3":51,"4":48,"5":62,"6":49,"7":54,"8":57,"9":48},"deo":{"0":52,"1":42,"2":45,"3":56,"4":52,"5":45,"6":48,"7":50,"8":49,"9":46},"dir":{"up":50,"dn":55}},"1HZ100V":{"dc":[77,60,76,62,62,65,74,61,69,63],"ou":{"O":50,"U":51},"eo":{"E":53,"D":45},"pou":{"OU":49,"UO":48,"OO":52,"UU":49},"peo":{"EE":54,"ED":55,"DE":50,"DD":54},"dou":{"0":48,"1":53,"2":47,"3":50,"4":50,"5":51,"6":49,"7":52,"8":54,"9":43},"deo":{"0":47,"1":53,"2":50,"3":56,"4":58,"5":51,"6":57,"7":54,"8":52,"9":59},"dir":{"up":51,"dn":48}}};
@@ -852,9 +847,7 @@ function initStrategies(){
     if(pw>-20 && cw<=-20) return {action:'FALL', conf:88, src:'WPR'};
     return null;
   }});
-  S.push({ name:'Renko Volumetric Flow', code:'RENKO_FLOW', analyze:(c)=>{
-    return null; // Evaluated dynamically in runStrategyAnalysis
-  }});
+
   G.STRATEGY_ACTIVE = G.STRATEGIES.map(()=>true);
 }
 
@@ -1847,50 +1840,12 @@ function storeSignal(sym, epoch, result, traded){
   if(G._allSignals.length > 500) G._allSignals.splice(0, 100);
 }
 
-function calcRSI(prices, period){
-  if(prices.length < period + 1) return 50;
-  const c = prices.slice(-period-1);
-  let g=0, l=0;
-  for(let i=1;i<c.length;i++){ const d=c[i]-c[i-1]; if(d>0) g+=d; else l-=d; }
-  const ag=g/period, al=l/period;
-  if(al===0) return 100;
-  return 100 - 100/(1+ag/al);
-}
 function calcEMA(prices, period){
   if(prices.length < period) return prices[prices.length-1];
   const k=2/(period+1);
   let ema = prices.slice(0,period).reduce((a,b)=>a+b,0)/period;
   for(let i=period;i<prices.length;i++) ema = prices[i]*k + ema*(1-k);
   return ema;
-}
-// ============================================================
-// ADVANCED INDICATOR HELPERS (God Mode Engine)
-// ============================================================
-function calcMACD(prices, fast=12, slow=26, signal=9){
-  if(prices.length < slow + signal) return null;
-  const emaF = calcEMA(prices, fast);
-  const emaS = calcEMA(prices, slow);
-  const macd = emaF - emaS;
-  const macdLine = [];
-  for(let i=slow-1;i<prices.length;i++){
-    const ef = calcEMA(prices.slice(0,i+1), fast);
-    const es = calcEMA(prices.slice(0,i+1), slow);
-    macdLine.push(ef - es);
-  }
-  const sigLine = calcEMA(macdLine, signal);
-  return { macd, signal:sigLine, histogram:macd - sigLine, macdLine:macdLine.slice(-1)[0] };
-}
-function calcBB(prices, period=20, mult=2){
-  if(prices.length < period) return null;
-  const m = sma(prices, period);
-  if(m === null) return null;
-  const sd = stddev(prices, period);
-  if(sd === null) return null;
-  const upper = m + mult * sd;
-  const lower = m - mult * sd;
-  const last = prices[prices.length-1];
-  const pctB = (last - lower) / (upper - lower || 1);
-  return { upper, middle: m, lower, pctB, width: (upper-lower)/m };
 }
 function calcADX(candles, period=14){
   if(candles.length < period + 1) return null;
@@ -1907,31 +1862,6 @@ function calcADX(candles, period=14){
   const nDI = 100 * minusDM / (atrVal * period || 1);
   const dx = Math.abs(pDI - nDI) / ((pDI + nDI) || 1) * 100;
   return { pDI, nDI, adx: dx, trend: pDI > nDI ? 'UP' : 'DN', strength: dx };
-}
-function calcStochasticK(highArr, lowArr, closeArr, p=14){
-  if(closeArr.length < p) return null;
-  const hh = Math.max(...highArr.slice(-p));
-  const ll = Math.min(...lowArr.slice(-p));
-  if(hh === ll) return 50;
-  return ((closeArr[closeArr.length-1] - ll) / (hh - ll)) * 100;
-}
-function detectRSIDivergence(prices, rsiVals, lookback=20){
-  if(prices.length < lookback || rsiVals.length < lookback) return null;
-  const recentP = prices.slice(-lookback);
-  const recentR = rsiVals.slice(-lookback);
-  let pLo=Infinity, pHi=-Infinity, rLo=Infinity, rHi=-Infinity;
-  let pLoAt=-1, pHiAt=-1, rLoAt=-1, rHiAt=-1;
-  for(let i=1; i<recentP.length-1; i++){
-    if(recentP[i] < pLo){ pLo = recentP[i]; pLoAt = i; }
-    if(recentP[i] > pHi){ pHi = recentP[i]; pHiAt = i; }
-    if(recentR[i] < rLo){ rLo = recentR[i]; rLoAt = i; }
-    if(recentR[i] > rHi){ rHi = recentR[i]; rHiAt = i; }
-  }
-  if(pLoAt > rLoAt && rLo > recentR[rLoAt-2] && pLo < recentP[Math.max(0,pLoAt-2)])
-    return { type:'BULL', conf:Math.min(80, 50 + (rLo - recentR[rLoAt-2])*5), src:'RSI-DIV' };
-  if(pHiAt > rHiAt && rHi < recentR[rHiAt-2] && pHi > recentP[Math.max(0,pHiAt-2)])
-    return { type:'BEAR', conf:Math.min(80, 50 + (recentR[rHiAt-2] - rHi)*5), src:'RSI-DIV' };
-  return null;
 }
 function calcKelly(pWin, payoutRatio=0.8){
   if(pWin <= 0 || pWin >= 1) return 0.5;
@@ -2032,17 +1962,7 @@ function runStrategyAnalysis(sym, candles, liveBuf){
   const haHi = ha.map(c=>c.high), haLo = ha.map(c=>c.low), haCl = ha.map(c=>c.close);
 
   // ── Indicators ──
-  const rsiVal = calcRSI(prices, 14);
-  const ema20 = calcEMA(prices, 20);
-  const ema50 = calcEMA(prices, 50);
-  const macd = calcMACD(prices, 12, 26, 9);
-  const bb = calcBB(prices, 20, 2);
   const adx = calcADX(candles, 14);
-  const stochK = calcStochasticK(hi, lo, cl, 14);
-  const rsiVals = [];
-  for(let i=14; i<cl.length; i++) rsiVals.push(calcRSI(cl.slice(0,i+1), 14));
-  const rsiDiv = detectRSIDivergence(cl, rsiVals, 20);
-  const ema8 = prices.length >= 8 ? calcEMA(prices, 8) : last.close;
   const trendStrength = adx ? adx.strength : 0;
   const trendDir = adx ? adx.trend : null;
 
@@ -2070,13 +1990,6 @@ function runStrategyAnalysis(sym, candles, liveBuf){
     atrSmaVal=s/atrs.length;
   }
 
-  const closePos = cl[cl.length-1];
-  const body = Math.abs(last.close - last.open);
-  const range = last.high - last.low;
-  const upperWick = last.high - Math.max(last.open, last.close);
-  const lowerWick = Math.min(last.open, last.close) - last.low;
-  const avgRange = candles.slice(-14).reduce((s,ca)=>s+Math.abs(ca.high-ca.low),0)/14;
-
   // ── Strategy Ensemble ──
   const votes = [];
 
@@ -2093,59 +2006,6 @@ function runStrategyAnalysis(sym, candles, liveBuf){
     votes.push({action:'FALL', conf:Math.round(60+(Math.max(-20,cw)+20)*2), src:'WPR-F2'});
   if(pw > -20 && cw < pw - 3 && cw < -30)
     votes.push({action:'FALL', conf:Math.round(55 + (-20-cw)*2), src:'WPR-S'});
-
-  // 2) MACD Crossover
-  if(macd && Math.abs(macd.histogram) > 0.0001){
-    if(macd.macd > macd.signal && macd.histogram > 0)
-      votes.push({action:'RISE', conf:Math.round(55+Math.min(20,Math.abs(macd.histogram)*2000)), src:'MACD-U'});
-    if(macd.macd < macd.signal && macd.histogram < 0)
-      votes.push({action:'FALL', conf:Math.round(55+Math.min(20,Math.abs(macd.histogram)*2000)), src:'MACD-D'});
-  }
-
-  // 3) RSI Extreme + Divergence
-  if(rsiDiv) votes.push({action:rsiDiv.type==='BULL'?'RISE':'FALL', conf:rsiDiv.conf, src:'RSI-DIV'});
-  if(rsiVal < 30 && closePos < ema20) votes.push({action:'RISE', conf:Math.round(58 + (30-rsiVal)*1.5), src:'RSI-OS'});
-  if(rsiVal > 70 && closePos > ema20) votes.push({action:'FALL', conf:Math.round(58 + (rsiVal-70)*1.5), src:'RSI-OB'});
-
-  // 4) Bollinger Band Touch/Bounce
-  if(bb){
-    if(closePos <= bb.lower * 1.001) votes.push({action:'RISE', conf:Math.min(85,55+Math.round((1-bb.pctB)*30)), src:'BB-L'});
-    if(closePos >= bb.upper * 0.999) votes.push({action:'FALL', conf:Math.min(85,55+Math.round(bb.pctB*30)), src:'BB-U'});
-  }
-
-  // 5) Stochastic Reversal
-  if(stochK !== null){
-    if(stochK < 20 && pw < -70) votes.push({action:'RISE', conf:57, src:'STOCH-OS'});
-    if(stochK > 80 && pw > -30) votes.push({action:'FALL', conf:57, src:'STOCH-OB'});
-  }
-
-  // 6) EMA Pullback
-  const emaDiff20_50 = (ema20 - ema50) / (ema50 || 1);
-  if(emaDiff20_50 < -0.005 && closePos > ema20 && rsiVal < 45) votes.push({action:'RISE', conf:56, src:'EMA-PB'});
-  if(emaDiff20_50 > 0.005 && closePos < ema20 && rsiVal > 55) votes.push({action:'FALL', conf:56, src:'EMA-PB'});
-
-  // 7) Renko Flow (ported from original)
-  if(candles.length >= 16 && avgRange > 0.001){
-    const brickSize = Math.max(avgRange * 0.5, last.close * 0.0001);
-    const bricks = [];
-    let lastBrickPrice = candles[0].close;
-    let lastBrickType = 'UP';
-    for(let i=1;i<candles.length;i++){
-      const diff = candles[i].close - lastBrickPrice;
-      if(lastBrickType === 'UP'){
-        if(diff >= brickSize){ lastBrickPrice += brickSize; bricks.push('UP'); }
-        else if(diff <= -brickSize*2){ lastBrickPrice -= brickSize*2; bricks.push('DOWN'); lastBrickType='DOWN'; }
-      } else {
-        if(diff <= -brickSize){ lastBrickPrice -= brickSize; bricks.push('DOWN'); }
-        else if(diff >= brickSize*2){ lastBrickPrice += brickSize*2; bricks.push('UP'); lastBrickType='UP'; }
-      }
-    }
-    if(bricks.length >= 3){
-      const rev = bricks[bricks.length-1] !== bricks[bricks.length-2];
-      if(rev && bricks[bricks.length-1]==='UP' && rsiVal<55) votes.push({action:'RISE', conf:60, src:'RENKO'});
-      if(rev && bricks[bricks.length-1]==='DOWN' && rsiVal>45) votes.push({action:'FALL', conf:60, src:'RENKO'});
-    }
-  }
 
   // ── Ensemble Voting ──
   if(votes.length === 0) return null;
@@ -4096,7 +3956,7 @@ document.addEventListener('DOMContentLoaded', () => {
   BotState.currentStake = BotState.baseStake;
   updateDigitsUI();
   log('[SYSTEM] BTraders ready \u00b7 God Mode Ensemble v2', 's');
-  log(`[SYSTEM] ${G.STRATEGIES.length+4} strategies (WPR+MACD+RSI+BB+ADX+STOCH+PA) \u00b7 ${SYMBOLS.length} markets`, 'i');
+  log(`[SYSTEM] WPR-Only (HA Williams %R) \u00b7 ${SYMBOLS.length} markets`, 'i');
   log('[SYSTEM] Kelly sizing \u00b7 Adaptive cooldowns \u00b7 Anti-martingale \u00b7 Markov digits', 'i');
   log('[SYSTEM] Copy mode ready \u2014 paste token to begin', 'i');
   // Stop everything on tab close
