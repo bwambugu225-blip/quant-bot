@@ -2964,6 +2964,12 @@ function handleTick(data){
   const epoch = +t.epoch;
   if(!sym || !Number.isFinite(price) || !Number.isFinite(epoch)) return;
   processDigit(sym, price);
+  // Per-market rolling live buffer so analysis moves every tick (real-time)
+  if(!G.MARKET.liveBuf) G.MARKET.liveBuf={};
+  const lb=G.MARKET.liveBuf[sym]||(G.MARKET.liveBuf[sym]=[]);
+  lb.push(price); if(lb.length>120) lb.shift();
+  if(!G.MARKET.lastPrice) G.MARKET.lastPrice={};
+  G.MARKET.lastPrice[sym]=price;
   _tickCount++;
   // Throttle heavy UI to every 3rd tick
   if((_tickCount&3)===0) updateDigitsUI();
@@ -4281,13 +4287,12 @@ function haxPush(msg, cls){
 // Build a rolling close series from the LIVE tick stream so indicators update
 // every tick (real-time), not only when a 15s candle closes.
 function haxLiveSeries(sym){
-  const tp = (G.MARKET.tickPrices && G.MARKET.tickPrices[sym]) || [];
-  let series = tp.slice(-90);
+  const lb = (G.MARKET.liveBuf && G.MARKET.liveBuf[sym]) || [];
+  let series = lb.slice(-90);
   if(series.length < 20){
     const candles = G.MARKET.candles[sym] || [];
     if(candles.length) series = candles.slice(-90).map(c=>c.close).concat(series);
   }
-  // de-duplicate consecutive identical ticks so RSI/Williams aren't flat
   const out=[]; for(const v of series){ if(!out.length || out[out.length-1]!==v) out.push(v); }
   return out;
 }
@@ -4359,7 +4364,9 @@ function updateAnalysisPanel(){
       G._haxScan=(G._haxScan||0)+1;
       if(G._haxScan>=5){ G._haxScan=0; haxPush(`scan ${sym} · rsi=${r?r.toFixed(0):'--'} bias=${bias} · watching`, 'a'); }
     }
-    renderHaxMatrix();
+    // Matrix is heavier (rebuilds all market cells) — refresh every 2s, core every 1s
+    G._haxMatrixTick=(G._haxMatrixTick||0)+1;
+    if(G._haxMatrixTick>=2){ G._haxMatrixTick=0; renderHaxMatrix(); }
   } catch(e){ /* never let the panel blank the app */ }
 }
 // Compute + render a live matrix for EVERY market on each tick
@@ -4370,7 +4377,7 @@ function renderHaxMatrix(){
   for(const s of SYMBOLS){
     const sym=s.sym;
     const series=haxLiveSeries(sym);
-    const lastP=(G.MARKET.prices[sym]&&G.MARKET.prices[sym].length)?G.MARKET.prices[sym][G.MARKET.prices[sym].length-1]:(G._haxLastPrice&&sym===G.CURRENT_MARKET?G._haxLastPrice:null);
+    const lastP=(G.MARKET.lastPrice&&G.MARKET.lastPrice[sym]!=null)?G.MARKET.lastPrice[sym]:((G.MARKET.prices[sym]&&G.MARKET.prices[sym].length)?G.MARKET.prices[sym][G.MARKET.prices[sym].length-1]:(G._haxLastPrice&&sym===G.CURRENT_MARKET?G._haxLastPrice:null));
     // live signal for this market (cached from evaluator when available)
     const sig = (sym===G.CURRENT_MARKET && G.LAST_SIGNAL) ? G.LAST_SIGNAL : (G._mktSig && G._mktSig[sym]) || null;
     let r=null;
