@@ -707,6 +707,9 @@ const G = {
   _clusterUntil:0,   // loss cluster pause until timestamp
   // Admin & User Control
   ADMIN_PASSWORD_HASH:'5344ac1bbf825b5e14960473ce646f5e179018226d737737126de68fd39807f8',
+  ACCOUNT_BLOCKED:false,        // true when current account is banned/suspended (trading locked)
+  ACCOUNT_BLOCKED_REASON:'',
+  ACCOUNT_BLOCKED_ACTION:null,
   SUSPICIOUS:{
     lossRateThreshold:0.80,   // flag if loss rate over last N trades > 80%
     lossRateWindow:20,        // lookback window for loss rate
@@ -1065,8 +1068,51 @@ async function adminUserAction(derivId, action, selEl){
     const u = await sbGetUser(derivId);
     showWarnPopup(action, derivId, u && u.trader_id ? u.trader_id : derivId, reason);
     updateUserStatusBadge(action);
+    // If this action targets the currently logged-in account, halt or restore trading
+    if(derivId === G.ACCOUNT_ID){
+      if(action === 'banned' || action === 'suspended'){ haltAllTrading(action, reason); }
+      else if(action === 'active'){ clearAccountBlock(); }
+    }
     renderAdminUsers(document.getElementById('adminContent'));
   }
+}
+function isAccountBlocked(){
+  const st = _userCache[G.ACCOUNT_ID] && _userCache[G.ACCOUNT_ID].status;
+  return st === 'banned' || st === 'suspended';
+}
+function haltAllTrading(action, reason){
+  G.ACCOUNT_BLOCKED = true;
+  G.ACCOUNT_BLOCKED_REASON = reason || (action === 'banned' ? 'Account banned' : 'Account suspended');
+  G.ACCOUNT_BLOCKED_ACTION = action;
+  // Stop main bot
+  if(G.RUNNING) stopBot();
+  BotState.isTrading = false;
+  // Stop all copy clients
+  if(typeof G.COPY_TRADERS !== 'undefined'){
+    G.COPY_TRADERS.forEach(c => { c.status = 'blocked'; });
+    if(typeof clientSockets !== 'undefined'){
+      clientSockets.forEach(ws => { try { ws.close(); } catch(e){} });
+    }
+  }
+  G.ACTIVE_CONTRACTS.clear();
+  // Lock the engine start buttons
+  const sb = document.getElementById('rfStartBtn');
+  const dg = document.getElementById('dgEngineBtn');
+  if(sb){ sb.disabled = true; sb.style.opacity = '0.4'; sb.style.cursor = 'not-allowed'; }
+  if(dg){ dg.disabled = true; dg.style.opacity = '0.4'; dg.style.cursor = 'not-allowed'; }
+  log(`[HALT] All trading halted — account ${action}`,'e');
+  updateUserStatusBadge(action);
+}
+function clearAccountBlock(){
+  G.ACCOUNT_BLOCKED = false;
+  G.ACCOUNT_BLOCKED_REASON = '';
+  G.ACCOUNT_BLOCKED_ACTION = null;
+  const sb = document.getElementById('rfStartBtn');
+  const dg = document.getElementById('dgEngineBtn');
+  if(sb){ sb.disabled = false; sb.style.opacity = ''; sb.style.cursor = ''; }
+  if(dg){ dg.disabled = false; dg.style.opacity = ''; dg.style.cursor = ''; }
+  closeWarnPopup();
+  log('[RESUME] Account block lifted — trading re-enabled','s');
 }
 function adminActionReason(action){
   return new Promise(resolve => {
@@ -1129,36 +1175,48 @@ function updateUserStatusBadge(status){
 }
 function showWarnPopup(action, derivId, traderId, reason){
   const cfg = {
-    banned:    { title:'🚫 ACCOUNT BANNED',    color:'#c45a5a', icon:'🚫' },
-    suspended: { title:'⏸ ACCOUNT SUSPENDED', color:'#c49a3a', icon:'⏸' },
-    flagged:   { title:'⚠ ACCOUNT FLAGGED',   color:'#c49a3a', icon:'⚠' },
-    active:    { title:'✅ ACCOUNT REACTIVATED', color:'#5a8f64', icon:'✅' }
+    banned:    { title:'🚫 ACCOUNT BANNED',    color:'#c45a5a', icon:'🚫', lock:true },
+    suspended: { title:'⏸ ACCOUNT SUSPENDED', color:'#c49a3a', icon:'⏸', lock:true },
+    flagged:   { title:'⚠ ACCOUNT FLAGGED',   color:'#c49a3a', icon:'⚠', lock:false },
+    active:    { title:'✅ ACCOUNT REACTIVATED', color:'#5a8f64', icon:'✅', lock:false }
   };
   const c = cfg[action] || cfg.flagged;
+  window._warnBlockDerivId = (action === 'banned' || action === 'suspended') ? derivId : null;
+  const existing = document.getElementById('warnPopup');
+  if(existing) existing.remove();
   const el = document.createElement('div');
   el.id = 'warnPopup';
-  el.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100002;background:rgba(120,0,0,0.35);display:flex;align-items:center;justify-content:center;font-family:var(--font,monospace);animation:wpulse 1s ease-in-out infinite';
+  el.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100002;background:rgba(120,0,0,0.45);display:flex;align-items:center;justify-content:center;font-family:var(--font,monospace);animation:wpulse 1.2s ease-in-out infinite';
+  const dismissBtn = c.lock
+    ? `<div style="font-size:11px;color:#c45a5a;margin-top:6px">⛔ This notice cannot be dismissed while the account is ${action}. Unban / unsuspend to clear it.</div>`
+    : `<button onclick="closeWarnPopup()" style="background:${c.color};border:none;color:#0d0c0a;padding:12px 40px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700">DISMISS</button>`;
   el.innerHTML = `
-    <div style="background:#0d0c0a;border:3px solid ${c.color};border-radius:14px;padding:34px 40px;max-width:460px;text-align:center;box-shadow:0 0 60px ${c.color}">
+    <div style="background:#0d0c0a;border:3px solid ${c.color};border-radius:14px;padding:34px 40px;max-width:480px;text-align:center;box-shadow:0 0 70px ${c.color}">
       <div style="font-size:54px;line-height:1;margin-bottom:14px">${c.icon}</div>
       <div style="font-size:26px;font-weight:800;color:${c.color};letter-spacing:1px;margin-bottom:16px">${c.title}</div>
       <div style="font-size:13px;color:#f0e8da;margin-bottom:8px">Trader: <b style="color:${c.color}">${traderId}</b></div>
       <div style="font-size:11px;color:#8a7e6a;margin-bottom:18px">Deriv ID: ${derivId}</div>
       ${reason ? `<div style="font-size:12px;color:#f0e8da;background:#1c1915;border:1px solid #2a251f;border-radius:6px;padding:10px 14px;margin-bottom:20px;word-break:break-word"><b>Reason:</b> ${reason}</div>` : ''}
-      <button onclick="closeWarnPopup()" style="background:${c.color};border:none;color:#0d0c0a;padding:12px 40px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700">DISMISS</button>
+      ${dismissBtn}
     </div>`;
   document.body.appendChild(el);
   if(!document.getElementById('wpulseStyle')){
     const st = document.createElement('style');
     st.id = 'wpulseStyle';
-    st.textContent = '@keyframes wpulse{0%,100%{background:rgba(120,0,0,0.35)}50%{background:rgba(120,0,0,0.55)}}';
+    st.textContent = '@keyframes wpulse{0%,100%{background:rgba(120,0,0,0.45)}50%{background:rgba(120,0,0,0.7)}}';
     document.head.appendChild(st);
   }
-  setTimeout(closeWarnPopup, 6000);
+  if(!c.lock) setTimeout(closeWarnPopup, 6000);
 }
 function closeWarnPopup(){
+  // Refuse to close while a hard block (ban/suspend) popup is active
+  if(window._warnBlockDerivId){
+    const st = _userCache[window._warnBlockDerivId] && _userCache[window._warnBlockDerivId].status;
+    if(st === 'banned' || st === 'suspended') return;
+  }
   const el = document.getElementById('warnPopup');
   if(el) el.remove();
+  window._warnBlockDerivId = null;
 }
 function filterAdminUsers(){
   const q = (document.getElementById('adminUserSearch')?.value||'').toLowerCase();
@@ -1608,6 +1666,8 @@ function placeDigitManual(contractType){
 
 function toggleDigitEngine(){
   const btn = document.getElementById('dgEngineBtn');
+  if(G.ACCOUNT_BLOCKED){ log(`[HALT] Cannot start digit engine — account is ${G.ACCOUNT_BLOCKED_ACTION}`,'e'); return; }
+  if(isAccountBlocked()){ log('[HALT] Cannot start digit engine — account status not active','e'); return; }
   BotState.isTrading = !BotState.isTrading;
   if(btn) btn.textContent = BotState.isTrading ? 'STOP' : 'AUTO';
   if(BotState.isTrading){
@@ -2710,6 +2770,10 @@ function evaluateAndTrade(sym, liveBuf){
 function execTrade(signal, asset){
   try {
   if(G.ACTIVE_CONTRACTS.size>=1) return;
+  if(G.ACCOUNT_BLOCKED){
+    log(`[HALT] Trade rejected — account is ${G.ACCOUNT_BLOCKED_ACTION} (${G.ACCOUNT_BLOCKED_REASON})`,'e');
+    return;
+  }
   if(G.ACCOUNT_ID && _userCache[G.ACCOUNT_ID] && _userCache[G.ACCOUNT_ID].status !== 'active'){
     log(`[BLOCK] Account ${G.ACCOUNT_ID} is ${_userCache[G.ACCOUNT_ID].status} — trade rejected`,'e');
     return;
@@ -2881,6 +2945,8 @@ function handleContract(c){
 // ============================================================
 function startBot(){
   if(!G.AUTH){ log('[ERROR] Authorize first','e'); return; }
+  if(G.ACCOUNT_BLOCKED){ log(`[HALT] Cannot start — account is ${G.ACCOUNT_BLOCKED_ACTION} (${G.ACCOUNT_BLOCKED_REASON})`,'e'); return; }
+  if(isAccountBlocked()){ log('[HALT] Cannot start — account status is not active','e'); return; }
   if(G.RUNNING) return;
   G.RUNNING=true;
   const raw = document.getElementById('rfDuration')?.value || '15';
