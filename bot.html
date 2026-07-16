@@ -1066,12 +1066,13 @@ async function adminUserAction(derivId, action, selEl){
   const ok = await sbUpdateUserStatus(derivId, action, reason);
   if(ok){
     const u = await sbGetUser(derivId);
-    showWarnPopup(action, derivId, u && u.trader_id ? u.trader_id : derivId, reason);
-    updateUserStatusBadge(action);
-    // If this action targets the currently logged-in account, halt or restore trading
+    const traderId = u && u.trader_id ? u.trader_id : derivId;
+    showWarnPopup(action, derivId, traderId, reason);
+    // Only halt / restore THIS bot session if the targeted account is the one logged in here
     if(derivId === G.ACCOUNT_ID){
-      if(action === 'banned' || action === 'suspended'){ haltAllTrading(action, reason); }
-      else if(action === 'active'){ clearAccountBlock(); }
+      updateUserStatusBadge(action);
+      if(action === 'banned' || action === 'suspended'){ haltAllTrading(action, reason, derivId); }
+      else if(action === 'active'){ clearAccountBlock(derivId); }
     }
     renderAdminUsers(document.getElementById('adminContent'));
   }
@@ -1080,7 +1081,9 @@ function isAccountBlocked(){
   const st = _userCache[G.ACCOUNT_ID] && _userCache[G.ACCOUNT_ID].status;
   return st === 'banned' || st === 'suspended';
 }
-function haltAllTrading(action, reason){
+// Halt only applies to the account actually running in THIS browser session.
+function haltAllTrading(action, reason, derivId){
+  if(derivId !== G.ACCOUNT_ID) return; // targeted account is not this session — nothing to halt here
   G.ACCOUNT_BLOCKED = true;
   G.ACCOUNT_BLOCKED_REASON = reason || (action === 'banned' ? 'Account banned' : 'Account suspended');
   G.ACCOUNT_BLOCKED_ACTION = action;
@@ -1100,10 +1103,10 @@ function haltAllTrading(action, reason){
   const dg = document.getElementById('dgEngineBtn');
   if(sb){ sb.disabled = true; sb.style.opacity = '0.4'; sb.style.cursor = 'not-allowed'; }
   if(dg){ dg.disabled = true; dg.style.opacity = '0.4'; dg.style.cursor = 'not-allowed'; }
-  log(`[HALT] All trading halted — account ${action}`,'e');
-  updateUserStatusBadge(action);
+  log(`[HALT] All trading halted — account ${derivId} ${action}`,'e');
 }
-function clearAccountBlock(){
+function clearAccountBlock(derivId){
+  if(derivId !== G.ACCOUNT_ID) return; // not this session
   G.ACCOUNT_BLOCKED = false;
   G.ACCOUNT_BLOCKED_REASON = '';
   G.ACCOUNT_BLOCKED_ACTION = null;
@@ -1181,14 +1184,16 @@ function showWarnPopup(action, derivId, traderId, reason){
     active:    { title:'✅ ACCOUNT REACTIVATED', color:'#5a8f64', icon:'✅', lock:false }
   };
   const c = cfg[action] || cfg.flagged;
-  window._warnBlockDerivId = (action === 'banned' || action === 'suspended') ? derivId : null;
+  // Only make the popup undismissable when the targeted account is THIS session's account.
+  const lock = c.lock && derivId === G.ACCOUNT_ID;
+  window._warnBlockDerivId = lock ? derivId : null;
   const existing = document.getElementById('warnPopup');
   if(existing) existing.remove();
   const el = document.createElement('div');
   el.id = 'warnPopup';
   el.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100002;background:rgba(120,0,0,0.45);display:flex;align-items:center;justify-content:center;font-family:var(--font,monospace);animation:wpulse 1.2s ease-in-out infinite';
-  const dismissBtn = c.lock
-    ? `<div style="font-size:11px;color:#c45a5a;margin-top:6px">⛔ This notice cannot be dismissed while the account is ${action}. Unban / unsuspend to clear it.</div>`
+  const dismissBtn = lock
+    ? `<div style="font-size:11px;color:#c45a5a;margin-top:6px">⛔ This notice cannot be dismissed while your account is ${action}. Unban / unsuspend to clear it.</div>`
     : `<button onclick="closeWarnPopup()" style="background:${c.color};border:none;color:#0d0c0a;padding:12px 40px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700">DISMISS</button>`;
   el.innerHTML = `
     <div style="background:#0d0c0a;border:3px solid ${c.color};border-radius:14px;padding:34px 40px;max-width:480px;text-align:center;box-shadow:0 0 70px ${c.color}">
@@ -1206,13 +1211,12 @@ function showWarnPopup(action, derivId, traderId, reason){
     st.textContent = '@keyframes wpulse{0%,100%{background:rgba(120,0,0,0.45)}50%{background:rgba(120,0,0,0.7)}}';
     document.head.appendChild(st);
   }
-  if(!c.lock) setTimeout(closeWarnPopup, 6000);
+  if(!lock) setTimeout(closeWarnPopup, 6000);
 }
 function closeWarnPopup(){
-  // Refuse to close while a hard block (ban/suspend) popup is active
-  if(window._warnBlockDerivId){
-    const st = _userCache[window._warnBlockDerivId] && _userCache[window._warnBlockDerivId].status;
-    if(st === 'banned' || st === 'suspended') return;
+  // Refuse to close while THIS session's account is hard-blocked
+  if(window._warnBlockDerivId && window._warnBlockDerivId === G.ACCOUNT_ID && G.ACCOUNT_BLOCKED){
+    return;
   }
   const el = document.getElementById('warnPopup');
   if(el) el.remove();
