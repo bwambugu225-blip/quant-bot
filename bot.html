@@ -457,6 +457,8 @@ body::after{
 .hax-sub{font-size:8px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;flex:1;font-family:var(--font);position:relative;overflow:hidden;white-space:nowrap}
 .hax-sub::after{content:'';position:absolute;top:0;right:0;width:14px;height:100%;background:linear-gradient(90deg,transparent,var(--surface))}
 .hax-clk{font-family:var(--font);font-size:10px;color:var(--accent);letter-spacing:1px;text-shadow:0 0 8px rgba(54,225,255,0.4)}
+.strat-chip{font-family:var(--font);font-size:8px;letter-spacing:.5px;padding:3px 7px;border-radius:3px;background:rgba(120,140,160,0.08);color:var(--muted);border:1px solid var(--line);cursor:pointer;text-transform:uppercase;transition:.15s}
+.strat-chip.on{background:rgba(54,225,255,0.12);color:var(--accent);border-color:rgba(54,225,255,0.4);text-shadow:0 0 8px rgba(54,225,255,0.4)}
 .hax-body{display:grid;grid-template-columns:1fr 1.25fr 0.85fr;gap:14px;position:relative;z-index:2;align-items:stretch}
 .hax-core{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:6px;border-right:1px solid var(--line);padding-right:12px}
 .hax-sig{font-family:var(--font-serif);font-size:34px;font-weight:800;letter-spacing:1px;color:var(--text);text-shadow:0 0 18px rgba(54,225,255,0.3);transition:color .3s,text-shadow .3s;line-height:1}
@@ -845,6 +847,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
           <select id="strategySelect" class="inp" onchange="selectStrategy(this.value)" style="font-size:10px;width:100%">
             <option value="ENS_XTREME" selected>💎 WPR Ranges + Reversal Confluence</option>
           </select>
+          <div id="stratList" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px"></div>
         </div>
       </div>
       <div class="stake-row">
@@ -2797,8 +2800,8 @@ function subscribeAll(){
 function connectMarketWS(){
   if(G.MWS && (G.MWS.readyState===WebSocket.OPEN || G.MWS.readyState===WebSocket.CONNECTING)) return;
   if(G.MWS_RECONN){ clearTimeout(G.MWS_RECONN); G.MWS_RECONN=null; }
-  // Current Deriv WS + app_id (1089 legacy public app is unreliable for unauthenticated ticks)
-  const mws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=' + G.APP_ID);
+  // Public Deriv WS for unauthenticated market data (1089 is Deriv's documented public app_id)
+  const mws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id=1089');
   G.MWS = mws;
   mws.onopen = ()=>{
     G.MWS_CONNECTED = true;
@@ -4692,6 +4695,17 @@ function handleTgCommand(text, chatId){
 
 function toggleStrat(idx){ G.STRATEGY_ACTIVE[idx]=!G.STRATEGY_ACTIVE[idx]; renderStratList(); saveState(); }
 
+function renderStratList(){
+  const wrap=document.getElementById('stratList'); if(!wrap) return;
+  if(!G.STRATEGIES || !G.STRATEGIES.length) return;
+  let html='';
+  G.STRATEGIES.forEach((st, i)=>{
+    const on = G.STRATEGY_ACTIVE[i];
+    html += `<button type="button" class="strat-chip${on?' on':''}" onclick="toggleStrat(${i})" title="${st.code}">${st.name}</button>`;
+  });
+  wrap.innerHTML=html;
+}
+
 function updateStrategyStats(signal, won){
   if(!signal || !signal.src) return;
   if(!G.STRATEGY_STATS) G.STRATEGY_STATS = {};
@@ -4866,7 +4880,7 @@ function restoreState(){
       } catch(ex){ console.log('[RESTORE CHART SETTINGS]', ex.message); }
     }
     const t = localStorage.getItem('deriv_token');
-    if(t){ G.TOKEN = t; document.getElementById('apiToken').value = t; }
+    if(t){ G.TOKEN = t; const elT=document.getElementById('apiToken'); if(elT) elT.value = t; }
     const sk = localStorage.getItem('deriv_stake');
     if(sk){
       const elR = document.getElementById('rfStake'); if(elR) elR.value = sk;
