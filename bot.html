@@ -812,6 +812,18 @@ function cci(c,p=14){
   if(md===0) return 0;
   return (tps[tps.length-1]-mn)/(0.015*md);
 }
+function heikenAshi(candles){
+  const ha=[];
+  for(let i=0;i<candles.length;i++){
+    const k=candles[i];
+    let haO,haC,haH,haL;
+    if(i===0){ haO=(k.open+k.close)/2; haC=(k.open+k.high+k.low+k.close)/4; }
+    else{ const p=ha[i-1]; haO=(p.open+p.close)/2; haC=(k.open+k.high+k.low+k.close)/4; }
+    haH=Math.max(k.high,haO,haC); haL=Math.min(k.low,haO,haC);
+    ha.push({epoch:k.epoch,open:haO,high:haH,low:haL,close:haC});
+  }
+  return ha;
+}
 function atr(c,p=14){
   if(c.length<p+1) return null;
   let s=0;
@@ -832,13 +844,12 @@ function initStrategies(){
   const S = G.STRATEGIES;
   S.push({ name:'Williams %R', code:'WPR', analyze:(c)=>{
     if(c.length<20) return null;
-    const hi=highs(c), lo=lows(c), cl=closes(c), p=10;
-    const wr=(i)=>{ const hh=max(hi.slice(i-p+1,i+1)), ll=min(lo.slice(i-p+1,i+1)); return hh===ll?-50:((hh-cl[i])/(hh-ll))*-100; };
+    const ha=heikenAshi(c);
+    const hi=ha.map(x=>x.high), lo=ha.map(x=>x.low), cl=ha.map(x=>x.close), p=10;
+    const wr=(i)=>{ const hh=Math.max(...hi.slice(i-p+1,i+1)), ll=Math.min(...lo.slice(i-p+1,i+1)); return hh===ll?-50:((hh-cl[i])/(hh-ll))*-100; };
     const cw=wr(cl.length-1), pw=wr(cl.length-2);
-    // RISE: was below -80 (oversold), now closes at/above -80
-    if(pw<-80 && cw>=-80) return {action:'RISE', conf:85, src:'WPR'};
-    // FALL: was above -20 (overbought), now closes at/below -20
-    if(pw>-20 && cw<=-20) return {action:'FALL', conf:85, src:'WPR'};
+    if(pw<-80 && cw>=-80) return {action:'RISE', conf:88, src:'WPR'};
+    if(pw>-20 && cw<=-20) return {action:'FALL', conf:88, src:'WPR'};
     return null;
   }});
   S.push({ name:'Renko Volumetric Flow', code:'RENKO_FLOW', analyze:(c)=>{
@@ -2017,6 +2028,8 @@ function runStrategyAnalysis(sym, candles, liveBuf){
   const hi = candles.map(c => c.high);
   const lo = candles.map(c => c.low);
   const cl = candles.map(c => c.close);
+  const ha = heikenAshi(candles);
+  const haHi = ha.map(c=>c.high), haLo = ha.map(c=>c.low), haCl = ha.map(c=>c.close);
 
   // ── Indicators ──
   const rsiVal = calcRSI(prices, 14);
@@ -2033,16 +2046,16 @@ function runStrategyAnalysis(sym, candles, liveBuf){
   const trendStrength = adx ? adx.strength : 0;
   const trendDir = adx ? adx.trend : null;
 
-  // WPR(7)
+  // WPR(7) on Heiken Ashi
   const p=7;
   const getWPR7 = (idx) => {
     if(idx < p) return -50;
-    const hh = Math.max(...hi.slice(idx-p+1, idx+1));
-    const ll = Math.min(...lo.slice(idx-p+1, idx+1));
-    return hh === ll ? -50 : ((hh - cl[idx]) / (hh - ll)) * -100;
+    const hh = Math.max(...haHi.slice(idx-p+1, idx+1));
+    const ll = Math.min(...haLo.slice(idx-p+1, idx+1));
+    return hh === ll ? -50 : ((hh - haCl[idx]) / (hh - ll)) * -100;
   };
-  const cw = getWPR7(cl.length - 1);
-  const pw = cl.length >= 2 ? getWPR7(cl.length - 2) : -50;
+  const cw = getWPR7(haCl.length - 1);
+  const pw = haCl.length >= 2 ? getWPR7(haCl.length - 2) : -50;
 
   // ATR(14)
   let atrVal=null, atrSmaVal=null;
