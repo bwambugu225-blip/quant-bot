@@ -847,6 +847,11 @@ async function sbUpsertUser(){
         u.username = name;
       }
     }
+    // Load persisted session settings from DB (takes precedence over localStorage)
+    try {
+      const loaded = await loadSettingsFromDB();
+      if(loaded) saveState();
+    } catch(e){}
     if(u.status !== 'active') log(`[SB] Account ${G.ACCOUNT_ID} status: ${u.status}${u.flag_reason ? ' ('+u.flag_reason+')' : ''}`,'w');
     enforceAccountStatus(u.status);
   }
@@ -969,6 +974,125 @@ function sbGetAdminHash(){
   return localStorage.getItem('btr_admin_hash') || G.ADMIN_PASSWORD_HASH;
 }
 
+// ── Persistent Session Settings (DB-backed) ──
+// Full bot configuration is saved to the `users.settings` JSONB column so it
+// survives logout, browser change, or device switch, and is visible in admin.
+async function sbSaveSettings(derivId, settingsObj){
+  const sb = sbInit(); if(!sb || !derivId) return false;
+  try {
+    const { error } = await sb.from('users').update({ settings: settingsObj }).eq('deriv_id', derivId);
+    if(error) console.warn('[SB] Save settings error', error);
+    return !error;
+  } catch(e){ console.warn('[SB] Save settings exception', e); return false; }
+}
+async function sbLoadSettings(derivId){
+  const sb = sbInit(); if(!sb || !derivId) return null;
+  try {
+    const { data, error } = await sb.from('users').select('settings').eq('deriv_id', derivId).single();
+    if(error) return null;
+    return data && data.settings ? data.settings : null;
+  } catch(e){ return null; }
+}
+async function sbClearUserSettings(derivId){
+  const sb = sbInit(); if(!sb || !derivId) return false;
+  try {
+    const { error } = await sb.from('users').update({ settings: null }).eq('deriv_id', derivId);
+    return !error;
+  } catch(e){ return false; }
+}
+function collectSettings(){
+  const elVal = id => document.getElementById(id)?.value;
+  return {
+    v: 1,
+    saved_at: new Date().toISOString(),
+    token: G.TOKEN,
+    account_type: G.ACCOUNT_TYPE,
+    trade_mode: G.TRADE_MODE,
+    current_market: G.CURRENT_MARKET,
+    trade_duration: G.TRADE_DURATION,
+    trade_duration_unit: G.TRADE_DURATION_UNIT,
+    selected_strategy: G.SELECTED_STRATEGY,
+    strategy_active: G.STRATEGY_ACTIVE,
+    trade_history: G.TRADE_HISTORY.slice(-200),
+    stake: elVal('rfStake') || elVal('dgBaseStake'),
+    duration: elVal('rfDuration'),
+    botstate: {
+      contractType: BotState.contractType,
+      baseStake: BotState.baseStake, targetProfit: BotState.targetProfit, stopLoss: BotState.stopLoss,
+      subMode: elVal('dgMcSubMode') || 'DIFF'
+    },
+    martingale: {
+      enabled: Martingale.enabled, mult: Martingale.mult,
+      baseStake: Martingale.baseStake, currentStake: Martingale.currentStake
+    },
+    copy_trading_enabled: G.COPYTRADING_ENABLED,
+    copy_traders: G.COPY_TRADERS.map(c => ({
+      name: c.name, token: c.token, accountType: c.accountType,
+      accountId: c.accountId, currency: c.currency, balance: c.balance,
+      pnl: c.pnl, copyOnline: !!c.copyOnline
+    })),
+    telegram_token: elVal('tgToken'),
+    telegram_chat_id: elVal('tgChatId'),
+    chart_settings: ChartSettings
+  };
+}
+function applySettings(s){
+  if(!s) return false;
+  try {
+    if(s.account_type === 'real' || s.account_type === 'demo'){
+      G.ACCOUNT_TYPE = s.account_type;
+      const toggle = document.getElementById('accToggle'); if(toggle) toggle.checked = s.account_type === 'real';
+      const badge = document.getElementById('accBadge'); if(badge){ badge.textContent = s.account_type.toUpperCase(); badge.className = `acc-badge ${s.account_type}`; }
+      const al = document.getElementById('accLabel'); if(al) al.textContent = s.account_type.toUpperCase();
+    }
+    if(s.trade_mode) G.TRADE_MODE = s.trade_mode;
+    if(s.current_market) G.CURRENT_MARKET = s.current_market;
+    if(s.trade_duration) G.TRADE_DURATION = s.trade_duration;
+    if(s.trade_duration_unit) G.TRADE_DURATION_UNIT = s.trade_duration_unit;
+    if(s.selected_strategy){ G.SELECTED_STRATEGY = s.selected_strategy; const e=document.getElementById('strategySelect'); if(e) e.value = s.selected_strategy; }
+    if(Array.isArray(s.strategy_active)) G.STRATEGY_ACTIVE = s.strategy_active;
+    if(Array.isArray(s.trade_history)) G.TRADE_HISTORY = s.trade_history;
+    if(s.stake){ const e1=document.getElementById('rfStake'); if(e1) e1.value=s.stake; const e2=document.getElementById('dgBaseStake'); if(e2) e2.value=s.stake; }
+    if(s.duration){ const e=document.getElementById('rfDuration'); if(e) e.value=s.duration; }
+    if(s.botstate){
+      if(s.botstate.contractType) BotState.contractType = s.botstate.contractType;
+      if(s.botstate.baseStake) BotState.baseStake = s.botstate.baseStake;
+      if(s.botstate.targetProfit) BotState.targetProfit = s.botstate.targetProfit;
+      if(s.botstate.stopLoss) BotState.stopLoss = s.botstate.stopLoss;
+      if(s.botstate.subMode){ const e=document.getElementById('dgMcSubMode'); if(e) e.value=s.botstate.subMode; }
+    }
+    if(s.martingale){ const m=s.martingale;
+      if(typeof m.enabled==='boolean') Martingale.enabled=m.enabled;
+      if(m.mult) Martingale.mult=m.mult;
+      if(m.baseStake) Martingale.baseStake=m.baseStake;
+      if(m.currentStake) Martingale.currentStake=m.currentStake;
+    }
+    if(typeof s.copy_trading_enabled==='boolean') G.COPYTRADING_ENABLED = s.copy_trading_enabled;
+    if(Array.isArray(s.copy_traders)) G.COPY_TRADERS = s.copy_traders.map(c => ({ ...c, copyOnline: !!c.copyOnline, status: 'offline' }));
+    if(s.telegram_token){ const e=document.getElementById('tgToken'); if(e) e.value=s.telegram_token; }
+    if(s.telegram_chat_id){ const e=document.getElementById('tgChatId'); if(e) e.value=s.telegram_chat_id; }
+    if(s.chart_settings){ Object.assign(ChartSettings, s.chart_settings);
+      const et=document.getElementById('settingChartType'); if(et) et.value=ChartSettings.type;
+      const e1=document.getElementById('settingEma20'); if(e1) e1.checked=ChartSettings.ema20;
+      const e2=document.getElementById('settingEma50'); if(e2) e2.checked=ChartSettings.ema50;
+      const e3=document.getElementById('settingGrid'); if(e3) e3.checked=ChartSettings.grid;
+      const e4=document.getElementById('settingBodyRatio'); if(e4) e4.value=ChartSettings.bodyRatio;
+    }
+    if(s.token){ G.TOKEN = s.token; const e=document.getElementById('apiToken'); if(e) e.value=s.token; }
+    return true;
+  } catch(e){ console.warn('[APPLY SETTINGS]', e.message); return false; }
+}
+async function loadSettingsFromDB(){
+  if(!G.ACCOUNT_ID) return false;
+  const s = await sbLoadSettings(G.ACCOUNT_ID);
+  if(s){ applySettings(s); return true; }
+  return false;
+}
+async function saveSettingsToDB(){
+  if(!G.ACCOUNT_ID) return false;
+  return await sbSaveSettings(G.ACCOUNT_ID, collectSettings());
+}
+
 // ── Admin Panel ──
 let _adminAuthed = false;
 function showAdminLogin(){
@@ -1070,6 +1194,7 @@ async function renderAdminUsers(container){
       <th style="padding:6px 8px;border-bottom:1px solid #2a251f">W/L</th>
       <th style="padding:6px 8px;border-bottom:1px solid #2a251f">PnL</th>
       <th style="padding:6px 8px;border-bottom:1px solid #2a251f">Trades</th>
+      <th style="padding:6px 8px;border-bottom:1px solid #2a251f">Config</th>
       <th style="padding:6px 8px;border-bottom:1px solid #2a251f">Last Login</th>
       <th style="padding:6px 8px;border-bottom:1px solid #2a251f">Actions</th>
     </tr></thead>
@@ -1087,6 +1212,9 @@ async function renderAdminUsers(container){
       <td style="padding:4px 8px">${w}W / ${l}L</td>
       <td style="padding:4px 8px;color:${pnl>=0?'#5a8f64':'#c45a5a'}">$${(pnl).toFixed(2)}</td>
       <td style="padding:4px 8px">${t}</td>
+      <td style="padding:4px 8px;font-size:9px;color:#a99">
+        ${u.settings ? (u.settings.copy_traders ? u.settings.copy_traders.length+' copy' : '0 copy') + ' · ' + (u.settings.selected_strategy||'?') + ' · ' + (u.settings.account_type||'?') : '<span style="color:#6a5">default</span>'}
+      </td>
       <td style="padding:4px 8px;color:#8a7e6a;font-size:9px">${u.last_login ? new Date(u.last_login).toLocaleDateString() : '—'}</td>
       <td style="padding:4px 8px">
         <select onchange="adminUserAction('${u.deriv_id}',this.value,this)" style="background:#1c1915;border:1px solid #2a251f;color:#f0e8da;padding:2px 4px;border-radius:3px;font-size:9px">
@@ -1095,6 +1223,7 @@ async function renderAdminUsers(container){
           <option value="suspended">⏸ Suspend</option>
           <option value="banned">🚫 Ban</option>
           <option value="flagged">⚠ Flag</option>
+          <option value="reset_settings">🧹 Reset settings</option>
         </select>
       </td>
     </tr>`;
@@ -1104,6 +1233,15 @@ async function renderAdminUsers(container){
 }
 async function adminUserAction(derivId, action, selEl){
   if(!action) return;
+  if(action === 'reset_settings'){
+    if(confirm('Reset this user\'s saved settings (copy clients, strategy, etc.)?')){
+      const ok = await sbClearUserSettings(derivId);
+      if(ok) alert('Settings cleared for ' + derivId);
+    }
+    if(selEl) selEl.value='';
+    renderAdminUsers(document.getElementById('adminContent'));
+    return;
+  }
   const reason = await adminActionReason(action);
   if(reason === null) { if(selEl) selEl.value=''; return; }
   const ok = await sbUpdateUserStatus(derivId, action, reason);
@@ -4158,6 +4296,8 @@ function flushState(){
     if(tgChat) localStorage.setItem('deriv_tg_chat', tgChat);
     const dur = document.getElementById('rfDuration')?.value;
     if(dur) localStorage.setItem('deriv_duration', dur);
+    // Mirror to DB (best-effort, non-blocking) for cross-device persistence
+    if(G.ACCOUNT_ID) saveSettingsToDB();
   } catch(e){ console.log('[SAVE]', e.message); }
 }
 function saveState(){
@@ -4921,10 +5061,11 @@ function logout(){
     if(BotState.isTrading){ BotState.isTrading=false; const b=document.getElementById('dgEngineBtn'); if(b) b.textContent='AUTO'; }
     if(G.WS) try{ G.WS.close(); }catch(e){}
     flushState();
+    saveSettingsToDB();
   } catch(e){}
   document.getElementById('app').style.display='none';
   document.getElementById('loginOverlay').classList.remove('hidden');
-  log('[SYSTEM] Logged out — settings saved', 'i');
+  log('[SYSTEM] Logged out — settings saved to database', 'i');
 }
 
 // ============================================================
@@ -5034,6 +5175,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if(G.WS) try{ G.WS.close(); }catch(e){}
     flushState();
+    if(G.ACCOUNT_ID) saveSettingsToDB();
   });
   // Global error handler to catch any unhandled crashes
   window.onerror = (msg, url, line, col, err) => {
@@ -5050,6 +5192,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(updateDash, 2000);
   setInterval(updateWatchlist, 3000);
   setInterval(calibrateThresholds, 120000);
+  // Constantly back settings up to the database (cross-device persistence)
+  setInterval(() => { if(G.ACCOUNT_ID && (G.RUNNING || BotState.isTrading || G.AUTH)) saveSettingsToDB(); }, 20000);
   startTgPolling();
 });
 </script>
