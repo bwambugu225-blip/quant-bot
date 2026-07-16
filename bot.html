@@ -428,14 +428,27 @@ body::after{
 .btn-accent::after{content:'';position:absolute;top:0;left:0;width:40%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.25),transparent);animation:sheen 5s ease-in-out infinite}
 
 /* ── Hacky Vibe Analysis Panel ── */
-.hax-panel{background:linear-gradient(155deg,rgba(8,12,24,0.92),rgba(14,20,40,0.78));border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px 8px;backdrop-filter:blur(14px) saturate(1.3);-webkit-backdrop-filter:blur(14px) saturate(1.3);box-shadow:0 14px 50px rgba(0,0,0,0.55),inset 0 0 30px rgba(54,225,255,0.06),0 0 0 1px rgba(54,225,255,0.05);position:relative;overflow:hidden}
+.hax-panel{background:transparent;border:none;border-radius:0;padding:0;backdrop-filter:none;box-shadow:none;position:relative;overflow:hidden}
 .hax-panel::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(54,225,255,0.022) 0 1px,transparent 1px 4px);pointer-events:none;opacity:.6}
 .hax-panel::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 18% 0%,rgba(54,225,255,0.10),transparent 45%);pointer-events:none}
-.hax-corner{position:absolute;width:14px;height:14px;border:2px solid var(--accent);opacity:.55;pointer-events:none;filter:drop-shadow(0 0 4px rgba(54,225,255,0.6))}
-.hax-corner.tl{top:6px;left:6px;border-right:none;border-bottom:none}
-.hax-corner.tr{top:6px;right:6px;border-left:none;border-bottom:none}
-.hax-corner.bl{bottom:6px;left:6px;border-right:none;border-top:none}
-.hax-corner.br{bottom:6px;right:6px;border-left:none;border-top:none}
+.hax-price-lbl{font-size:7px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;font-weight:700;text-align:center}
+.hax-price-lbl span{color:var(--accent);text-shadow:0 0 8px rgba(54,225,255,0.4)}
+.hax-matrix-head{font-size:8px;color:var(--accent);letter-spacing:1.5px;text-transform:uppercase;font-weight:700;font-family:var(--font-serif);margin:10px 0 4px;text-shadow:0 0 8px rgba(54,225,255,0.3)}
+.hax-matrix{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:4px}
+.hax-mx{background:rgba(54,225,255,0.03);border:1px solid var(--line);border-radius:0;padding:4px 6px;font-size:8px;cursor:pointer;transition:.15s;position:relative;overflow:hidden}
+.hax-mx:hover{background:rgba(54,225,255,0.08);border-color:var(--accent);box-shadow:0 0 12px rgba(54,225,255,0.18)}
+.hax-mx.sel{border-color:var(--accent);background:rgba(54,225,255,0.1);box-shadow:inset 0 0 12px rgba(54,225,255,0.12)}
+.hax-mx .mx-top{display:flex;justify-content:space-between;align-items:center;gap:4px}
+.hax-mx .mx-sym{font-weight:700;color:var(--text);font-size:8px;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hax-mx .mx-act{font-weight:800;font-size:9px}
+.hax-mx .mx-act.r{color:var(--positive);text-shadow:0 0 6px rgba(54,224,166,0.5)}
+.hax-mx .mx-act.f{color:var(--negative);text-shadow:0 0 6px rgba(255,93,115,0.5)}
+.hax-mx .mx-act.n{color:var(--muted)}
+.hax-mx .mx-row{display:flex;justify-content:space-between;color:var(--muted);margin-top:2px}
+.hax-mx .mx-row b{color:var(--accent);font-family:var(--font);font-weight:500}
+.hax-mx .mx-track{height:3px;background:rgba(6,9,18,0.8);margin-top:3px;position:relative;overflow:hidden}
+.hax-mx .mx-track i{position:absolute;left:0;top:0;height:100%;width:0;background:linear-gradient(90deg,#36e1ff,#7b6bff);box-shadow:0 0 6px rgba(54,225,255,0.5);transition:width .4s}
+@media(max-width:767px){.hax-matrix{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}}
 .hax-head{display:flex;align-items:center;gap:10px;margin-bottom:12px;border-bottom:1px solid var(--line);padding-bottom:8px;position:relative;z-index:2}
 .hax-ring{position:relative;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
 .hax-ring i{position:absolute;inset:0;border-radius:50%;border:2px solid transparent;border-top-color:var(--accent);border-right-color:var(--accent);animation:spinSlow 2.4s linear infinite;box-shadow:0 0 8px rgba(54,225,255,0.4);opacity:.7}
@@ -486,7 +499,7 @@ body::after{
    GLOBAL HUD COHESION — apply the analysis-core aesthetic everywhere
    ============================================================ */
 /* Reusable HUD shell: glass + scanline + neon edge + corner brackets */
-.hud{position:relative;background:linear-gradient(155deg,rgba(8,12,24,0.90),rgba(14,20,40,0.72));border:1px solid var(--line);border-radius:var(--radius);backdrop-filter:blur(12px) saturate(1.25);-webkit-backdrop-filter:blur(12px) saturate(1.25);box-shadow:0 12px 44px rgba(0,0,0,0.5),inset 0 0 26px rgba(54,225,255,0.05),0 0 0 1px rgba(54,225,255,0.04);overflow:hidden}
+.hud{position:relative;background:transparent;border:none;border-top:1px solid var(--line);border-radius:0;backdrop-filter:none;box-shadow:none;overflow:hidden}
 .hud::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(54,225,255,0.02) 0 1px,transparent 1px 4px);pointer-events:none;opacity:.5}
 .hud::after{content:'';position:absolute;inset:0;background:radial-gradient(circle at 12% 0%,rgba(54,225,255,0.08),transparent 48%);pointer-events:none}
 .hud>.hud-c{position:absolute;width:12px;height:12px;border:2px solid var(--accent);opacity:.5;pointer-events:none;filter:drop-shadow(0 0 4px rgba(54,225,255,0.6))}
@@ -496,8 +509,9 @@ body::after{
 .hud>.hud-c.br{bottom:6px;right:6px;border-left:none;border-top:none}
 
 /* Sections inherit the HUD glass + scanline + accent edge */
-.section{position:relative;background:linear-gradient(160deg,rgba(10,14,26,0.55),rgba(14,20,38,0.32));border:1px solid var(--line);border-radius:var(--radius);margin:0 0 10px;padding:12px 14px;backdrop-filter:blur(8px);box-shadow:inset 0 0 20px rgba(54,225,255,0.04)}
-.section::before{content:'';position:absolute;inset:0;border-radius:var(--radius);background:repeating-linear-gradient(0deg,rgba(54,225,255,0.015) 0 1px,transparent 1px 4px);pointer-events:none;opacity:.5}
+.section{position:relative;background:linear-gradient(180deg,rgba(54,225,255,0.03),transparent 40%);border:none;border-top:1px solid var(--line);border-radius:0;margin:0;padding:14px 14px;box-shadow:none;backdrop-filter:none}
+.section::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(54,225,255,0.012) 0 1px,transparent 1px 4px);pointer-events:none;opacity:.5}
+.section::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.5;box-shadow:0 0 8px rgba(54,225,255,0.4)}
 .section>.section-title:first-child{position:relative;display:inline-flex;align-items:center;gap:6px}
 .section>.section-title:first-child::before{content:'⟁';color:var(--accent);font-size:9px;opacity:.7;filter:drop-shadow(0 0 6px rgba(54,225,255,0.6))}
 
@@ -509,7 +523,7 @@ body::after{
 .btn-call::after,.btn-put::after{content:'';position:absolute;top:0;left:-60%;width:50%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.35),transparent);animation:sheen 3.5s ease-in-out infinite}
 
 /* KPI cards: stronger HUD glass + corner glow */
-.kpi{background:linear-gradient(160deg,rgba(10,14,26,0.7),rgba(14,20,38,0.5));border:1px solid var(--line);border-radius:var(--radius);padding:12px 6px;position:relative;overflow:hidden;box-shadow:inset 0 0 22px rgba(54,225,255,0.06),0 8px 28px rgba(0,0,0,0.4)}
+.kpi{background:transparent;border:none;border-top:2px solid var(--line);border-radius:0;padding:10px 6px 4px;position:relative;overflow:hidden;box-shadow:none}
 .kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.6;box-shadow:0 0 10px rgba(54,225,255,0.5)}
 .kpi::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(54,225,255,0.02) 0 1px,transparent 1px 4px);pointer-events:none;opacity:.4}
 
@@ -861,10 +875,9 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
     </div>
 
     <!-- Chart -->
-    <div class="section hud" style="padding:4px 0; overflow:hidden;">
-      <span class="hud-c tl"></span><span class="hud-c tr"></span><span class="hud-c bl"></span><span class="hud-c br"></span>
-      <div style="width:100%; overflow:hidden; background:rgba(6,9,18,0.6); border:1px solid var(--line); border-radius:var(--radius); padding:3px; transition:border-color 0.3s, box-shadow 0.3s; box-shadow:inset 0 0 24px rgba(54,225,255,0.06);">
-        <canvas id="liveChart" style="width:100%; height:180px; display:block; cursor:crosshair; border-radius:calc(var(--radius) - 3px);"></canvas>
+    <div class="section" style="padding:8px 0; overflow:hidden;">
+      <div style="width:100%; overflow:hidden; background:rgba(6,9,18,0.4); border:1px solid var(--line); border-radius:0; padding:3px; transition:border-color 0.3s, box-shadow 0.3s; box-shadow:inset 0 0 24px rgba(54,225,255,0.05);">
+        <canvas id="liveChart" style="width:100%; height:180px; display:block; cursor:crosshair; border-radius:0;"></canvas>
 <style>@media(min-width:768px){#liveChart{height:250px!important}}</style>
       </div>
     </div>
@@ -912,50 +925,49 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
     </div>
 
     <!-- Hacky Vibe Analysis Panel -->
-    <div class="section" style="padding:6px 0">
-      <div class="hax-panel" id="haxPanel">
-        <div class="hax-corner tl"></div><div class="hax-corner tr"></div>
-        <div class="hax-corner bl"></div><div class="hax-corner br"></div>
-        <div class="hax-head">
-          <span class="hax-ring" id="haxRing"><i></i><b id="haxDot"></b></span>
-          <span class="hax-title">⟁ NEURAL ANALYSIS CORE</span>
-          <span class="hax-sub" id="haxSub">initialising…</span>
-          <span class="hax-clk" id="haxClk">--:--:--</span>
-        </div>
-        <div class="hax-body">
-          <div class="hax-core">
-            <div class="hax-sig" id="haxSignal">—</div>
-            <div class="hax-conf-wrap">
-              <div class="hax-conf-label">CONFIDENCE</div>
-              <div class="hax-bar"><i id="haxConf"></i></div>
-              <div class="hax-conf-val" id="haxConfTxt">0%</div>
-            </div>
-            <div class="hax-price" id="haxPrice">—</div>
-          </div>
-          <div class="hax-meters">
-            <div class="hax-meter">
-              <div class="hax-meter-top"><span>RSI·14</span><span id="haxRsi" class="mv">--</span></div>
-              <div class="hax-track"><i id="haxRsiBar"></i></div>
-            </div>
-            <div class="hax-meter">
-              <div class="hax-meter-top"><span>W%R·14</span><span id="haxWr" class="mv">--</span></div>
-              <div class="hax-track"><i id="haxWrBar"></i></div>
-            </div>
-            <div class="hax-meter">
-              <div class="hax-meter-top"><span>EMA SPREAD</span><span id="haxEma" class="mv">--/--</span></div>
-              <div class="hax-track"><i id="haxEmaBar"></i></div>
-            </div>
-            <canvas id="haxSpark" class="hax-spark" width="240" height="46"></canvas>
-          </div>
-          <div class="hax-side">
-            <div class="hax-row"><span class="k">SRC</span><span class="v" id="haxSrc">—</span></div>
-            <div class="hax-row"><span class="k">MODE</span><span class="v" id="haxMode">—</span></div>
-            <div class="hax-row"><span class="k">STAKE</span><span class="v mono" id="haxStake">$0.00</span></div>
-            <div class="hax-row"><span class="k">W·L</span><span class="v mono" id="haxWL">0 / 0</span></div>
-          </div>
-        </div>
-        <div class="hax-tape" id="haxTape"></div>
+    <div class="section" style="padding:10px 0">
+      <div class="hax-head">
+        <span class="hax-ring" id="haxRing"><i></i><b id="haxDot"></b></span>
+        <span class="hax-title">⟁ NEURAL ANALYSIS CORE</span>
+        <span class="hax-sub" id="haxSub">initialising…</span>
+        <span class="hax-clk" id="haxClk">--:--:--</span>
       </div>
+      <div class="hax-body">
+        <div class="hax-core">
+          <div class="hax-price-lbl">FOCUS · <span id="haxFocus">—</span></div>
+          <div class="hax-sig" id="haxSignal">—</div>
+          <div class="hax-conf-wrap">
+            <div class="hax-conf-label">CONFIDENCE</div>
+            <div class="hax-bar"><i id="haxConf"></i></div>
+            <div class="hax-conf-val" id="haxConfTxt">0%</div>
+          </div>
+          <div class="hax-price" id="haxPrice">—</div>
+          <canvas id="haxSpark" class="hax-spark" width="240" height="40"></canvas>
+        </div>
+        <div class="hax-meters">
+          <div class="hax-meter">
+            <div class="hax-meter-top"><span>RSI·14</span><span id="haxRsi" class="mv">--</span></div>
+            <div class="hax-track"><i id="haxRsiBar"></i></div>
+          </div>
+          <div class="hax-meter">
+            <div class="hax-meter-top"><span>W%R·14</span><span id="haxWr" class="mv">--</span></div>
+            <div class="hax-track"><i id="haxWrBar"></i></div>
+          </div>
+          <div class="hax-meter">
+            <div class="hax-meter-top"><span>EMA SPREAD</span><span id="haxEma" class="mv">--/--</span></div>
+            <div class="hax-track"><i id="haxEmaBar"></i></div>
+          </div>
+        </div>
+        <div class="hax-side">
+          <div class="hax-row"><span class="k">SRC</span><span class="v" id="haxSrc">—</span></div>
+          <div class="hax-row"><span class="k">MODE</span><span class="v" id="haxMode">—</span></div>
+          <div class="hax-row"><span class="k">STAKE</span><span class="v mono" id="haxStake">$0.00</span></div>
+          <div class="hax-row"><span class="k">W·L</span><span class="v mono" id="haxWL">0 / 0</span></div>
+        </div>
+      </div>
+      <div class="hax-matrix-head">◢ MARKET MATRIX · <span id="haxMktCount">0</span> LIVE</div>
+      <div class="hax-matrix" id="haxMatrix"></div>
+      <div class="hax-tape" id="haxTape"></div>
     </div>
 
     <!-- Trade History -->
@@ -3311,6 +3323,7 @@ function evaluateAndTrade(sym, liveBuf){
     log(`[SIGNAL] ${sym}: ${result.action} ${result.conf}% (${result.src})`,'t');
     G.CURRENT_MARKET = sym;
     G.SELECTED_MARKET = sym;
+    syncMarketSelection();
     updateWatchlist();
     execTrade(result, sym);
   }
@@ -3957,6 +3970,7 @@ function selectMarketFromDropdown(sym){
   G.MARKET_SELECTION_MODE = 'manual';
   G.SELECTED_MARKET = sym;
   G.CURRENT_MARKET = sym;
+  syncMarketSelection();
   selectMarket(sym);
 }
 
@@ -3969,12 +3983,14 @@ function updateWatchlist(){
   if(!G._wlThrottle) G._wlThrottle=0;
   if((++G._wlThrottle)%3!==0) return;
   let rise=0, fall=0;
+  if(!G._mktSig) G._mktSig={};
   const html=SYMBOLS.map(s=>{
     const c=G.MARKET.candles[s.sym]||[];
     const price=c.length?c[c.length-1].close.toFixed(3):'—';
     let sigTxt='—',sigCls='sig-none';
     // Use cached signal from last evaluateSingleMarket
     const sig=s.sym===G.CURRENT_MARKET?topSig:evaluateSingleMarket(s.sym);
+    if(sig) G._mktSig[s.sym]={action:sig.action,conf:sig.conf,src:sig.src};
     if(sig){sigTxt=`${sig.action} ${sig.conf}%`; sigCls=sig.action==='RISE'?'sig-rise':'sig-fall'; if(sig.action==='RISE')rise++;else fall++;}
     const src=sig?sig.src:'—';
     return `<div class="watch-item ${s.sym===G.CURRENT_MARKET?'selected':''}" onclick="selectMarket('${s.sym}')"><div><div class="sym">${s.name} <span style="font-size:10px;color:var(--muted);font-weight:500;">${s.sym}</span></div><div style="font-size:9px;color:var(--muted);margin-top:2px;">${c.length} candles · ${src}</div></div><div style="text-align:right;"><div class="price">${price}</div><div class="signal ${sigCls}">${sigTxt}</div></div></div>`;
@@ -3985,10 +4001,19 @@ function updateWatchlist(){
 function selectMarket(sym){
   G.CURRENT_MARKET = sym;
   G.SELECTED_MARKET = sym;
-  document.getElementById('dMarket').textContent = SYMBOLS.find(s=>s.sym===sym)?.name||sym;
+  syncMarketSelection();
   setSelectionMode('manual');
   log(`[WATCH] Selected ${sym}`,'i');
   updateDash(); drawChart(); updateWatchlist();
+}
+function syncMarketSelection(){
+  const sel=document.getElementById('marketSelect'); if(sel) sel.value=G.CURRENT_MARKET;
+  const dm=document.getElementById('dMarket'); if(dm) dm.textContent=SYMBOLS.find(s=>s.sym===G.CURRENT_MARKET)?.name||G.CURRENT_MARKET;
+  // refresh analysis matrix selection highlight in place (cheap)
+  document.querySelectorAll('.hax-mx').forEach(el=>{
+    const on = el.getAttribute('onclick') && el.getAttribute('onclick').includes("'"+G.CURRENT_MARKET+"'");
+    el.classList.toggle('sel', !!on);
+  });
 }
 
 function setSelectionMode(mode){
@@ -4319,10 +4344,11 @@ function updateAnalysisPanel(){
     }
     set('haxMode', G.TRADE_MODE||'—');
     set('haxWL', `${G.WINS||0} / ${G.LOSSES||0}`);
+    const focus=document.getElementById('haxFocus'); if(focus) focus.textContent=sym;
     drawHaxSpark(series);
     // Status ring / sub
     const dot=document.getElementById('haxDot'), sub=document.getElementById('haxSub');
-    if(G.RUNNING||BotState.isTrading){ if(dot) dot.className=''; if(sub) sub.textContent='⟐ ENGINE ACTIVE · scanning market'; }
+    if(G.RUNNING||BotState.isTrading){ if(dot) dot.className=''; if(sub) sub.textContent='⟐ ENGINE ACTIVE · scanning all markets'; }
     else if(G.AUTH){ if(dot) dot.className=''; if(sub) sub.textContent='◌ IDLE · live stream'; }
     else { if(dot) dot.className='alert'; if(sub) sub.textContent='✕ OFFLINE · awaiting auth'; }
     // Ambient scan line when idle so the panel always feels alive
@@ -4330,7 +4356,36 @@ function updateAnalysisPanel(){
       G._haxScan=(G._haxScan||0)+1;
       if(G._haxScan>=5){ G._haxScan=0; haxPush(`scan ${sym} · rsi=${r?r.toFixed(0):'--'} wr=${w?w.toFixed(0):'--'} · watching`, 'a'); }
     }
+    renderHaxMatrix();
   } catch(e){ /* never let the panel blank the app */ }
+}
+// Compute + render a live matrix for EVERY market on each tick
+function renderHaxMatrix(){
+  const wrap=document.getElementById('haxMatrix'); if(!wrap) return;
+  let html='';
+  let count=0;
+  for(const s of SYMBOLS){
+    const sym=s.sym;
+    const series=haxLiveSeries(sym);
+    const lastP=(G.MARKET.prices[sym]&&G.MARKET.prices[sym].length)?G.MARKET.prices[sym][G.MARKET.prices[sym].length-1]:(G._haxLastPrice&&sym===G.CURRENT_MARKET?G._haxLastPrice:null);
+    // live signal for this market (cached from evaluator when available)
+    const sig = (sym===G.CURRENT_MARKET && G.LAST_SIGNAL) ? G.LAST_SIGNAL : (G._mktSig && G._mktSig[sym]) || null;
+    let r=null;
+    if(series.length>=15){ const cl=series, hi=series.map(v=>v*1.0008), lo=series.map(v=>v*0.9992); r=rsi(cl,14); }
+    count++;
+    const act = sig ? sig.action : '—';
+    const actCls = act==='RISE'?'r':act==='FALL'?'f':'n';
+    const rPct = r!=null?Math.max(2,r):0;
+    const sel = sym===G.CURRENT_MARKET?' sel':'';
+    html += `<div class="hax-mx${sel}" onclick="selectMarket('${sym}')">
+      <div class="mx-top"><span class="mx-sym" title="${s.name}">${sym}</span><span class="mx-act ${actCls}">${act}</span></div>
+      <div class="mx-row"><span>RSI</span><b>${r!=null?r.toFixed(0):'--'}</b></div>
+      <div class="mx-row"><span>PRICE</span><b>${lastP!=null?lastP.toFixed(4):'--'}</b></div>
+      <div class="mx-track"><i style="width:${rPct}%"></i></div>
+    </div>`;
+  }
+  wrap.innerHTML=html;
+  const c=document.getElementById('haxMktCount'); if(c) c.textContent=count;
 }
 let _haxSparkBuf=[];
 function drawHaxSpark(series){
@@ -5626,6 +5681,7 @@ document.addEventListener('DOMContentLoaded', () => {
     sel.innerHTML = SYMBOLS.map(s => `<option value="${s.sym}">${s.name}</option>`).join('');
     sel.value = G.CURRENT_MARKET || SYMBOLS[0]?.sym;
   }
+  syncMarketSelection();
   updateDash();
   initCopytrading();
   connectMarketWS();
