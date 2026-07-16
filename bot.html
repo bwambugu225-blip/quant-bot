@@ -4564,38 +4564,69 @@ function wrapMasterSocket(ws) {
 }
 
 function copyProposalToClients(masterProposal) {
-  if (!G.COPYTRADING_ENABLED) {
-    return;
-  }
+  if (!G.COPYTRADING_ENABLED) return;
+  // Build contract_parameters from the master's proposal request
+  const cp = {};
+  ['contract_type','underlying_symbol','amount','basis','currency','duration','duration_unit',
+   'barrier','barrier2','date_expiry','selected_tick','growth_rate','multiplier',
+   'payout_per_point','limit_order','cancellation'].forEach(k => {
+    if (masterProposal[k] !== undefined) cp[k] = masterProposal[k];
+  });
+  if (!cp.basis) cp.basis = 'stake';
+  if (!cp.contract_type || !cp.underlying_symbol || !cp.amount) return;
+  cp.amount = Math.max(0.35, Math.min(10000, +(+cp.amount).toFixed(2)));
+
+  // Collect eligible, online, active clients grouped by stake multiplier
+  const groups = {}; // key: multiplier -> { demo:[], real:[] }
   for (const client of G.COPY_TRADERS) {
-    if (client.status !== 'online') continue;
-    const accId = client.accountId;
-    if(accId && _userCache[accId] && _userCache[accId].status !== 'active'){
-      log(`[COPY] Skipping ${client.name}: ${_userCache[accId].status}`,'w');
+    if (client.status !== 'online' || !client.token || !client.accountId) continue;
+    const st = (client.accountId && _userCache[client.accountId] && _userCache[client.accountId].status) || 'active';
+    if (st !== 'active') {
+      log(`[COPY] Skipping ${client.name}: ${st}`,'w');
       continue;
     }
-    if(accId && !_userCache[accId]){
-      sbCheckUserStatus(accId).then(s => { if(s !== 'active') client.status = s; });
-    }
-    const ws = clientSockets.get(client.token);
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        try {
-          let stake = (masterProposal.amount || 1) * (client.stakeMult || 1);
-          stake = Math.max(0.35, Math.min(10000, +stake.toFixed(2)));
+    const mult = (+client.stakeMult > 0) ? +client.stakeMult : 1;
+    const type = (client.accountType === 'real') ? 'real' : 'demo';
+    groups[mult] = groups[mult] || { demo: [], real: [] };
+    groups[mult][type].push(client);
+  }
+  // Fire one bulk-purchase call per (multiplier, account-type) group
+  Object.keys(groups).forEach(mult => {
+    ['demo','real'].forEach(type => {
+      const list = groups[mult][type];
+      if (!list.length) return;
+      const accounts = list.map(c => ({ account_id: c.accountId, token: c.token }));
+      bulkPurchaseCopy(accounts, type, list, +mult);
+    });
+  });
+}
 
-          const clientProposal = {
-            ...masterProposal,
-            amount: stake,
-            req_id: `cl_${client.token}_${masterProposal.req_id || genId()}`
-          };
-
-          ws.send(JSON.stringify(clientProposal));
-          console.log(`[COPY] Copied proposal to ${client.name} with stake $${stake}`);
-        } catch(e) {
-          console.error(`[COPY] Failed to copy proposal to ${client.name}:`, e);
-        }
+async function bulkPurchaseCopy(accounts, type, clientRefs, mult) {
+  if (!accounts.length) return;
+  const params = { ...cp, amount: Math.max(0.35, Math.min(10000, +(cp.amount * (mult || 1)).toFixed(2))) };
+  try {
+    const resp = await fetch(`https://api.derivws.com/trading/v1/options/contracts/bulk-purchase/${type}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Deriv-App-ID': G.APP_ID },
+      body: JSON.stringify({ contract_parameters: params, accounts })
+    });
+    const data = await resp.json();
+    const txns = (data && data.data && data.data.transactions) || [];
+    txns.forEach((tx, i) => {
+      const client = clientRefs[i];
+      if (!client) return;
+      if (tx && !tx.error) {
+        client.tradesCopied = (client.tradesCopied || 0) + 1;
+        log(`[COPY] Placed trade for ${client.name} (${type})`, 's');
+      } else {
+        const msg = (tx && tx.error && (tx.error.message || tx.error.code)) || 'unknown error';
+        log(`[COPY] Failed for ${client.name}: ${msg}`, 'e');
       }
-    }
+    });
+    updateCopyTradersList();
+  } catch (e) {
+    log(`[COPY] bulk-purchase error: ${e.message}`, 'e');
+  }
 }
 
 // ── Login Screen (Deriv OAuth2.0 PKCE flow) ──
