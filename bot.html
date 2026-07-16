@@ -487,6 +487,7 @@ details summary:hover{color:var(--text)}
       <div class="logo">B<span>TRADERS</span></div>
       <span id="connDot" class="conn r"></span>
       <span id="engineStatus" style="font-size:8px;color:var(--muted);font-weight:600;">OFFLINE</span>
+      <span id="userStatusBadge" style="font-size:8px;font-weight:700;padding:2px 7px;border-radius:4px;margin-left:6px;display:none;letter-spacing:.5px"></span>
       <span id="traderIdBadge" class="tag tag-blue" style="font-size:7px;margin-left:6px;"></span>
     </div>
     <div class="mtop-r">
@@ -828,7 +829,7 @@ async function sbEnsureUser(derivId, token, type, balance, traderId){
 }
 async function sbUpsertUser(){
   if(!G.ACCOUNT_ID) return;
-  const u = await sbEnsureUser(G.ACCOUNT_ID, G.TOKEN, G.ACCOUNT_TYPE, G.BALANCE);
+  const u = await sbEnsureUser(G.ACCOUNT_ID, G.TOKEN, G.ACCOUNT_TYPE, G.BALANCE, G.TRADER_ID);
   _userCache[G.ACCOUNT_ID] = u;
   if(u && u.status !== 'active') log(`[SB] Account ${G.ACCOUNT_ID} status: ${u.status}${u.flag_reason ? ' ('+u.flag_reason+')' : ''}`,'w');
 }
@@ -894,7 +895,7 @@ async function sbUpdateUserStatus(derivId, status, reason){
     const { error } = await sb.from('users').update(upd).eq('deriv_id', derivId);
     if(error){ console.error('[SB] Update status error',error); return false; }
     _userCache[derivId] = { ...(_userCache[derivId]||{}), status };
-    if(derivId === G.ACCOUNT_ID) log(`[ADMIN] Your status changed to: ${status}`,'i');
+    if(derivId === G.ACCOUNT_ID){ log(`[ADMIN] Your status changed to: ${status}`,'i'); updateUserStatusBadge(status); }
     return true;
   } catch(e){ console.error('[SB] Update status error',e); return false; }
 }
@@ -1042,7 +1043,7 @@ async function renderAdminUsers(container){
       <td style="padding:4px 8px">${t}</td>
       <td style="padding:4px 8px;color:#8a7e6a;font-size:9px">${u.last_login ? new Date(u.last_login).toLocaleDateString() : '—'}</td>
       <td style="padding:4px 8px">
-        <select onchange="adminUserAction('${u.deriv_id}',this.value)" style="background:#1c1915;border:1px solid #2a251f;color:#f0e8da;padding:2px 4px;border-radius:3px;font-size:9px">
+        <select onchange="adminUserAction('${u.deriv_id}',this.value,this)" style="background:#1c1915;border:1px solid #2a251f;color:#f0e8da;padding:2px 4px;border-radius:3px;font-size:9px">
           <option value="">—</option>
           <option value="active">✅ Active</option>
           <option value="suspended">⏸ Suspend</option>
@@ -1055,14 +1056,109 @@ async function renderAdminUsers(container){
   html += `</tbody></table></div>`;
   container.innerHTML = html;
 }
-async function adminUserAction(derivId, action){
+async function adminUserAction(derivId, action, selEl){
   if(!action) return;
-  let reason = '';
-  if(action === 'suspended') reason = prompt('Reason for suspension:') || 'Admin suspended';
-  if(action === 'banned') reason = prompt('Reason for ban:') || 'Admin banned';
-  if(action === 'flagged') reason = prompt('Flag note:') || '';
+  const reason = await adminActionReason(action);
+  if(reason === null) { if(selEl) selEl.value=''; return; }
   const ok = await sbUpdateUserStatus(derivId, action, reason);
-  if(ok) renderAdminUsers(document.getElementById('adminContent'));
+  if(ok){
+    const u = await sbGetUser(derivId);
+    showWarnPopup(action, derivId, u && u.trader_id ? u.trader_id : derivId, reason);
+    updateUserStatusBadge(action);
+    renderAdminUsers(document.getElementById('adminContent'));
+  }
+}
+function adminActionReason(action){
+  return new Promise(resolve => {
+    const labels = {
+      suspended: 'Reason for SUSPENSION',
+      banned: 'Reason for BAN',
+      flagged: 'Flag note',
+      active: 'Reason for reactivation (optional)'
+    };
+    const ph = {
+      suspended: 'e.g. suspicious trading pattern',
+      banned: 'e.g. terms violation',
+      flagged: 'e.g. review required',
+      active: 'optional'
+    };
+    const el = document.createElement('div');
+    el.id = 'adminReasonOverlay';
+    el.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100001;background:rgba(0,0,0,0.88);display:flex;align-items:center;justify-content:center;font-family:var(--font,monospace)';
+    el.innerHTML = `
+      <div style="background:#141210;border:1px solid #2a251f;border-radius:8px;padding:22px;width:320px;text-align:center">
+        <div style="font-size:13px;color:#d4a84b;font-weight:600;margin-bottom:14px">${labels[action]||'Note'}</div>
+        <input id="adminReasonInput" type="text" placeholder="${ph[action]||''}" style="width:100%;box-sizing:border-box;background:#1c1915;border:1px solid #2a251f;color:#f0e8da;padding:8px 10px;border-radius:4px;font-size:12px;margin-bottom:12px">
+        <button onclick="submitAdminReason()" style="width:100%;background:#d4a84b;border:none;color:#0d0c0a;padding:8px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;margin-bottom:8px">Confirm</button>
+        <div style="font-size:9px;color:#8a7e6a;cursor:pointer" onclick="cancelAdminReason()">Cancel</div>
+      </div>`;
+    document.body.appendChild(el);
+    const inp = document.getElementById('adminReasonInput');
+    window._adminReasonResolve = resolve;
+    inp.addEventListener('keydown', e => { if(e.key === 'Enter') submitAdminReason(); });
+    setTimeout(() => inp.focus(), 50);
+  });
+}
+function submitAdminReason(){
+  const inp = document.getElementById('adminReasonInput');
+  const v = inp ? inp.value.trim() : '';
+  const el = document.getElementById('adminReasonOverlay');
+  if(el) el.remove();
+  if(window._adminReasonResolve){ window._adminReasonResolve(v); window._adminReasonResolve = null; }
+}
+function cancelAdminReason(){
+  const el = document.getElementById('adminReasonOverlay');
+  if(el) el.remove();
+  if(window._adminReasonResolve){ window._adminReasonResolve(null); window._adminReasonResolve = null; }
+}
+function updateUserStatusBadge(status){
+  const el = document.getElementById('userStatusBadge');
+  if(!el) return;
+  const map = {
+    banned:    { t:'BANNED',    bg:'#c45a5a', c:'#fff' },
+    suspended: { t:'SUSPENDED', bg:'#c49a3a', c:'#0d0c0a' },
+    flagged:   { t:'FLAGGED',   bg:'#c49a3a', c:'#0d0c0a' },
+    active:    { t:'',          bg:'',       c:'' }
+  };
+  const m = map[status] || map.active;
+  if(!m.t){ el.style.display = 'none'; return; }
+  el.textContent = m.t;
+  el.style.display = 'inline-block';
+  el.style.background = m.bg;
+  el.style.color = m.c;
+}
+function showWarnPopup(action, derivId, traderId, reason){
+  const cfg = {
+    banned:    { title:'🚫 ACCOUNT BANNED',    color:'#c45a5a', icon:'🚫' },
+    suspended: { title:'⏸ ACCOUNT SUSPENDED', color:'#c49a3a', icon:'⏸' },
+    flagged:   { title:'⚠ ACCOUNT FLAGGED',   color:'#c49a3a', icon:'⚠' },
+    active:    { title:'✅ ACCOUNT REACTIVATED', color:'#5a8f64', icon:'✅' }
+  };
+  const c = cfg[action] || cfg.flagged;
+  const el = document.createElement('div');
+  el.id = 'warnPopup';
+  el.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100002;background:rgba(120,0,0,0.35);display:flex;align-items:center;justify-content:center;font-family:var(--font,monospace);animation:wpulse 1s ease-in-out infinite';
+  el.innerHTML = `
+    <div style="background:#0d0c0a;border:3px solid ${c.color};border-radius:14px;padding:34px 40px;max-width:460px;text-align:center;box-shadow:0 0 60px ${c.color}">
+      <div style="font-size:54px;line-height:1;margin-bottom:14px">${c.icon}</div>
+      <div style="font-size:26px;font-weight:800;color:${c.color};letter-spacing:1px;margin-bottom:16px">${c.title}</div>
+      <div style="font-size:13px;color:#f0e8da;margin-bottom:8px">Trader: <b style="color:${c.color}">${traderId}</b></div>
+      <div style="font-size:11px;color:#8a7e6a;margin-bottom:18px">Deriv ID: ${derivId}</div>
+      ${reason ? `<div style="font-size:12px;color:#f0e8da;background:#1c1915;border:1px solid #2a251f;border-radius:6px;padding:10px 14px;margin-bottom:20px;word-break:break-word"><b>Reason:</b> ${reason}</div>` : ''}
+      <button onclick="closeWarnPopup()" style="background:${c.color};border:none;color:#0d0c0a;padding:12px 40px;border-radius:8px;cursor:pointer;font-size:14px;font-weight:700">DISMISS</button>
+    </div>`;
+  document.body.appendChild(el);
+  if(!document.getElementById('wpulseStyle')){
+    const st = document.createElement('style');
+    st.id = 'wpulseStyle';
+    st.textContent = '@keyframes wpulse{0%,100%{background:rgba(120,0,0,0.35)}50%{background:rgba(120,0,0,0.55)}}';
+    document.head.appendChild(st);
+  }
+  setTimeout(closeWarnPopup, 6000);
+}
+function closeWarnPopup(){
+  const el = document.getElementById('warnPopup');
+  if(el) el.remove();
 }
 function filterAdminUsers(){
   const q = (document.getElementById('adminUserSearch')?.value||'').toLowerCase();
@@ -4176,7 +4272,9 @@ async function addNewCopyClient() {
       log(`[COPY] Cannot add ${name}: account ${profile.accountId} is ${userStatus}`,'e');
       return;
     }
-    await sbEnsureUser(profile.accountId, token, accountType, profile.balance);
+    // Generate or use existing trader ID for copy client
+    const clientTraderId = `COPY-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+    await sbEnsureUser(profile.accountId, token, accountType, profile.balance, clientTraderId);
     const client = {
       name: name,
       token: token,
@@ -4246,7 +4344,9 @@ function connectClientWS(client) {
           client.accountId = accId;
           client.balance = parseFloat(data.authorize.balance || 0);
           client.currency = data.authorize.currency || 'USD';
-          const u = await sbEnsureUser(accId, client.token, client.accountType, client.balance);
+          // Generate or use existing trader ID for copy client
+          const clientTraderId = `COPY-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+          const u = await sbEnsureUser(accId, client.token, client.accountType, client.balance, clientTraderId);
           if(u && _userCache[accId]) _userCache[accId] = u;
           if(u && u.status !== 'active'){
             client.status = u.status;
@@ -4635,12 +4735,38 @@ function showApp(){
 // ============================================================
 // INIT
 // ============================================================
+// Initialize unique trader ID
+function initTraderId() {
+  const storedId = localStorage.getItem('btr_trader_id');
+  let traderId;
+  if (storedId) {
+    traderId = storedId;
+  } else {
+    // Generate unique ID: TRADER-XXXX-XXXX (uppercase alphanumeric)
+    const randomPart = () => Math.random().toString(36).substring(2, 6).toUpperCase();
+    traderId = `TRADER-${randomPart()}-${randomPart()}`;
+    localStorage.setItem('btr_trader_id', traderId);
+  }
+  G.TRADER_ID = traderId;
+  
+  // Update the badge
+  const badge = document.getElementById('traderIdBadge');
+  if (badge) {
+    badge.textContent = traderId;
+  }
+  
+  return traderId;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   // Theme init
   if(localStorage.getItem('btr_theme') !== 'dark') document.documentElement.classList.remove('dark');
   const themeBtn = document.getElementById('themeBtn');
-  if(themeBtn) themeBtn.textContent = document.documentElement.classList.contains('dark') ? '\u2600\ufe0f' : '\u{1f319}';
+  if(themeBtn) themeBtn.textContent = document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
   G.BOOT_AT = Date.now();
+  
+  // Initialize trader ID
+  initTraderId();
   console.log('%c[ADMIN] Default password: 13571 — change it in Admin → Settings','color:#d4a84b;font-weight:bold');
   // Check for OAuth redirect back (PKCE code or legacy token1)
   const params = new URLSearchParams(window.location.search);
