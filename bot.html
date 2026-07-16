@@ -4397,6 +4397,7 @@ async function addNewCopyClient() {
       balance: profile.balance,
       currency: profile.currency,
       status: 'online',
+      copyOnline: true,
       tradesCopied: 0,
       wins: 0,
       losses: 0,
@@ -4463,14 +4464,18 @@ function connectClientWS(client) {
           if(u && _userCache[accId]) _userCache[accId] = u;
           if(u && u.status !== 'active'){
             client.status = u.status;
+            client.copyOnline = false;
             log(`[COPY] Client ${client.name} blocked: ${u.status}${u.flag_reason?' ('+u.flag_reason+')':''}`,'e');
             try { ws.close(); } catch(ex){}
             updateCopyTradersList();
             return;
           }
           client.status = 'online';
+          client.copyOnline = true;
           updateCopyTradersList();
         } else if (data.error) {
+          // Authorize failed on the (deprecated) monitoring socket — but copy trades
+          // go through REST bulk-purchase, so keep copyOnline if the PAT was valid at add time.
           client.status = 'error';
           updateCopyTradersList();
         }
@@ -4531,6 +4536,7 @@ function connectClientWS(client) {
   };
 
   ws.onerror = (err) => {
+    // Monitoring socket error only — does not affect copy trading (REST-based).
     client.status = 'error';
     updateCopyTradersList();
   };
@@ -4576,10 +4582,12 @@ function copyProposalToClients(masterProposal) {
   if (!cp.contract_type || !cp.underlying_symbol || !cp.amount) return;
   cp.amount = Math.max(0.35, Math.min(10000, +(+cp.amount).toFixed(2)));
 
-  // Collect eligible, online, active clients grouped by stake multiplier
+  // Collect eligible clients grouped by stake multiplier.
+  // Copy eligibility is based on a valid PAT (copyOnline), NOT the deprecated
+  // monitoring WebSocket status — actual trades are placed via REST bulk-purchase.
   const groups = {}; // key: multiplier -> { demo:[], real:[] }
   for (const client of G.COPY_TRADERS) {
-    if (client.status !== 'online' || !client.token || !client.accountId) continue;
+    if (!client.copyOnline || !client.token || !client.accountId) continue;
     const st = (client.accountId && _userCache[client.accountId] && _userCache[client.accountId].status) || 'active';
     if (st !== 'active') {
       log(`[COPY] Skipping ${client.name}: ${st}`,'w');
