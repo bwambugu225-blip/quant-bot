@@ -2885,8 +2885,9 @@ function handleTick(data){
   _tickCount++;
   // Throttle heavy UI to every 3rd tick
   if((_tickCount&3)===0) updateDigitsUI();
-  // Stream live price ticks into the analysis tape (current market only)
+  // Refresh analysis core on every tick for true real-time (current market)
   if(sym===G.CURRENT_MARKET){
+    updateAnalysisPanel();
     const prev=G._haxLastPrice;
     const dir = prev==null?0:(price>prev?1:price<prev?-1:0);
     G._haxLastPrice=price;
@@ -4183,85 +4184,101 @@ function haxPush(msg, cls){
   const el=document.getElementById('haxTape');
   if(el) el.innerHTML=_haxTape.join('');
 }
+// Build a rolling close series from the LIVE tick stream so indicators update
+// every tick (real-time), not only when a 15s candle closes.
+function haxLiveSeries(sym){
+  const tp = (G.MARKET.tickPrices && G.MARKET.tickPrices[sym]) || [];
+  let series = tp.slice(-90);
+  if(series.length < 20){
+    const candles = G.MARKET.candles[sym] || [];
+    if(candles.length) series = candles.slice(-90).map(c=>c.close).concat(series);
+  }
+  // de-duplicate consecutive identical ticks so RSI/Williams aren't flat
+  const out=[]; for(const v of series){ if(!out.length || out[out.length-1]!==v) out.push(v); }
+  return out;
+}
 function updateAnalysisPanel(){
-  const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
-  const sym=G.CURRENT_MARKET;
-  const candles=G.MARKET.candles[sym]||[];
-  const d=new Date();
-  set('haxClk',`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`);
-  // Live indicators + meter bars
-  let r=null,w=null,e20=null,e50=null;
-  if(candles.length>=15){
-    const cl=candles.map(c=>c.close), hi=candles.map(c=>c.high), lo=candles.map(c=>c.low);
-    r=rsi(cl,14); w=williamsR(hi,lo,cl,14); e20=ema(cl,20); e50=ema(cl,50);
-    if(r!=null){ set('haxRsi', r.toFixed(1));
-      const e=document.getElementById('haxRsi'); const b=document.getElementById('haxRsiBar');
-      const hot=r>65, cold=r<35;
-      if(e) e.style.color = hot?'var(--negative)':cold?'var(--positive)':'var(--accent)';
-      if(b){ b.style.width=Math.max(2,r)+'%'; b.className=hot?'hot':cold?'cold':''; }
+  try {
+    const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+    const sym=G.CURRENT_MARKET;
+    const d=new Date();
+    set('haxClk',`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`);
+    const series=haxLiveSeries(sym);
+    let r=null,w=null;
+    if(series.length>=15){
+      const cl=series, hi=series.map(v=>v*1.0008), lo=series.map(v=>v*0.9992);
+      r=rsi(cl,14); w=williamsR(hi,lo,cl,14);
+      if(r!=null){
+        set('haxRsi', r.toFixed(1));
+        const e=document.getElementById('haxRsi'), b=document.getElementById('haxRsiBar');
+        const hot=r>65, cold=r<35;
+        if(e) e.style.color = hot?'var(--negative)':cold?'var(--positive)':'var(--accent)';
+        if(b){ b.style.width=Math.max(2,r)+'%'; b.className=hot?'hot':cold?'cold':''; }
+      }
+      if(w!=null){
+        set('haxWr', w.toFixed(1));
+        const e=document.getElementById('haxWr'), b=document.getElementById('haxWrBar');
+        const hot=w>-20, cold=w<-80;
+        if(e) e.style.color = hot?'var(--negative)':cold?'var(--positive)':'var(--accent)';
+        if(b){ b.style.width=Math.max(2,(w+100)/2)+'%'; b.className=hot?'hot':cold?'cold':''; }
+      }
     }
-    if(w!=null){ set('haxWr', w.toFixed(1));
-      const e=document.getElementById('haxWr'); const b=document.getElementById('haxWrBar');
-      const hot=w>-20, cold=w<-80;
-      if(e) e.style.color = hot?'var(--negative)':cold?'var(--positive)':'var(--accent)';
-      if(b){ b.style.width=Math.max(2,(w+100)/2)+'%'; b.className=hot?'hot':cold?'cold':''; }
+    const candles=G.MARKET.candles[sym]||[];
+    if(candles.length>=20){
+      const cl=candles.map(c=>c.close), e20=ema(cl,20), e50=ema(cl,50);
+      if(e20&&e50){ set('haxEma', `${e20.toFixed(3)} / ${e50.toFixed(3)}`);
+        const b=document.getElementById('haxEmaBar');
+        if(b){ const spread=Math.abs(e20-e50)/((e20+e50)/2||1)*100; b.style.width=Math.min(100,Math.max(3,spread*40))+'%'; b.className=e20>e50?'hot':'cold'; }
+      }
     }
-    if(e20&&e50){ set('haxEma', `${e20.toFixed(3)} / ${e50.toFixed(3)}`);
-      const b=document.getElementById('haxEmaBar');
-      if(b){ const spread=Math.abs(e20-e50)/((e20+e50)/2||1)*100; b.style.width=Math.min(100,Math.max(3,spread*40))+'%'; b.className=e20>e50?'hot':'cold'; }
+    // Live price (from last tick, real-time)
+    const lastP = (G.MARKET.prices[sym]&&G.MARKET.prices[sym].length) ? G.MARKET.prices[sym][G.MARKET.prices[sym].length-1] : (G._haxLastPrice||null);
+    if(lastP!=null) set('haxPrice', (+lastP).toFixed(5));
+    // Signal + confidence
+    const sigE=document.getElementById('haxSignal');
+    if(G.LAST_SIGNAL){
+      if(sigE){ sigE.textContent=G.LAST_SIGNAL.action; sigE.className='hax-sig '+(G.LAST_SIGNAL.action==='RISE'?'rise':'fall'); }
+      const conf=G.LAST_SIGNAL.conf||0;
+      const cb=document.getElementById('haxConf'); if(cb) cb.style.width=Math.min(100,conf)+'%';
+      set('haxConfTxt', conf+'%');
+      set('haxSrc', G.LAST_SIGNAL.src||'—');
+      set('haxStake', fmt$(G.LAST_SIGNAL.stake||0));
+    } else {
+      if(sigE){ sigE.textContent='—'; sigE.className='hax-sig'; }
+      const cb=document.getElementById('haxConf'); if(cb) cb.style.width='0%';
+      set('haxConfTxt','0%');
     }
-  }
-  // Live price
-  const pr=G.MARKET.prices[sym];
-  const lastP=pr&&pr.length?pr[pr.length-1]:(G._haxLastPrice||null);
-  if(lastP!=null) set('haxPrice', lastP.toFixed(4));
-  // Signal + confidence
-  const sigE=document.getElementById('haxSignal');
-  if(G.LAST_SIGNAL){
-    if(sigE){ sigE.textContent=G.LAST_SIGNAL.action; sigE.className='hax-sig '+(G.LAST_SIGNAL.action==='RISE'?'rise':'fall'); }
-    const conf=G.LAST_SIGNAL.conf||0;
-    const cb=document.getElementById('haxConf'); if(cb) cb.style.width=Math.min(100,conf)+'%';
-    set('haxConfTxt', conf+'%');
-    set('haxSrc', G.LAST_SIGNAL.src||'—');
-    set('haxStake', fmt$(G.LAST_SIGNAL.stake||0));
-  } else {
-    if(sigE){ sigE.textContent='—'; sigE.className='hax-sig'; }
-    const cb=document.getElementById('haxConf'); if(cb) cb.style.width='0%';
-    set('haxConfTxt','0%');
-  }
-  set('haxMode', G.TRADE_MODE||'—');
-  set('haxWL', `${G.WINS||0} / ${G.LOSSES||0}`);
-  drawHaxSpark();
-  // Status ring / sub
-  const dot=document.getElementById('haxDot'), sub=document.getElementById('haxSub');
-  if(G.RUNNING||BotState.isTrading){ if(dot) dot.className=''; if(sub) sub.textContent='⟐ ENGINE ACTIVE · scanning market'; }
-  else if(G.AUTH){ if(dot) dot.className=''; if(sub) sub.textContent='◌ IDLE · market stream live'; }
-  else { if(dot) dot.className='alert'; if(sub) sub.textContent='✕ OFFLINE · awaiting auth'; }
-  // Ambient scan line when idle so the panel always feels alive
-  if(!G.RUNNING && !BotState.isTrading){
-    G._haxScan = (G._haxScan||0)+1;
-    if(G._haxScan>=4){ G._haxScan=0; haxPush(`scan ${sym} · rsi=${r?r.toFixed(0):'--'} wr=${w?w.toFixed(0):'--'} · no edge`, 'a'); }
-  }
+    set('haxMode', G.TRADE_MODE||'—');
+    set('haxWL', `${G.WINS||0} / ${G.LOSSES||0}`);
+    drawHaxSpark(series);
+    // Status ring / sub
+    const dot=document.getElementById('haxDot'), sub=document.getElementById('haxSub');
+    if(G.RUNNING||BotState.isTrading){ if(dot) dot.className=''; if(sub) sub.textContent='⟐ ENGINE ACTIVE · scanning market'; }
+    else if(G.AUTH){ if(dot) dot.className=''; if(sub) sub.textContent='◌ IDLE · live stream'; }
+    else { if(dot) dot.className='alert'; if(sub) sub.textContent='✕ OFFLINE · awaiting auth'; }
+    // Ambient scan line when idle so the panel always feels alive
+    if(!G.RUNNING && !BotState.isTrading){
+      G._haxScan=(G._haxScan||0)+1;
+      if(G._haxScan>=5){ G._haxScan=0; haxPush(`scan ${sym} · rsi=${r?r.toFixed(0):'--'} wr=${w?w.toFixed(0):'--'} · watching`, 'a'); }
+    }
+  } catch(e){ /* never let the panel blank the app */ }
 }
 let _haxSparkBuf=[];
-function drawHaxSpark(){
+function drawHaxSpark(series){
   const cv=document.getElementById('haxSpark'); if(!cv) return;
   const ctx=cv.getContext('2d');
-  const sym=G.CURRENT_MARKET;
-  const pr=G.MARKET.prices[sym]||[];
-  const data = pr.length?pr.slice(-60):_haxSparkBuf;
-  if(pr.length) _haxSparkBuf = pr.slice(-60);
+  const data = (series && series.length>=2) ? series.slice(-60) : (_haxSparkBuf.length>=2?_haxSparkBuf:null);
+  if(series&&series.length>=2) _haxSparkBuf = series.slice(-60);
+  if(!data) return;
   const W=cv.width, H=cv.height;
   ctx.clearRect(0,0,W,H);
-  if(data.length<2) return;
-  let lo=Math.min(...data), hi=Math.max(...data); if(hi===lo){ hi+=1; lo-=1; }
+  let lo=Math.min.apply(null,data), hi=Math.max.apply(null,data); if(hi===lo){ hi+=1; lo-=1; }
   const up = data[data.length-1] >= data[0];
   const col = up?'#36e0a6':'#ff5d73';
   ctx.strokeStyle=col; ctx.lineWidth=1.5; ctx.shadowColor=col; ctx.shadowBlur=8;
   ctx.beginPath();
   data.forEach((v,i)=>{ const x=i/(data.length-1)*W; const y=H-((v-lo)/(hi-lo))*(H-8)-4; i?ctx.lineTo(x,y):ctx.moveTo(x,y); });
   ctx.stroke();
-  // fill gradient
   ctx.shadowBlur=0; ctx.lineTo(W,H); ctx.lineTo(0,H); ctx.closePath();
   const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0, up?'rgba(54,224,166,0.22)':'rgba(255,93,115,0.22)'); g.addColorStop(1,'rgba(0,0,0,0)');
   ctx.fillStyle=g; ctx.fill();
@@ -5581,6 +5598,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   updateWatchlist();
   setInterval(updateDash, 2000);
+  setInterval(updateAnalysisPanel, 1000);
+  updateAnalysisPanel();
   setInterval(updateWatchlist, 3000);
   setInterval(calibrateThresholds, 120000);
   // Constantly back settings up to the database (cross-device persistence)
