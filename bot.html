@@ -462,6 +462,10 @@ body::after{
 .hax-sig{font-family:var(--font-serif);font-size:34px;font-weight:800;letter-spacing:1px;color:var(--text);text-shadow:0 0 18px rgba(54,225,255,0.3);transition:color .3s,text-shadow .3s;line-height:1}
 .hax-sig.rise{color:var(--positive);text-shadow:0 0 22px rgba(54,224,166,0.6)}
 .hax-sig.fall{color:var(--negative);text-shadow:0 0 22px rgba(255,93,115,0.6)}
+.hax-rf{font-family:var(--font-serif);font-size:20px;font-weight:800;letter-spacing:2px;text-align:center;color:var(--muted);text-shadow:0 0 12px rgba(54,225,255,0.25);line-height:1.1;transition:color .3s,text-shadow .3s}
+.hax-rf.rise{color:var(--positive);text-shadow:0 0 18px rgba(54,224,166,0.6)}
+.hax-rf.fall{color:var(--negative);text-shadow:0 0 18px rgba(255,93,115,0.6)}
+.hax-rf.flat{color:var(--muted)}
 .hax-conf-wrap{width:100%}
 .hax-conf-label{font-size:6px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;font-weight:700;text-align:center;margin-bottom:3px}
 .hax-conf-val{font-family:var(--font);font-size:10px;color:var(--accent);text-align:center;margin-top:3px;text-shadow:0 0 8px rgba(54,225,255,0.4)}
@@ -935,6 +939,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       <div class="hax-body">
         <div class="hax-core">
           <div class="hax-price-lbl">FOCUS · <span id="haxFocus">—</span></div>
+          <div class="hax-rf" id="haxRF">—</div>
           <div class="hax-sig" id="haxSignal">—</div>
           <div class="hax-conf-wrap">
             <div class="hax-conf-label">CONFIDENCE</div>
@@ -942,7 +947,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
             <div class="hax-conf-val" id="haxConfTxt">0%</div>
           </div>
           <div class="hax-price" id="haxPrice">—</div>
-          <canvas id="haxSpark" class="hax-spark" width="240" height="40"></canvas>
+          <canvas id="haxSpark" class="hax-spark" width="240" height="38"></canvas>
         </div>
         <div class="hax-meters">
           <div class="hax-meter">
@@ -950,12 +955,8 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
             <div class="hax-track"><i id="haxRsiBar"></i></div>
           </div>
           <div class="hax-meter">
-            <div class="hax-meter-top"><span>W%R·14</span><span id="haxWr" class="mv">--</span></div>
-            <div class="hax-track"><i id="haxWrBar"></i></div>
-          </div>
-          <div class="hax-meter">
-            <div class="hax-meter-top"><span>EMA SPREAD</span><span id="haxEma" class="mv">--/--</span></div>
-            <div class="hax-track"><i id="haxEmaBar"></i></div>
+            <div class="hax-meter-top"><span>BIAS</span><span id="haxBias" class="mv">—</span></div>
+            <div class="hax-track"><i id="haxBiasBar"></i></div>
           </div>
         </div>
         <div class="hax-side">
@@ -2966,9 +2967,8 @@ function handleTick(data){
   _tickCount++;
   // Throttle heavy UI to every 3rd tick
   if((_tickCount&3)===0) updateDigitsUI();
-  // Refresh analysis core on every tick for true real-time (current market)
+  // Track last price for real-time direction (panel itself refreshes on a 1s timer)
   if(sym===G.CURRENT_MARKET){
-    updateAnalysisPanel();
     const prev=G._haxLastPrice;
     const dir = prev==null?0:(price>prev?1:price<prev?-1:0);
     G._haxLastPrice=price;
@@ -4298,10 +4298,9 @@ function updateAnalysisPanel(){
     const d=new Date();
     set('haxClk',`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`);
     const series=haxLiveSeries(sym);
-    let r=null,w=null;
+    let r=null;
     if(series.length>=15){
-      const cl=series, hi=series.map(v=>v*1.0008), lo=series.map(v=>v*0.9992);
-      r=rsi(cl,14); w=williamsR(hi,lo,cl,14);
+      r=rsi(series,14);
       if(r!=null){
         set('haxRsi', r.toFixed(1));
         const e=document.getElementById('haxRsi'), b=document.getElementById('haxRsiBar');
@@ -4309,38 +4308,42 @@ function updateAnalysisPanel(){
         if(e) e.style.color = hot?'var(--negative)':cold?'var(--positive)':'var(--accent)';
         if(b){ b.style.width=Math.max(2,r)+'%'; b.className=hot?'hot':cold?'cold':''; }
       }
-      if(w!=null){
-        set('haxWr', w.toFixed(1));
-        const e=document.getElementById('haxWr'), b=document.getElementById('haxWrBar');
-        const hot=w>-20, cold=w<-80;
-        if(e) e.style.color = hot?'var(--negative)':cold?'var(--positive)':'var(--accent)';
-        if(b){ b.style.width=Math.max(2,(w+100)/2)+'%'; b.className=hot?'hot':cold?'cold':''; }
-      }
     }
-    const candles=G.MARKET.candles[sym]||[];
-    if(candles.length>=20){
-      const cl=candles.map(c=>c.close), e20=ema(cl,20), e50=ema(cl,50);
-      if(e20&&e50){ set('haxEma', `${e20.toFixed(3)} / ${e50.toFixed(3)}`);
-        const b=document.getElementById('haxEmaBar');
-        if(b){ const spread=Math.abs(e20-e50)/((e20+e50)/2||1)*100; b.style.width=Math.min(100,Math.max(3,spread*40))+'%'; b.className=e20>e50?'hot':'cold'; }
-      }
+    // Direction bias from RSI: >55 lean RISE, <45 lean FALL, else NEUTRAL
+    let bias='—', biasCls='', biasPct=50;
+    if(r!=null){
+      biasPct = Math.max(2, Math.min(98, 50 + (50-r)*1.4));
+      if(r>55){ bias='RISE ▲'; biasCls='rise'; }
+      else if(r<45){ bias='FALL ▼'; biasCls='fall'; }
+      else { bias='NEUTRAL'; biasCls=''; }
     }
-    // Live price (from last tick, real-time)
+    set('haxBias', bias);
+    const be=document.getElementById('haxBias'); if(be) be.className='mv '+(biasCls==='rise'?'rise':biasCls==='fall'?'fall':'');
+    const bb=document.getElementById('haxBiasBar');
+    if(bb){ bb.style.width=biasPct+'%'; bb.className=biasCls==='rise'?'hot':biasCls==='fall'?'cold':''; }
+    // Live price
     const lastP = (G.MARKET.prices[sym]&&G.MARKET.prices[sym].length) ? G.MARKET.prices[sym][G.MARKET.prices[sym].length-1] : (G._haxLastPrice||null);
     if(lastP!=null) set('haxPrice', (+lastP).toFixed(5));
-    // Signal + confidence
+    // RISE / FALL focus readout
+    const rfE=document.getElementById('haxRF');
     const sigE=document.getElementById('haxSignal');
     if(G.LAST_SIGNAL){
-      if(sigE){ sigE.textContent=G.LAST_SIGNAL.action; sigE.className='hax-sig '+(G.LAST_SIGNAL.action==='RISE'?'rise':'fall'); }
+      const act=G.LAST_SIGNAL.action;
+      if(rfE){ rfE.textContent = act==='RISE'?'▲ RISE':'▼ FALL'; rfE.className='hax-rf '+(act==='RISE'?'rise':'fall'); }
+      if(sigE){ sigE.textContent=act; sigE.className='hax-sig '+(act==='RISE'?'rise':'fall'); }
       const conf=G.LAST_SIGNAL.conf||0;
       const cb=document.getElementById('haxConf'); if(cb) cb.style.width=Math.min(100,conf)+'%';
       set('haxConfTxt', conf+'%');
       set('haxSrc', G.LAST_SIGNAL.src||'—');
       set('haxStake', fmt$(G.LAST_SIGNAL.stake||0));
     } else {
+      const rfTxt = biasCls==='rise'?'▲ RISE':biasCls==='fall'?'▼ FALL':'· HOLD';
+      if(rfE){ rfE.textContent=rfTxt; rfE.className='hax-rf '+(biasCls||'flat'); }
       if(sigE){ sigE.textContent='—'; sigE.className='hax-sig'; }
       const cb=document.getElementById('haxConf'); if(cb) cb.style.width='0%';
       set('haxConfTxt','0%');
+      set('haxSrc','bias');
+      set('haxStake','$0.00');
     }
     set('haxMode', G.TRADE_MODE||'—');
     set('haxWL', `${G.WINS||0} / ${G.LOSSES||0}`);
@@ -4354,7 +4357,7 @@ function updateAnalysisPanel(){
     // Ambient scan line when idle so the panel always feels alive
     if(!G.RUNNING && !BotState.isTrading){
       G._haxScan=(G._haxScan||0)+1;
-      if(G._haxScan>=5){ G._haxScan=0; haxPush(`scan ${sym} · rsi=${r?r.toFixed(0):'--'} wr=${w?w.toFixed(0):'--'} · watching`, 'a'); }
+      if(G._haxScan>=5){ G._haxScan=0; haxPush(`scan ${sym} · rsi=${r?r.toFixed(0):'--'} bias=${bias} · watching`, 'a'); }
     }
     renderHaxMatrix();
   } catch(e){ /* never let the panel blank the app */ }
