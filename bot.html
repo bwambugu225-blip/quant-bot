@@ -70,9 +70,8 @@ html,body{background:var(--bg);color:var(--text);font-family:var(--font-head);fo
 .row{display:flex;gap:10px;padding:10px 14px}
 .col{flex:1}
 .col-2{flex:2}
-.card{background:transparent;border:none;border-bottom:1px solid var(--line);border-radius:0;padding:10px 0;margin-bottom:0;box-shadow:none}
-.card:last-child{border-bottom:none}
-.card-title{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:8px;font-family:var(--font-serif)}
+.section{padding:8px 0}
+.section-title{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:8px;font-family:var(--font-serif)}
 .btn{border:1px solid var(--line);background:var(--surface-2);padding:8px 16px;font-weight:600;font-size:10px;cursor:pointer;color:var(--text);font-family:var(--font-head);border-radius:var(--radius-sm);transition:all .2s;text-transform:uppercase;letter-spacing:0.8px}
 .btn:hover{background:var(--surface);border-color:var(--muted);color:var(--text)}
 .btn:active{transform:scale(.97)}
@@ -181,8 +180,8 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
 .sidebar{position:fixed;top:0;left:0;bottom:0;z-index:100;width:280px;max-width:85vw;background:var(--surface);border-right:1px solid var(--line);overflow-y:auto;padding:0;display:flex;flex-direction:column;transition:transform .25s ease;-webkit-overflow-scrolling:touch}
 .sidebar .sidebar-header{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line);flex-shrink:0}
 .sidebar .sidebar-body{flex:1;overflow-y:auto;padding:12px}
-.sidebar .sidebar-body .card{padding:8px 0;border-bottom:1px solid var(--line);margin:0}
-.sidebar .sidebar-body .card:last-child{border-bottom:none}
+.sidebar .sidebar-body .section{padding:6px 0}
+.sidebar .sidebar-body .section:last-child{padding-bottom:0}
 .sidebar .sidebar-footer{padding:10px;border-top:1px solid var(--line);text-align:center;font-size:8px;color:var(--muted);flex-shrink:0;font-family:var(--font-serif);letter-spacing:1px;text-transform:uppercase}
 .sidebar-open .sidebar{transform:translateX(0)}
 .sidebar-open .sidebar-overlay{display:block}
@@ -224,8 +223,8 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
   .inp{font-size:10px;padding:5px 7px}
   .stake-row,.trade-btn-row{gap:4px}
   .sidebar .sidebar-body{padding:6px}
-  .sidebar .sidebar-body .card{padding:6px 0}
-  .card-title{font-size:8px}
+  .sidebar .sidebar-body .section{padding:5px 0}
+  .section-title{font-size:8px}
   .console-box{font-size:9px;max-height:80px}
   .mode-tab{padding:4px 8px;font-size:9px}
   #rfSection .stake-row .field{min-width:80px}
@@ -295,16 +294,16 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
   </div>
   <div class="sidebar-body">
     <!-- Account info -->
-    <div class="card">
-      <div class="card-title">Account</div>
+    <div class="section">
+      <div class="section-title">Account</div>
       <div id="dashTarget" style="font-size:12px;font-weight:600">$0.00</div>
       <div style="font-size:8px;color:var(--muted);margin-top:2px">Daily Stop</div>
       <div id="dashLoss" style="font-size:12px;font-weight:600;color:var(--negative)">$0.00</div>
     </div>
 
     <!-- Mode tabs: RF stays in main, DIGITS expands sidebar -->
-    <div class="card">
-      <div class="card-title">Mode</div>
+    <div class="section">
+      <div class="section-title">Mode</div>
       <div style="display:flex;gap:4px">
         <button id="btnModeRF" class="mode-tab active" onclick="switchMode('RISEFALL')" style="flex:1">R/F</button>
         <button id="btnModeDigits" class="mode-tab" onclick="switchMode('DIGITS')" style="flex:1">DIGITS</button>
@@ -317,8 +316,8 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
     </div>
 
     <!-- Digits section -->
-    <div id="dgSection" class="card">
-      <div class="card-title">Digits <span id="dgModeLabel" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">OVER/UNDER</span></div>
+    <div id="dgSection" class="section">
+      <div class="section-title">Digits <span id="dgModeLabel" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">OVER/UNDER</span></div>
       <div style="display:flex;gap:4px;margin-bottom:6px">
         <button id="dgModeOU" class="btn btn-ghost" onclick="setDigitContract('OU')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">OVER/UNDER</button>
         <button id="dgModeEO" class="btn btn-ghost" onclick="setDigitContract('EO')" style="flex:1;padding:4px;font-size:8px">EVEN/ODD</button>
@@ -430,8 +429,8 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
     <input id="tgChatId" type="hidden">
 
     <!-- Copy Trading -->
-    <div class="card">
-      <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+    <div class="section">
+      <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
         <span>Copy Trading Clients</span>
         <div style="display:flex; gap:4px; align-items:center;">
           <button id="toggleCopyBtn" class="btn btn-accent" onclick="toggleCopyTrading()" style="padding:2px 6px; font-size:7px; font-weight:600; line-height:1; height:16px; margin:0; text-transform:uppercase;">Copy: Enabled</button>
@@ -468,7 +467,7 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
     </div>
 
     <!-- Markets Watchlist -->
-    <div class="card">
+    <div class="section">
       <details open>
         <summary style="font-family:var(--font-serif); font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-size:9px;">Markets Watchlist</summary>
         <div id="watchlistBody" style="max-height:180px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; margin-top:8px;"></div>
@@ -476,8 +475,8 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
     </div>
 
     <!-- Info -->
-    <div class="card">
-      <div class="card-title">Info</div>
+    <div class="section">
+      <div class="section-title">Info</div>
       <div id="watchTopMarket" style="font-size:8px;color:var(--muted)">Signal: --</div>
     </div>
   </div>
@@ -521,8 +520,8 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
   </div>
 
   <!-- RF Controls + Chart + History -->
-    <div id="rfSection" class="card">
-      <div class="card-title">Rise/Fall <span id="rfModeBadge" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">AUTO</span></div>
+    <div id="rfSection" class="section">
+      <div class="section-title">Rise/Fall <span id="rfModeBadge" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">AUTO</span></div>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
         <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
           <input type="checkbox" id="marketModeToggle" onchange="toggleMarketMode()" checked style="width:13px;height:13px;accent-color:var(--accent)">
@@ -579,7 +578,7 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
     </div>
 
     <!-- Chart -->
-    <div class="card" style="padding:4px; overflow:hidden;">
+    <div class="section" style="padding:4px; overflow:hidden;">
       <div style="width:100%; overflow:hidden;">
         <canvas id="liveChart" style="width:100%; height:180px; display:block; cursor:crosshair;"></canvas>
 <style>@media(min-width:768px){#liveChart{height:250px!important}}</style>
@@ -587,7 +586,7 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
     </div>
 
     <!-- Chart Settings -->
-    <div class="card" style="padding: 10px 14px; margin-bottom: 8px;">
+    <div class="section" style="padding: 10px 14px; margin-bottom: 8px;">
       <details>
         <summary style="font-family: var(--font-serif); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-size: 9px;">Chart Settings</summary>
         <div style="display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; align-items: center;">
@@ -629,9 +628,9 @@ details summary{font-size:9px;color:var(--muted);cursor:pointer;padding:4px 0;te
     </div>
 
     <!-- Trade History -->
-    <div class="card">
+    <div class="section">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
-        <div class="card-title" style="margin:0">History</div>
+        <div class="section-title" style="margin:0">History</div>
         <button class="btn btn-ghost" onclick="clearRecentTrades()" style="padding:2px 6px;font-size:7px">Clear</button>
       </div>
       <div id="recentTrades" style="font-size:9px;color:var(--muted);max-height:110px;overflow-y:auto;padding:2px 0">No trades yet</div>
