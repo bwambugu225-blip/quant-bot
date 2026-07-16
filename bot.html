@@ -426,6 +426,35 @@ body::after{
 .kpi .v[style*="positive"],.kpi .pnl{text-shadow:0 0 14px rgba(54,224,166,0.35)}
 /* Buttons sheen */
 .btn-accent::after{content:'';position:absolute;top:0;left:0;width:40%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.25),transparent);animation:sheen 5s ease-in-out infinite}
+
+/* ── Hacky Vibe Analysis Panel ── */
+.hax-panel{background:linear-gradient(160deg,rgba(10,14,26,0.85),rgba(14,20,38,0.7));border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;backdrop-filter:blur(12px);box-shadow:0 10px 40px rgba(0,0,0,0.5),inset 0 0 24px rgba(54,225,255,0.05),0 0 0 1px rgba(54,225,255,0.04);position:relative;overflow:hidden}
+.hax-panel::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(54,225,255,0.025) 0 1px,transparent 1px 3px);pointer-events:none;opacity:.5}
+.hax-head{display:flex;align-items:center;gap:8px;margin-bottom:10px;border-bottom:1px solid var(--line);padding-bottom:7px;position:relative}
+.hax-dot{width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 12px var(--accent);animation:pulse 1.4s infinite}
+.hax-title{font-family:var(--font-serif);font-size:10px;letter-spacing:2px;color:var(--accent);text-shadow:0 0 10px rgba(54,225,255,0.5);text-transform:uppercase}
+.hax-sub{font-size:8px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;flex:1}
+.hax-clk{font-family:var(--font);font-size:9px;color:var(--muted);letter-spacing:1px}
+.hax-grid{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:10px;position:relative}
+.hax-cell{display:flex;flex-direction:column;gap:1px;min-width:0}
+.hax-k{font-size:7px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;font-weight:700}
+.hax-k.sm{font-size:6px}
+.hax-v{font-family:var(--font-serif);font-size:18px;font-weight:700;letter-spacing:.5px;color:var(--text);line-height:1.15;text-shadow:0 0 12px rgba(54,225,255,0.25)}
+.hax-v.sm{font-size:11px;font-family:var(--font-head);letter-spacing:.5px}
+.hax-v.mono{font-family:var(--font);font-size:13px;color:var(--accent);text-shadow:0 0 8px rgba(54,225,255,0.3)}
+.hax-v.rise{color:var(--positive);text-shadow:0 0 12px rgba(54,224,166,0.5)}
+.hax-v.fall{color:var(--negative);text-shadow:0 0 12px rgba(255,93,115,0.5)}
+.hax-bar{height:5px;border-radius:3px;background:rgba(8,12,22,0.8);border:1px solid var(--line);overflow:hidden;margin-top:3px}
+.hax-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#36e1ff,#7b6bff);box-shadow:0 0 10px rgba(54,225,255,0.6);transition:width .4s cubic-bezier(0.16,1,0.3,1)}
+.hax-tape{margin-top:10px;border-top:1px solid var(--line);padding-top:8px;height:84px;overflow:hidden;font-family:var(--font);font-size:9px;line-height:1.5;color:#9fb0d8}
+.hax-tape .ln{padding:1px 0;border-bottom:1px dotted rgba(94,140,255,0.07);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hax-tape .ln .t{color:var(--dim)}
+.hax-tape .ln .p{color:var(--positive)}
+.hax-tape .ln .n{color:var(--negative)}
+.hax-tape .ln .a{color:var(--accent)}
+@keyframes haxFlick{0%,100%{opacity:1}50%{opacity:.7}}
+.hax-dot.alert{background:var(--negative);box-shadow:0 0 14px var(--negative);animation:pulse .8s infinite}
+@media(max-width:767px){.hax-grid{grid-template-columns:1fr 1fr}.hax-v{font-size:15px}.hax-tape{height:64px}}
 </style>
 </head>
 <body class="dark" style="margin:0">
@@ -785,6 +814,43 @@ body::after{
           </div>
         </div>
       </details>
+    </div>
+
+    <!-- Hacky Vibe Analysis Panel -->
+    <div class="section" style="padding:6px 0">
+      <div class="hax-panel" id="haxPanel">
+        <div class="hax-head">
+          <span class="hax-dot" id="haxDot"></span>
+          <span class="hax-title">⟁ NEURAL ANALYSIS CORE</span>
+          <span class="hax-sub" id="haxSub">scanning…</span>
+          <span class="hax-clk" id="haxClk">--:--:--</span>
+        </div>
+        <div class="hax-grid">
+          <div class="hax-cell">
+            <div class="hax-k">SIGNAL</div>
+            <div class="hax-v" id="haxSignal">—</div>
+            <div class="hax-bar"><i id="haxConf"></i></div>
+            <div class="hax-k sm" style="margin-top:3px">CONF <span id="haxConfTxt">0%</span></div>
+          </div>
+          <div class="hax-cell">
+            <div class="hax-k">RSI(14)</div>
+            <div class="hax-v mono" id="haxRsi">--</div>
+            <div class="hax-k">W%R(14)</div>
+            <div class="hax-v mono" id="haxWr">--</div>
+            <div class="hax-k">EMA20/50</div>
+            <div class="hax-v mono" id="haxEma">--/--</div>
+          </div>
+          <div class="hax-cell">
+            <div class="hax-k">SRC</div>
+            <div class="hax-v sm" id="haxSrc">—</div>
+            <div class="hax-k">MODE</div>
+            <div class="hax-v sm" id="haxMode">—</div>
+            <div class="hax-k">STAKE</div>
+            <div class="hax-v mono" id="haxStake">$0.00</div>
+          </div>
+        </div>
+        <div class="hax-tape" id="haxTape"></div>
+      </div>
     </div>
 
     <!-- Trade History -->
@@ -2850,6 +2916,11 @@ function storeSignal(sym, epoch, result, traded){
     evidence: result.evidence || {}
   });
   if(G._allSignals.length > 500) G._allSignals.splice(0, 100);
+  const ev = result.evidence || {};
+  const vibe = result.action==='RISE'
+    ? `▲ bias=${(ev.rsi||0)<40?'oversold-bounce':ev.bodyR>0.5?'bull-candle':'momentum-up'}`
+    : `▼ bias=${(ev.rsi||0)>60?'overbought-fade':ev.bodyR<0.5?'bear-candle':'momentum-dn'}`;
+  haxPush(`SIG ${sym} ${result.action} ${result.conf}% :: ${result.src} :: ${vibe}`, result.action==='RISE'?'p':'n');
 }
 
 function calcEMA(prices, period){
@@ -3160,6 +3231,7 @@ function execTrade(signal, asset){
   G.LAST_SIGNAL = { ...signal, stake, dur, asset };
   G._lastTradeAt = Date.now();
   log(`[TRADE] ${ct} $${stake.toFixed(2)} ${asset} via ${signal.src} (${signal.conf||'?'}%)`,'t');
+  haxPush(`EXEC ${asset} ${ct} $${stake.toFixed(2)} conf=${signal.conf||'?'}% → Deriv`, 'a');
   if(!G._tradedCandle) G._tradedCandle = {};
   G._tradedCandle[asset] = true;
   G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
@@ -3223,6 +3295,7 @@ function handleContract(c){
     const profitStr = (c.profit>=0?'+':'')+c.profit.toFixed(2);
     showToast(`${won?'WIN':'LOSS'} ${profitStr}`, won?'win':'loss');
     log(`[${won?'WIN':'LOSS'}] ${fmt$(c.profit)}`, won?'s':'e');
+    haxPush(`${won?'WIN':'LOSS'} ${profitStr} ${c.contract_type||''} :: streak=${G.CONS_LOSS}`, won?'p':'n');
     if(G.LAST_SIGNAL && G.TRADE_MODE!=='DIGITS'){ updateStrategyStats(G.LAST_SIGNAL, won); learnFromTrade(G.LAST_SIGNAL, won); }
     if(won){
       G.WINS++; G.CONS_LOSS=0;
@@ -4049,6 +4122,52 @@ function updateDash(){
   set('dashTarget', fmt$(G.DAILY.pnl>=0?G.DAILY.pnl:0));
   set('dashLoss', fmt$(G.DAILY.pnl<0?-G.DAILY.pnl:0));
   set('dashConsLoss', String(G.CONS_LOSS || 0));
+  updateAnalysisPanel();
+}
+let _haxTape=[];
+function haxPush(msg, cls){
+  const d=new Date();
+  const ts=`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+  _haxTape.push(`<div class="ln"><span class="t">${ts}</span> <span class="${cls||'a'}">${msg}</span></div>`);
+  if(_haxTape.length>40) _haxTape.shift();
+  const el=document.getElementById('haxTape');
+  if(el) el.innerHTML=_haxTape.join('');
+}
+function updateAnalysisPanel(){
+  const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  const sym=G.CURRENT_MARKET;
+  const candles=G.MARKET.candles[sym]||[];
+  // Clock
+  const d=new Date();
+  set('haxClk',`${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`);
+  // Live indicators
+  if(candles.length>=15){
+    const cl=candles.map(c=>c.close), hi=candles.map(c=>c.high), lo=candles.map(c=>c.low);
+    const r=rsi(cl,14), w=williamsR(hi,lo,cl,14), e20=ema(cl,20), e50=ema(cl,50);
+    if(r!=null){ set('haxRsi', r.toFixed(1)); const e=document.getElementById('haxRsi'); if(e) e.style.color = r<35?'var(--positive)':r>65?'var(--negative)':'var(--accent)'; }
+    if(w!=null){ set('haxWr', w.toFixed(1)); const e=document.getElementById('haxWr'); if(e) e.style.color = w<-80?'var(--positive)':w>-20?'var(--negative)':'var(--accent)'; }
+    if(e20&&e50) set('haxEma', `${e20.toFixed(3)} / ${e50.toFixed(3)}`);
+  }
+  // Signal + confidence
+  const sigE=document.getElementById('haxSignal');
+  if(G.LAST_SIGNAL){
+    if(sigE){ sigE.textContent=G.LAST_SIGNAL.action; sigE.className='hax-v '+(G.LAST_SIGNAL.action==='RISE'?'rise':'fall'); }
+    const conf=G.LAST_SIGNAL.conf||0;
+    const cb=document.getElementById('haxConf'); if(cb) cb.style.width=Math.min(100,conf)+'%';
+    set('haxConfTxt', conf+'%');
+    set('haxSrc', G.LAST_SIGNAL.src||'—');
+    set('haxStake', fmt$(G.LAST_SIGNAL.stake||0));
+  } else {
+    if(sigE){ sigE.textContent='—'; sigE.className='hax-v'; }
+    const cb=document.getElementById('haxConf'); if(cb) cb.style.width='0%';
+    set('haxConfTxt','0%');
+  }
+  set('haxMode', G.TRADE_MODE||'—');
+  // Status dot / sub
+  const dot=document.getElementById('haxDot'), sub=document.getElementById('haxSub');
+  if(G.RUNNING||BotState.isTrading){ if(dot) dot.className='hax-dot'; if(sub) sub.textContent='ENGINE ACTIVE'; }
+  else if(G.AUTH){ if(dot) dot.className='hax-dot'; if(sub) sub.textContent='idle · armed'; }
+  else { if(dot) dot.className='hax-dot alert'; if(sub) sub.textContent='offline'; }
 }
 
 function genId(){ return ++G.RID; }
