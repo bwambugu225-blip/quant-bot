@@ -3239,99 +3239,266 @@ function calibrateThresholds(){
 // ============================================================
 function runStrategyAnalysis(sym, candles, liveBuf){
   try {
-  if(!candles || candles.length < 20) return null;
-  const prices = candles.map(c => c.close);
-  const last = candles[candles.length-1];
-  const hi = candles.map(c => c.high);
-  const lo = candles.map(c => c.low);
-  const cl = candles.map(c => c.close);
-  const ha = heikenAshi(candles);
-  const haHi = ha.map(c=>c.high), haLo = ha.map(c=>c.low), haCl = ha.map(c=>c.close);
+    if(!candles || candles.length < 28) return null;
+    const prices = candles.map(c => c.close);
+    const last = candles[candles.length-1];
+    const hi = candles.map(c => c.high);
+    const lo = candles.map(c => c.low);
+    const cl = candles.map(c => c.close);
+    const ha = heikenAshi(candles);
+    const haHi = ha.map(c=>c.high), haLo = ha.map(c=>c.low), haCl = ha.map(c=>c.close);
 
-  // ── Indicators ──
-  const adx = calcADX(candles, 14);
-  const trendStrength = adx ? adx.strength : 0;
-  const trendDir = adx ? adx.trend : null;
+    const votes = [];
 
-  // WPR(7) on Heiken Ashi
-  const p=7;
-  const getWPR7 = (idx) => {
-    if(idx < p) return -50;
-    const hh = Math.max(...haHi.slice(idx-p+1, idx+1));
-    const ll = Math.min(...haLo.slice(idx-p+1, idx+1));
-    return hh === ll ? -50 : ((hh - haCl[idx]) / (hh - ll)) * -100;
-  };
-  const cw = getWPR7(haCl.length - 1);
-  const pw = haCl.length >= 2 ? getWPR7(haCl.length - 2) : -50;
+    if (G.DURATION_MODE === 'fixed') {
+      // ==========================================
+      // PIPELINE 1: 15s CANDLE-LEVEL ENSEMBLE
+      // ==========================================
 
-  // ATR(14)
-  let atrVal=null, atrSmaVal=null;
-  if(candles.length>=35){
-    let s=0; const atrs=[];
-    for(let i=candles.length-14;i<candles.length;i++){
-      const tr=Math.max(candles[i].high-candles[i].low,Math.abs(candles[i].high-candles[i-1].close),Math.abs(candles[i].low-candles[i-1].close));
-      atrs.push(i>=candles.length-14?tr:(atrs[atrs.length-1]*13+tr)/14);
-      s+=atrs[atrs.length-1];
+      // ── Indicators ──
+      const adx = calcADX(candles, 14);
+      const trendStrength = adx ? adx.strength : 0;
+      const trendDir = adx ? adx.trend : null;
+
+      // ATR(14)
+      let atrVal=null, atrSmaVal=null;
+      if(candles.length>=35){
+        let s=0; const atrs=[];
+        for(let i=candles.length-14;i<candles.length;i++){
+          const tr=Math.max(candles[i].high-candles[i].low,Math.abs(candles[i].high-candles[i-1].close),Math.abs(candles[i].low-candles[i-1].close));
+          atrs.push(i>=candles.length-14?tr:(atrs[atrs.length-1]*13+tr)/14);
+          s+=atrs[atrs.length-1];
+        }
+        atrVal=atrs[atrs.length-1];
+        atrSmaVal=s/atrs.length;
+      }
+
+      // 1) Multi-Period Heiken Ashi Williams %R (7, 14, 21) Zone Reversal
+      const getWPR = (hiArr, loArr, clArr, period, idx) => {
+        if(idx < period) return -50;
+        const sliceHi = hiArr.slice(idx - period + 1, idx + 1);
+        const sliceLo = loArr.slice(idx - period + 1, idx + 1);
+        const hh = Math.max(...sliceHi);
+        const ll = Math.min(...sliceLo);
+        return hh === ll ? -50 : ((hh - clArr[idx]) / (hh - ll)) * -100;
+      };
+
+      const currIdx = haCl.length - 1;
+      const w7curr = getWPR(haHi, haLo, haCl, 7, currIdx);
+      const w7prev = getWPR(haHi, haLo, haCl, 7, currIdx - 1);
+      const w14curr = getWPR(haHi, haLo, haCl, 14, currIdx);
+      const w14prev = getWPR(haHi, haLo, haCl, 14, currIdx - 1);
+      const w21curr = getWPR(haHi, haLo, haCl, 21, currIdx);
+      const w21prev = getWPR(haHi, haLo, haCl, 21, currIdx - 1);
+
+      // WPR RISE Reversal & Momentum
+      if ((w7prev < -80 && w7curr >= -78) || (w14prev < -80 && w14curr >= -76)) {
+        votes.push({action:'RISE', conf: 75, src:'WPR-R'});
+      } else if (w7curr > -50 && w14curr > -50 && w21curr > -50 && w7prev <= -50) {
+        votes.push({action:'RISE', conf: 72, src:'WPR-MOM'});
+      }
+
+      // WPR FALL Reversal & Momentum
+      if ((w7prev > -20 && w7curr <= -22) || (w14prev > -20 && w14curr <= -24)) {
+        votes.push({action:'FALL', conf: 75, src:'WPR-F'});
+      } else if (w7curr < -50 && w14curr < -50 && w21curr < -50 && w7prev >= -50) {
+        votes.push({action:'FALL', conf: 72, src:'WPR-MOM'});
+      }
+
+      // 2) EMA 5/20 Cross + MACD Confluence
+      const ema5curr = ema(prices, 5);
+      const ema5prev = ema(prices.slice(0, -1), 5);
+      const ema20curr = ema(prices, 20);
+      const ema20prev = ema(prices.slice(0, -1), 20);
+
+      // MACD (12, 26, 9)
+      const ema12 = ema(prices, 12);
+      const ema26 = ema(prices, 26);
+      if (ema12 !== null && ema26 !== null) {
+        const macdVal = ema12 - ema26;
+        const macdHistory = [];
+        for(let i = candles.length - 15; i < candles.length; i++) {
+          const subEma12 = ema(prices.slice(0, i + 1), 12);
+          const subEma26 = ema(prices.slice(0, i + 1), 26);
+          if (subEma12 !== null && subEma26 !== null) {
+            macdHistory.push(subEma12 - subEma26);
+          }
+        }
+        if (macdHistory.length >= 9) {
+          const signalVal = ema(macdHistory, 9);
+          if (signalVal !== null) {
+            const histVal = macdVal - signalVal;
+            const prevHistVal = macdHistory[macdHistory.length-2] - (ema(macdHistory.slice(0, -1), 9) || signalVal);
+
+            const macdRise = histVal > 0 && histVal > prevHistVal;
+            const macdFall = histVal < 0 && histVal < prevHistVal;
+
+            if (ema5curr !== null && ema20curr !== null && ema5prev !== null && ema20prev !== null) {
+              const emaRise = (ema5prev <= ema20prev && ema5curr > ema20curr) || (ema5curr > ema20curr + (last.close * 0.0001));
+              const emaFall = (ema5prev >= ema20prev && ema5curr < ema20curr) || (ema5curr < ema20curr - (last.close * 0.0001));
+
+              if (macdRise && emaRise) votes.push({action:'RISE', conf: 76, src:'EMA_MACD'});
+              if (macdFall && emaFall) votes.push({action:'FALL', conf: 76, src:'EMA_MACD'});
+            }
+          }
+        }
+      }
+
+      // 3) RSI + CCI extreme mean reversion
+      const rsi14 = rsi(prices, 14);
+      const cci14 = cci(candles, 14);
+      if (rsi14 !== null && cci14 !== null) {
+        if (rsi14 < 35 && cci14 < -140) {
+          votes.push({action:'RISE', conf: 78, src:'RSI_CCI_REV'});
+        }
+        if (rsi14 > 65 && cci14 > 140) {
+          votes.push({action:'FALL', conf: 78, src:'RSI_CCI_REV'});
+        }
+      }
+
+      // 4) Price Action rejection/engulfing confirmation
+      const paRise = checkPriceAction(sym, 'RISE');
+      const paFall = checkPriceAction(sym, 'FALL');
+      if (paRise) votes.push({action:'RISE', conf: 82, src:'PA_CONF'});
+      if (paFall) votes.push({action:'FALL', conf: 82, src:'PA_CONF'});
+
+      // ── Ensemble Voting ──
+      if(votes.length === 0) return null;
+      let riseVotes=0, fallVotes=0, riseConf=0, fallConf=0, riseSrcs=[], fallSrcs=[];
+      for(const v of votes){
+        if(v.action === 'RISE'){ riseVotes++; riseConf += v.conf; riseSrcs.push(v.src); }
+        else { fallVotes++; fallConf += v.conf; fallSrcs.push(v.src); }
+      }
+      const riseAvgConf = riseVotes > 0 ? riseConf / riseVotes : 0;
+      const fallAvgConf = fallVotes > 0 ? fallConf / fallVotes : 0;
+
+      // Quality gates for 15s Mode
+      const QUALITY_MIN_VOTES = 2;
+      const QUALITY_MIN_AVG = 72;
+      const QUALITY_DECISIVE = 5;
+
+      let action = null, finalConf = 0, finalSrc = '';
+      if(riseVotes >= QUALITY_MIN_VOTES && riseVotes > fallVotes && riseAvgConf >= QUALITY_MIN_AVG){
+        const trendPenalty = (trendDir === 'DN' && trendStrength > 25) ? -5 : (trendDir === 'DN' && trendStrength > 15) ? -2 : 0;
+        action = 'RISE'; finalConf = Math.round(riseAvgConf + (riseVotes - fallVotes)*3 + trendPenalty); finalSrc = riseSrcs.join('+');
+      } else if(fallVotes >= QUALITY_MIN_VOTES && fallVotes > riseVotes && fallAvgConf >= QUALITY_MIN_AVG){
+        const trendPenalty = (trendDir === 'UP' && trendStrength > 25) ? -5 : (trendDir === 'UP' && trendStrength > 15) ? -2 : 0;
+        action = 'FALL'; finalConf = Math.round(fallAvgConf + (fallVotes - riseVotes)*3 + trendPenalty); finalSrc = fallSrcs.join('+');
+      }
+      if(!action) return null;
+      if(riseAvgConf > 0 && fallAvgConf > 0 && Math.abs(riseAvgConf - fallAvgConf) < QUALITY_DECISIVE) return null;
+
+      finalConf = Math.min(96, Math.max(80, finalConf));
+      // Volatility penalty adjustment
+      const mi = G.MARKET_STATS?.[sym];
+      if(mi){
+        if(mi.vol === 'low') finalConf += 2;
+        if(mi.vol === 'high') finalConf -= 2;
+      }
+      const streak = G.CONS_LOSS || 0;
+      if(streak >= 2) finalConf = Math.round(finalConf * (1 - streak * 0.02));
+      if(G.WINS > 0 && G.LOSSES === 0) finalConf = Math.min(96, finalConf + 3);
+
+      return { action, conf:finalConf, src:finalSrc, evidence:{votes:votes.length, riseVotes, fallVotes, trend:trendDir, adx:Math.round(trendStrength)} };
+
+    } else {
+      // ==========================================
+      // PIPELINE 2: 1-10T TICK-LEVEL ENSEMBLE
+      // ==========================================
+      let ticks = liveBuf && liveBuf.length >= 10 ? liveBuf : (G.MARKET.liveBuf?.[sym] || []);
+      if(ticks.length < 20){
+        ticks = candles.slice(-30).map(c=>c.close);
+      }
+
+      // 1) Tick Bollinger Bands mean reversion (period 20, mult 2)
+      const tickSma = sma(ticks, 20);
+      const tickStd = stddev(ticks, 20);
+      if (tickSma !== null && tickStd !== null) {
+        const upperBand = tickSma + 1.96 * tickStd;
+        const lowerBand = tickSma - 1.96 * tickStd;
+        const lastTick = ticks[ticks.length-1];
+        const prevTick = ticks[ticks.length-2];
+
+        if (prevTick < lowerBand && lastTick > prevTick) {
+          votes.push({action:'RISE', conf: 76, src:'T_BB'});
+        } else if (prevTick > upperBand && lastTick < prevTick) {
+          votes.push({action:'FALL', conf: 76, src:'T_BB'});
+        }
+      }
+
+      // 2) Tick Micro-EMA (3/8) Cross
+      const tickEma3curr = ema(ticks, 3);
+      const tickEma3prev = ema(ticks.slice(0, -1), 3);
+      const tickEma8curr = ema(ticks, 8);
+      const tickEma8prev = ema(ticks.slice(0, -1), 8);
+
+      if (tickEma3curr !== null && tickEma8curr !== null && tickEma3prev !== null && tickEma8prev !== null) {
+        if (tickEma3prev <= tickEma8prev && tickEma3curr > tickEma8curr) {
+          votes.push({action:'RISE', conf: 75, src:'T_EMA'});
+        } else if (tickEma3prev >= tickEma8prev && tickEma3curr < tickEma8curr) {
+          votes.push({action:'FALL', conf: 75, src:'T_EMA'});
+        }
+      }
+
+      // 3) Tick Momentum Streak / Exhaustion
+      let consecutiveUp = 0, consecutiveDown = 0;
+      for (let i = ticks.length - 1; i > ticks.length - 6; i--) {
+        if (ticks[i] > ticks[i-1]) consecutiveUp++;
+        else if (ticks[i] < ticks[i-1]) consecutiveDown++;
+      }
+      const lastTick = ticks[ticks.length-1];
+      const prevTick = ticks[ticks.length-2];
+      if (consecutiveDown >= 4 && lastTick > prevTick) {
+        votes.push({action:'RISE', conf: 74, src:'T_STREAK'});
+      } else if (consecutiveUp >= 4 && lastTick < prevTick) {
+        votes.push({action:'FALL', conf: 74, src:'T_STREAK'});
+      }
+
+      // 4) Tick RSI 8 reversion
+      const tickRsi8 = rsi(ticks, 8);
+      if (tickRsi8 !== null) {
+        if (tickRsi8 < 25) {
+          votes.push({action:'RISE', conf: 75, src:'T_RSI'});
+        } else if (tickRsi8 > 75) {
+          votes.push({action:'FALL', conf: 75, src:'T_RSI'});
+        }
+      }
+
+      // ── Ensemble Voting ──
+      if(votes.length === 0) return null;
+      let riseVotes=0, fallVotes=0, riseConf=0, fallConf=0, riseSrcs=[], fallSrcs=[];
+      for(const v of votes){
+        if(v.action === 'RISE'){ riseVotes++; riseConf += v.conf; riseSrcs.push(v.src); }
+        else { fallVotes++; fallConf += v.conf; fallSrcs.push(v.src); }
+      }
+      const riseAvgConf = riseVotes > 0 ? riseConf / riseVotes : 0;
+      const fallAvgConf = fallVotes > 0 ? fallConf / fallVotes : 0;
+
+      // Quality gates for 1-10T Tick Mode
+      const QUALITY_MIN_VOTES = 2;
+      const QUALITY_MIN_AVG = 72;
+      const QUALITY_DECISIVE = 4;
+
+      let action = null, finalConf = 0, finalSrc = '';
+      if(riseVotes >= QUALITY_MIN_VOTES && riseVotes > fallVotes && riseAvgConf >= QUALITY_MIN_AVG){
+        action = 'RISE'; finalConf = Math.round(riseAvgConf + (riseVotes - fallVotes)*3); finalSrc = riseSrcs.join('+');
+      } else if(fallVotes >= QUALITY_MIN_VOTES && fallVotes > riseVotes && fallAvgConf >= QUALITY_MIN_AVG){
+        action = 'FALL'; finalConf = Math.round(fallAvgConf + (fallVotes - riseVotes)*3); finalSrc = fallSrcs.join('+');
+      }
+      if(!action) return null;
+      if(riseAvgConf > 0 && fallAvgConf > 0 && Math.abs(riseAvgConf - fallAvgConf) < QUALITY_DECISIVE) return null;
+
+      finalConf = Math.min(96, Math.max(80, finalConf));
+      const streak = G.CONS_LOSS || 0;
+      if(streak >= 2) finalConf = Math.round(finalConf * (1 - streak * 0.02));
+      if(G.WINS > 0 && G.LOSSES === 0) finalConf = Math.min(96, finalConf + 3);
+
+      return { action, conf:finalConf, src:finalSrc, evidence:{votes:votes.length, riseVotes, fallVotes} };
     }
-    atrVal=atrs[atrs.length-1];
-    atrSmaVal=s/atrs.length;
+  } catch(e) {
+    log(`[CRASH] runStrategyAnalysis: ${e.message}`,'e');
+    return null;
   }
-
-  // ── Strategy Ensemble ──
-  const votes = [];
-
-  // 1) WPR Reversal (enhanced with multiple zones)
-  if(pw>=-75 && cw>=-85 && cw<=-78 && atrVal!==null && atrSmaVal!==null && atrVal<atrSmaVal)
-    votes.push({action:'RISE', conf:Math.round(72+(cw+82)*2), src:'WPR-R'});
-  else if(pw>=-80 && cw<-80 && atrVal!==null && atrSmaVal!==null && atrVal<atrSmaVal*0.9)
-    votes.push({action:'RISE', conf:Math.round(62+(Math.min(-80,cw)+80)*1.5), src:'WPR-R2'});
-  if(pw < -80 && cw > pw + 5 && cw > -85)
-    votes.push({action:'RISE', conf:Math.round(55 + (cw+80)*2), src:'WPR-B'});
-  if(pw<=-25 && cw>=-22 && cw<=-15 && atrVal!==null && atrSmaVal!==null && atrVal>atrSmaVal*0.95)
-    votes.push({action:'FALL', conf:Math.round(67+(22+cw)*2), src:'WPR-F'});
-  else if(pw<=-20 && cw>-20 && atrVal!==null && atrSmaVal!==null && atrVal>atrSmaVal*1.05)
-    votes.push({action:'FALL', conf:Math.round(60+(Math.max(-20,cw)+20)*2), src:'WPR-F2'});
-  if(pw > -20 && cw < pw - 3 && cw < -30)
-    votes.push({action:'FALL', conf:Math.round(55 + (-20-cw)*2), src:'WPR-S'});
-
-  // ── Ensemble Voting ──
-  if(votes.length === 0) return null;
-  let riseVotes=0, fallVotes=0, riseConf=0, fallConf=0, riseSrcs=[], fallSrcs=[];
-  for(const v of votes){
-    if(v.action === 'RISE'){ riseVotes++; riseConf += v.conf; riseSrcs.push(v.src); }
-    else { fallVotes++; fallConf += v.conf; fallSrcs.push(v.src); }
-  }
-  const riseAvgConf = riseVotes > 0 ? riseConf / riseVotes : 0;
-  const fallAvgConf = fallVotes > 0 ? fallConf / fallVotes : 0;
-  // Quality gates: only take high-conviction, multi-confirmation setups
-  const QUALITY_MIN_VOTES = 2;      // need >=2 agreeing strategies (consensus)
-  const QUALITY_MIN_AVG = 68;       // winning side avg confidence must be solid
-  const QUALITY_DECISIVE = 6;       // winning side must clearly beat loser
-
-  let action = null, finalConf = 0, finalSrc = '';
-  if(riseVotes >= QUALITY_MIN_VOTES && riseVotes > fallVotes && riseAvgConf >= QUALITY_MIN_AVG){
-    const trendPenalty = (trendDir === 'DN' && trendStrength > 30) ? -6 : (trendDir === 'DN' && trendStrength > 20) ? -3 : 0;
-    action = 'RISE'; finalConf = Math.round(riseAvgConf + (riseVotes - fallVotes)*3 + trendPenalty); finalSrc = riseSrcs.join('+');
-  } else if(fallVotes >= QUALITY_MIN_VOTES && fallVotes > riseVotes && fallAvgConf >= QUALITY_MIN_AVG){
-    const trendPenalty = (trendDir === 'UP' && trendStrength > 30) ? -6 : (trendDir === 'UP' && trendStrength > 20) ? -3 : 0;
-    action = 'FALL'; finalConf = Math.round(fallAvgConf + (fallVotes - riseVotes)*3 + trendPenalty); finalSrc = fallSrcs.join('+');
-  }
-  if(!action) return null;
-  // Decisiveness filter: winning side must clearly beat the loser (better winrate, fewer marginal calls)
-  if(riseAvgConf > 0 && fallAvgConf > 0 && Math.abs(riseAvgConf - fallAvgConf) < QUALITY_DECISIVE) return null;
-  finalConf = Math.min(96, Math.max(80, finalConf));
-  // Volatility regime
-  const mi = G.MARKET_STATS?.[sym];
-  if(mi){
-    if(mi.vol === 'low') finalConf += 2;
-    if(mi.vol === 'high') finalConf -= 2;
-  }
-  const streak = G.CONS_LOSS || 0;
-  if(streak >= 2) finalConf = Math.round(finalConf * (1 - streak * 0.02));
-  if(G.WINS > 0 && G.LOSSES === 0) finalConf = Math.min(96, finalConf + 3);
-
-  return { action, conf:finalConf, src:finalSrc, evidence:{votes:votes.length, riseVotes, fallVotes, trend:trendDir, adx:Math.round(trendStrength)} };
-  } catch(e){ log(`[CRASH] runStrategyAnalysis: ${e.message}`,'e'); return null; }
 }
 
 function evaluateSingleMarket(sym, liveBuf){
@@ -3344,18 +3511,6 @@ function evaluateSingleMarket(sym, liveBuf){
     close: liveBuf[liveBuf.length-1]
   }] : c;
   return runStrategyAnalysis(sym, arr, liveBuf);
-}
-
-function evaluateSingleMarket(sym, liveBuf){
-  const c = G.MARKET.candles[sym];
-  if(!c || c.length < 10) return null;
-  const arr = liveBuf && liveBuf.length >= 2 ? [...c, {
-    open: c[c.length-1].close,
-    high: max(liveBuf),
-    low: min(liveBuf),
-    close: liveBuf[liveBuf.length-1]
-  }] : c;
-  return runStrategyAnalysis(sym, arr);
 }
 
 function evaluateAndTrade(sym, liveBuf){
@@ -3401,19 +3556,19 @@ function evaluateAndTrade(sym, liveBuf){
     execTrade(result, sym);
     return;
   }
-  // Fallback: the analysis core's RISE/FALL bias IS the visible signal.
-  // Trade it when its confidence hits the same high bar (>=80) — no confidence lowered.
+  // Fallback: the analysis core's RISE/FALL bias is used for high-probability mean reversion.
+  // When RSI is extremely overbought (>=75) or oversold (<=25), we trade the pullback/rebound.
   const seriesB = haxLiveSeries(sym);
   if(seriesB.length >= 15){
     const rB = rsi(seriesB, 14);
     if(rB != null){
-      let bias = rB > 55 ? 'RISE' : rB < 45 ? 'FALL' : null;
+      let bias = rB <= 25 ? 'RISE' : rB >= 75 ? 'FALL' : null;
       if(bias){
-        const liveConf = Math.min(90, Math.max(40, Math.round(50 + Math.abs(rB-50)*0.8)));
-        if(liveConf >= 80){
-          const sig = { action: bias, conf: liveConf, src:'BIAS', lastPrice: arr[arr.length-1].close, sym };
+        const liveConf = Math.min(92, Math.max(40, Math.round(50 + Math.abs(rB-50)*1.1)));
+        if(liveConf >= 82){
+          const sig = { action: bias, conf: liveConf, src:'BIAS_REV', lastPrice: arr[arr.length-1].close, sym };
           storeSignal(sym, arr[arr.length-1]?.epoch||0, sig, true);
-          log(`[SIGNAL] ${sym}: ${bias} ${liveConf}% (BIAS)`,'t');
+          log(`[SIGNAL] ${sym}: ${bias} ${liveConf}% (BIAS_REV)`,'t');
           G.CURRENT_MARKET = sym; G.SELECTED_MARKET = sym;
           syncMarketSelection(); updateWatchlist();
           execTrade(sig, sym);
