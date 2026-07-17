@@ -3082,12 +3082,11 @@ function handleTick(data){
     }
     if(G._tradedCandle) G._tradedCandle[sym]=false;
   }
-  // AUTO 1-10t mode: evaluate on every few ticks (anywhere) for instant high-quality entries
-  if(G.DURATION_MODE==='auto_ticks'){
-    G._atTick = G._atTick || {};
-    G._atTick[sym] = (G._atTick[sym]||0) + 1;
-    if(G._atTick[sym] >= 3){ G._atTick[sym]=0; evaluateAndTrade(sym, buf); }
-  }
+  // Evaluate on every few ticks (anywhere) for fast high-quality entries in both modes.
+  // Confidence/consensus gates in runStrategyAnalysis are unchanged — only latency drops.
+  G._atTick = G._atTick || {};
+  G._atTick[sym] = (G._atTick[sym]||0) + 1;
+  if(G._atTick[sym] >= 3){ G._atTick[sym]=0; evaluateAndTrade(sym, buf); }
   if(sym===G.CURRENT_MARKET) {
     const lastEpochKey = '_lastChartEpoch_'+sym;
     const lastEpoch = G[lastEpochKey] || 0;
@@ -3366,9 +3365,6 @@ function evaluateAndTrade(sym, liveBuf){
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
   if(Date.now() - G.BOOT_AT < 4000) return;
   if(G.MARKET_SELECTION_MODE==='manual' && sym!==G.SELECTED_MARKET) return;
-  // 15s mode: only enter on a FRESH candle close (ignore setups older than 2s).
-  // AUTO 1-10t mode: enter anywhere a high-quality setup exists (no candle gate).
-  if(G.DURATION_MODE==='fixed' && G._candleCloseAt && G._candleCloseAt[sym] && Date.now() - G._candleCloseAt[sym] > 2000) return;
 
   // ── Dynamic cooldowns (adaptive based on recent performance) ──
   const recentWins = G.TRADE_HISTORY.slice(-10).filter(t=>t.won).length;
