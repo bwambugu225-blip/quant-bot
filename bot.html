@@ -2990,8 +2990,7 @@ function buildCandlesFromTicks(sym, times, prices){
     G.MARKET.prices[sym] = arr.map(c=>c.close);
     G.MARKET.lastCloseAt[sym] = Date.now();
     updateDigitsUI();
-    log(`[HIST] ${sym}: ${arr.length} candles built — initial eval`,'i');
-    evaluateAndTrade(sym);
+    log(`[HIST] ${sym}: ${arr.length} candles built — waiting for next fresh candle to trade`,'i');
   }
 }
 
@@ -3068,11 +3067,13 @@ function handleTick(data){
       storeSignal(sym,candle.epoch,G.LAST_SIGNAL,true);
       G._tradedCandle[sym]=false;
     }
-    if(candle.ticks>=minT) evaluateAndTrade(sym);
+    if(candle.ticks>=minT){
+      G._candleCloseAt = G._candleCloseAt || {};
+      G._candleCloseAt[sym] = Date.now();
+      evaluateAndTrade(sym);
+    }
     if(G._tradedCandle) G._tradedCandle[sym]=false;
   }
-  // Evaluate every tick for instant entry on cross (no delay, no throttle!)
-  if(buf.length >= 1) evaluateAndTrade(sym, buf);
   if(sym===G.CURRENT_MARKET) {
     const lastEpochKey = '_lastChartEpoch_'+sym;
     const lastEpoch = G[lastEpochKey] || 0;
@@ -3289,25 +3290,23 @@ function runStrategyAnalysis(sym, candles, liveBuf){
   }
   const riseAvgConf = riseVotes > 0 ? riseConf / riseVotes : 0;
   const fallAvgConf = fallVotes > 0 ? fallConf / fallVotes : 0;
-  const calibConf = G._calib?.baseConf || 58;
-  const calibTie = G._calib?.baseConf ? G._calib.baseConf + 4 : 62;
+  // Quality gates: only take high-conviction, multi-confirmation setups
+  const QUALITY_MIN_VOTES = 2;      // need >=2 agreeing strategies (consensus)
+  const QUALITY_MIN_AVG = 68;       // winning side avg confidence must be solid
+  const QUALITY_DECISIVE = 6;       // winning side must clearly beat loser
 
   let action = null, finalConf = 0, finalSrc = '';
-  if(riseVotes > fallVotes && riseAvgConf > calibConf){
+  if(riseVotes >= QUALITY_MIN_VOTES && riseVotes > fallVotes && riseAvgConf >= QUALITY_MIN_AVG){
     const trendPenalty = (trendDir === 'DN' && trendStrength > 30) ? -6 : (trendDir === 'DN' && trendStrength > 20) ? -3 : 0;
     action = 'RISE'; finalConf = Math.round(riseAvgConf + (riseVotes - fallVotes)*3 + trendPenalty); finalSrc = riseSrcs.join('+');
-  } else if(fallVotes > riseVotes && fallAvgConf > calibConf){
+  } else if(fallVotes >= QUALITY_MIN_VOTES && fallVotes > riseVotes && fallAvgConf >= QUALITY_MIN_AVG){
     const trendPenalty = (trendDir === 'UP' && trendStrength > 30) ? -6 : (trendDir === 'UP' && trendStrength > 20) ? -3 : 0;
     action = 'FALL'; finalConf = Math.round(fallAvgConf + (fallVotes - riseVotes)*3 + trendPenalty); finalSrc = fallSrcs.join('+');
-  } else if(riseVotes === fallVotes && riseVotes > 0){
-    if(riseAvgConf > fallAvgConf && riseAvgConf > calibTie){ action = 'RISE'; finalConf = Math.round(riseAvgConf); finalSrc = riseSrcs.join('+'); }
-    else if(fallAvgConf > calibTie){ action = 'FALL'; finalConf = Math.round(fallAvgConf); finalSrc = fallSrcs.join('+'); }
   }
   if(!action) return null;
   // Decisiveness filter: winning side must clearly beat the loser (better winrate, fewer marginal calls)
-  const losingAvg = action === 'RISE' ? fallAvgConf : riseAvgConf;
-  if(riseAvgConf > 0 && fallAvgConf > 0 && Math.abs(riseAvgConf - fallAvgConf) < 4) return null;
-  finalConf = Math.min(96, Math.max(75, finalConf));
+  if(riseAvgConf > 0 && fallAvgConf > 0 && Math.abs(riseAvgConf - fallAvgConf) < QUALITY_DECISIVE) return null;
+  finalConf = Math.min(96, Math.max(80, finalConf));
   // Volatility regime
   const mi = G.MARKET_STATS?.[sym];
   if(mi){
@@ -3353,6 +3352,8 @@ function evaluateAndTrade(sym, liveBuf){
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
   if(Date.now() - G.BOOT_AT < 4000) return;
   if(G.MARKET_SELECTION_MODE==='manual' && sym!==G.SELECTED_MARKET) return;
+  // Only enter on a FRESH candle close — if the setup is older than 2s, ignore it
+  if(G._candleCloseAt && G._candleCloseAt[sym] && Date.now() - G._candleCloseAt[sym] > 2000) return;
 
   // ── Dynamic cooldowns (adaptive based on recent performance) ──
   const recentWins = G.TRADE_HISTORY.slice(-10).filter(t=>t.won).length;
