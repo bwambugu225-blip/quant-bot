@@ -693,6 +693,11 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
             <input type="hidden" id="rfDuration" value="15">
           </div>
       </div>
+      <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center">
+        <span style="font-size:8px;color:var(--muted);white-space:nowrap">TRADE LENGTH</span>
+        <button id="durFixedBtn" class="btn btn-ghost" onclick="setDurationMode('fixed')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">15s</button>
+        <button id="durAutoBtn" class="btn btn-ghost" onclick="setDurationMode('auto_ticks')" style="flex:1;padding:4px;font-size:8px">AUTO 1-10t</button>
+      </div>
         <div class="trade-btn-row">
           <button id="rfStartBtn" class="btn btn-call" onclick="startRF()" style="flex:1">START</button>
           <button id="rfStopBtn" class="btn btn-put" onclick="stopRF()" style="flex:1;display:none">STOP</button>
@@ -1075,6 +1080,7 @@ const G = {
   CANDLE_INTERVAL_MS:15000,   // 15-second candles
   CANDLE_BUFFER_MS:3000,     // 3s buffer for settlement between trades
   TRADE_DURATION_SECONDS:10,  // 10s — matches candle interval for back-to-back trades
+  DURATION_MODE:'fixed',       // 'fixed' = 15s locked; 'auto_ticks' = per-trade 1-10 tick auto pick
   // Market-specific parameters derived from 15s OHLC analysis (see analyze.py)
   // vol: high/mid/low classification, minConf: minimum confidence floor,
   // revPenalty: penalty for fighting trend (lighter on high vol)
@@ -1420,6 +1426,7 @@ function collectSettings(){
     current_market: G.CURRENT_MARKET,
     trade_duration: G.TRADE_DURATION,
     trade_duration_unit: G.TRADE_DURATION_UNIT,
+    duration_mode: G.DURATION_MODE,
     selected_strategy: G.SELECTED_STRATEGY,
     strategy_active: G.STRATEGY_ACTIVE,
     trade_history: G.TRADE_HISTORY.slice(-200),
@@ -1458,6 +1465,7 @@ function applySettings(s){
     if(s.current_market) G.CURRENT_MARKET = s.current_market;
     if(s.trade_duration) G.TRADE_DURATION = s.trade_duration;
     if(s.trade_duration_unit) G.TRADE_DURATION_UNIT = s.trade_duration_unit;
+    if(s.duration_mode) G.DURATION_MODE = s.duration_mode;
     if(s.selected_strategy){ G.SELECTED_STRATEGY = s.selected_strategy; const e=document.getElementById('strategySelect'); if(e) e.value = s.selected_strategy; }
     if(Array.isArray(s.strategy_active)) G.STRATEGY_ACTIVE = s.strategy_active;
     if(Array.isArray(s.trade_history)) G.TRADE_HISTORY = s.trade_history;
@@ -3395,6 +3403,28 @@ function evaluateAndTrade(sym, liveBuf){
 // ============================================================
 // TRADE EXECUTION
 // ============================================================
+// Auto duration picker for the "AUTO 1-10t" mode.
+// Higher conviction + calmer tape => shorter tick window (snap the move fast);
+// lower conviction / choppier tape => longer window (let the edge play out).
+function pickAutoTickDuration(signal, sym){
+  const conf = signal?.conf || 80;
+  const candles = G.MARKET.candles[sym];
+  let vol = 0.5;
+  if(candles && candles.length >= 6){
+    const slice = candles.slice(-6);
+    const avgR = slice.reduce((s,c)=>s+(c.high-c.low),0)/slice.length || 1;
+    const lastR = slice[slice.length-1].high - slice[slice.length-1].low;
+    vol = Math.max(0, Math.min(1, lastR / (avgR*2 || 1)));
+  }
+  // confidence 80..96 -> weight 0..1 (higher conf = shorter)
+  const cw = Math.max(0, Math.min(1, (conf - 80) / 16));
+  // base 1..10 ; high conviction & calm tape -> short, low conviction & choppy -> long
+  let ticks = Math.round(10 - (cw * 5) - (vol * 4));
+  ticks = Math.max(1, Math.min(10, ticks));
+  // small jitter so consecutive trades aren't identical
+  if(Math.random() < 0.4) ticks = Math.max(1, Math.min(10, ticks + (Math.random() < 0.5 ? -1 : 1)));
+  return ticks;
+}
 function execTrade(signal, asset){
   try {
   if(G.ACTIVE_CONTRACTS.size>=1) return;
@@ -3408,8 +3438,15 @@ function execTrade(signal, asset){
   }
   asset = asset || G.CURRENT_MARKET;
   let stake = signal.copyStake || (Martingale.enabled ? Martingale.currentStake : parseFloat(document.getElementById('rfStake')?.value||1));
-  const dur = G.TRADE_DURATION || 15;
-  const durUnit = G.TRADE_DURATION_UNIT || 's';
+  // Duration: fixed 15s mode, or auto-pick 1-10 ticks per trade (adaptive to conviction)
+  let dur, durUnit;
+  if(G.DURATION_MODE === 'auto_ticks'){
+    dur = pickAutoTickDuration(signal, asset);
+    durUnit = 't';
+  } else {
+    dur = G.TRADE_DURATION || 15;
+    durUnit = G.TRADE_DURATION_UNIT || 's';
+  }
   const ct = signal.action==='RISE'?'CALL':'PUT';
 
   // ── Kelly Criterion sizing (non-martingale, non-copy) ──
@@ -4089,6 +4126,17 @@ function setSelectionMode(mode){
   log('[MODE] '+(mode==='manual'?'Manual — '+G.SELECTED_MARKET:'Auto — all markets'),'i');
 }
 
+function setDurationMode(mode){
+  G.DURATION_MODE = mode;
+  const f=document.getElementById('durFixedBtn'), a=document.getElementById('durAutoBtn');
+  if(f){ const on=mode==='fixed'; f.style.background=on?'var(--accent)':'none'; f.style.color=on?'#fff':'var(--muted)'; f.style.borderColor=on?'var(--accent)':'var(--line)'; }
+  if(a){ const on=mode==='auto_ticks'; a.style.background=on?'var(--accent)':'none'; a.style.color=on?'#fff':'var(--muted)'; a.style.borderColor=on?'var(--accent)':'var(--line)'; }
+  log(`[DURATION] Mode: ${mode==='auto_ticks'?'AUTO 1-10 ticks':'15s fixed'}`,'i');
+  saveState();
+}
+function updateDurModeUI(){
+  setDurationMode(G.DURATION_MODE);
+}
 function updateModeUI(){
   const indicator = document.getElementById('modeIndicator');
   const target = document.getElementById('modeTargetMarket');
@@ -5759,6 +5807,7 @@ document.addEventListener('DOMContentLoaded', () => {
   SYMBOLS.forEach(s => { G.MARKET.candles[s.sym] = []; G.MARKET.prices[s.sym] = []; });
   restoreState();
   renderStratList();
+  updateDurModeUI();
   // Populate market dropdown
   const sel = document.getElementById('marketSelect');
   if(sel){
