@@ -2302,8 +2302,12 @@ function evaluateDigitStrategy(sym){
   const live = hist.slice(-30);
   const confirm = hist.slice(-90);
 
-  // 95% significance for a 1-df chi-square test.
-  const SIG = 3.84;
+  // "PERFECT" gate — only trade a genuinely strong, confirmed edge.
+  // Live window must be decisively significant (χ²≥10) and the confirm window
+  // must also be significant (χ²≥6.63 = 99%) with the SAME direction.
+  // If either window is weak or they disagree, we do NOT trade (bad analysis).
+  const LIVE_SIG = 10.0;   // strong live conviction
+  const CONF_SIG = 6.63;   // 99% significance on the confirm window
   const cands = [
     { dir:'DIGITOVER',  barrier:3 },
     { dir:'DIGITOVER',  barrier:4 },
@@ -2314,15 +2318,13 @@ function evaluateDigitStrategy(sym){
   for(const c of cands){
     const lc = digChi(live, c.dir, c.barrier);
     const cc = digChi(confirm, c.dir, c.barrier);
-    // Require BOTH windows to show a statistically significant, same-direction bias.
-    if(lc.chi >= SIG && cc.chi >= SIG && lc.over === cc.over){
+    if(lc.chi >= LIVE_SIG && cc.chi >= CONF_SIG && lc.over === cc.over){
       if(!best || lc.chi > best.chi) best = { ...c, chi: lc.chi, cchi: cc.chi };
     }
   }
 
   if(!best){
-    if(BotState.lossStreak < 2)
-      log(`[DIGIT·AUTO] ${sym}: no significant bias (χ²<${SIG}) — wait`, 'i');
+    // Never trade on a bad/marginal analysis. Stay silent.
     return;
   }
 
@@ -4170,7 +4172,7 @@ function updateDigitsUI(){
         const dir = c.dir==='OVER'?'DIGITOVER':'DIGITUNDER';
         const lc = digChi(liveW, dir, c.barrier);
         const cc = digChi(confW, dir, c.barrier);
-        if(lc.chi>=SIG && cc.chi>=SIG && lc.over===cc.over){
+        if(lc.chi>=10.0 && cc.chi>=6.63 && lc.over===cc.over){
           if(!best || lc.chi>best.chi) best = { ...c, chi:lc.chi };
         }
       }
