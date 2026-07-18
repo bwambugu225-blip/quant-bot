@@ -2291,6 +2291,8 @@ function evaluateDigitStrategy(sym){
 
   // Base stake and martingale calculations
   BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
+  BotState.targetProfit = parseFloat(document.getElementById('dgTakeProfit')?.value || 10);
+  BotState.stopLoss = parseFloat(document.getElementById('dgStopLoss')?.value || 5);
   const mult = parseFloat(document.getElementById('dgMartMult')?.value) || 1;
   BotState.dgMartMult = mult;
   const factor = mult > 1 ? Math.pow(mult, BotState.lossStreak) : 1;
@@ -2412,8 +2414,12 @@ function onDigitContractResolved(won, profit){
   if(BotState.totalProfitLoss >= BotState.targetProfit || BotState.totalProfitLoss <= -BotState.stopLoss){
     const isTP = BotState.totalProfitLoss >= BotState.targetProfit;
     showToast(`${isTP ? 'TAKE PROFIT' : 'STOP LOSS'} $${BotState.totalProfitLoss.toFixed(2)}`, isTP ? 'tp' : 'sl');
-    log(`[DIGIT] ${isTP ? 'TP' : 'SL'} hit — resetting PnL, continuing`,'w');
-    resetDigitPnL();
+    log(`[DIGIT] ${isTP ? 'TP' : 'SL'} hit — stopping engine`,'w');
+    // Stop the digit engine on TP/SL (do NOT keep trading).
+    BotState.isTrading = false;
+    const btn = document.getElementById('dgEngineBtn');
+    if(btn) btn.textContent = 'AUTO';
+    updateDigitsUI();
     return;
   }
   updateDigitsUI();
