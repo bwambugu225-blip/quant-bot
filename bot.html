@@ -2230,10 +2230,9 @@ function placeDigitManual(contractType){
   const isOver = contractType==='DIGITOVER';
   const allowed = isOver ? [3,4] : [6,7];
   if(!allowed.includes(barrier)) barrier = allowed[0];
-  // Vet the manual pick with the same multi-window edge check as the auto engine.
-  const e = digEdge(hist, contractType, barrier);
-  const analysis = `barrier=${barrier} win=${(e.minRate*100).toFixed(1)}% edge=${((e.minRate-e.baseline)*100).toFixed(1)}%`;
-  if(e.minRate < 0.75) log(`[DIGIT] ${label} ⚠ weak edge (${(e.minRate*100).toFixed(1)}%) — still placing (manual)`,'w');
+  // Note the chi bias for the manual pick (informational only).
+  const chi = digChi(hist, contractType, barrier, hist.slice(-60));
+  const analysis = `barrier=${barrier} χ²=${chi.toFixed(1)}`;
   log(`[DIGIT] ${label} $${stake.toFixed(2)} ${sym} · ${analysis}`,'t');
   G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
   const payload = {
@@ -2267,32 +2266,29 @@ function toggleDigitEngine(){
 
 // Shared OVER/UNDER edge evaluator.
 // Measures the empirical win rate of OVER/UNDER <barrier> across THREE independent
-// windows of the same long history. Returns the bottleneck (min) rate and whether
-// every window agrees with a real edge above the statistical baseline.
-function digEdge(hist, direction, barrier){
+// Chi-square score for one focus barrier's OVER/UNDER split vs the uniform
+// expectation. Higher = stronger, more exploitable bias in the recent sample.
+// Uses a short "live" window so the engine auto-switches to whatever is hottest now.
+function digChi(hist, direction, barrier, win){
   const isOver = direction === 'DIGITOVER';
-  // Theoretical baseline win rate for this barrier (uniform digits)
-  const baseline = isOver ? (9 - barrier) / 10 : barrier / 10;
   const wins = d => isOver ? d > barrier : d < barrier;
-  const windows = [hist.slice(-60), hist.slice(-200), hist.slice(-500)];
-  let minRate = 1, allRate = 0, agree = true;
-  for(const w of windows){
-    if(w.length < 30){ agree = false; break; }
-    const r = w.filter(wins).length / w.length;
-    if(r < minRate) minRate = r;
-    allRate += r;
-    // every window must beat the baseline by at least a small margin
-    if(r <= baseline + 0.005) agree = false;
-  }
-  const avgRate = windows.length ? allRate / windows.length : 0;
-  return { baseline, minRate, avgRate, agree, long: windows[2] ? windows[2].length : 0 };
+  const w = win;
+  if(w.length < 20) return 0;
+  const obsWin = w.filter(wins).length;
+  const obsLose = w.length - obsWin;
+  // Uniform expectation for this barrier.
+  const expWin = w.length * (isOver ? (9 - barrier) / 10 : barrier / 10);
+  const expLose = w.length - expWin;
+  const cw = (obsWin - expWin) ** 2 / expWin;
+  const cl = (obsLose - expLose) ** 2 / expLose;
+  return cw + cl;
 }
 
 function evaluateDigitStrategy(sym){
   if(!BotState.isTrading) return;
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
   const hist = BotState.tickHistory;
-  if(hist.length < 500) return;   // need a deep, stable sample
+  if(hist.length < 60) return;   // small warm-up, then trade constantly
 
   // Base stake and martingale calculations
   BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
@@ -2302,40 +2298,23 @@ function evaluateDigitStrategy(sym){
   const stake = +(BotState.baseStake * factor).toFixed(2);
   BotState.currentStake = stake;
 
-  // Tight, statistically-grounded gates.
-  const MIN_RATE   = 0.78;   // bottleneck win rate every window must clear
-  const MIN_EDGE   = 0.06;   // extra margin above the uniform baseline
-  const LONG_MIN   = 300;    // long-window sample guard
-  // After a losing streak the regime is suspect — demand a bigger edge before re-entering.
-  const streakBump = Math.min(0.06, BotState.lossStreak * 0.02);
-  const minRateReq = MIN_RATE + streakBump;
+  // Live window = most recent 60 ticks → always picks the currently hottest barrier.
+  const win = hist.slice(-60);
 
-  const OVER_BARRIERS  = [3, 4];   // OVER 3, OVER 4
-  const UNDER_BARRIERS = [6, 7];   // UNDER 6, UNDER 7
-
-  let best = null; // {dir, barrier, rate, edge}
-
-  const consider = (dir, b) => {
-    const e = digEdge(hist, dir, b);
-    if(!e.agree || e.long < LONG_MIN) return;
-    const edge = e.minRate - e.baseline;
-    if(e.minRate >= minRateReq && edge >= MIN_EDGE + streakBump){
-      if(!best || e.minRate > best.rate){
-        best = { dir, barrier: b, rate: e.minRate, edge };
-      }
-    }
-  };
-  for(const b of OVER_BARRIERS)  consider('DIGITOVER', b);
-  for(const b of UNDER_BARRIERS) consider('DIGITUNDER', b);
-
-  if(!best){
-    if(BotState.lossStreak < 2)
-      log(`[DIGIT·AUTO] No confirmed edge across 60/200/500 windows — wait`, 'i');
-    return;
+  const cands = [
+    { dir:'DIGITOVER',  barrier:3 },
+    { dir:'DIGITOVER',  barrier:4 },
+    { dir:'DIGITUNDER', barrier:6 },
+    { dir:'DIGITUNDER', barrier:7 }
+  ];
+  let best = null;
+  for(const c of cands){
+    const chi = digChi(hist, c.dir, c.barrier, win);
+    if(!best || chi > best.chi) best = { ...c, chi };
   }
 
   const dirLabel = best.dir === 'DIGITOVER' ? 'OVER' : 'UNDER';
-  const label = `🌊 Elite OU: ${dirLabel} ${best.barrier} (win ${(best.rate*100).toFixed(1)}% / edge ${(best.edge*100).toFixed(1)}%)`;
+  const label = `🌊 Chi OU: ${dirLabel} ${best.barrier} (χ²=${best.chi.toFixed(1)})`;
   const orderPayload = {
     contract_type: best.dir,
     barrier: String(best.barrier),
@@ -2785,7 +2764,7 @@ function handleTick(data){
       haxPush(`TICK ${sym} ${arrow} ${price.toFixed(4)}`, cls);
     }
   }
-  if(G.TRADE_MODE==='DIGITS' && BotState.isTrading && G.ACTIVE_CONTRACTS.size===0 && BotState.tickHistory.length >= 500){
+  if(G.TRADE_MODE==='DIGITS' && BotState.isTrading && G.ACTIVE_CONTRACTS.size===0 && BotState.tickHistory.length >= 60){
     evaluateDigitStrategy(sym);
   }
   let candles=G.MARKET.candles[sym]; if(!candles) G.MARKET.candles[sym]=candles=[];
