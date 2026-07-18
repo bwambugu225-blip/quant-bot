@@ -923,6 +923,11 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
           </div>
         </div>
       </div>
+
+      <div style="margin-top:6px">
+        <div style="font-size:7px;color:var(--muted);text-transform:uppercase;margin-bottom:3px">Market Bias Watch · χ²≥3.84 (live 30/90)</div>
+        <div id="dgBiasWatch" style="display:flex;flex-direction:column;gap:2px;max-height:120px;overflow:auto"></div>
+      </div>
     </div>
 
     <!-- Mode toggle -->
@@ -4059,20 +4064,25 @@ function updateDigitsUI(){
     const s = BotState.contractActive ? 'amber' : BotState.isTrading ? 'green' : 'gray';
     statusEl.innerHTML = '<span class="blink-dot '+s+'"></span>';
   }
-  // === ANALYSIS (full 1000-tick window) ===
+  // === ANALYSIS ===
+  // Use a LIVE window (last 60 ticks) for the circles + stats so the display
+  // reflects the current digit distribution the engine actually trades on — not a
+  // 1000-tick long-run average that drifts to "flat/unrealistic" over time.
   const get = (id) => document.getElementById(id);
-  const hist = (G.MARKET.digHist && G.MARKET.digHist[G.CURRENT_MARKET]) || []; // per-market, capped at 1000
+  const hist = (G.MARKET.digHist && G.MARKET.digHist[G.CURRENT_MARKET]) || []; // full per-market buffer
   const histLen = hist.length;
+  const live = hist.slice(-60);
+  const liveLen = live.length;
   // Throttle full SVG rebuild to every 5th tick (cursor stays smooth)
   const throttleKey = '_dgThrottle';
   if(!G[throttleKey]) G[throttleKey]=0;
   G[throttleKey]++;
   const fullRebuild = (G[throttleKey]&3)===0;
-  // Digit circles
+  // Digit circles (live window)
   const hfreq = Array(10).fill(0);
-  for(const d of hist) hfreq[d]++;
-  const hTotal = histLen || 1;
-  let maxF=0, maxD=-1, minF=histLen, minD=-1;
+  for(const d of live) hfreq[d]++;
+  const hTotal = liveLen || 1;
+  let maxF=0, maxD=-1, minF=liveLen, minD=-1;
   for(let i=0;i<10;i++){
     if(hfreq[i]>maxF){ maxF=hfreq[i]; maxD=i; }
     if(hfreq[i]<minF){ minF=hfreq[i]; minD=i; }
@@ -4111,8 +4121,8 @@ function updateDigitsUI(){
     setText('dgHottest', maxD>=0 ? `${maxD} (${(maxF/hTotal*100).toFixed(1)}%)` : '—');
     setText('dgColdest', minD>=0 ? `${minD} (${(minF/hTotal*100).toFixed(1)}%)` : '—');
   }
-  setText('dgDistRange', 'Last '+histLen+' ticks');
-  const cs = digitChiSq(hist);
+  setText('dgDistRange', 'Live '+liveLen+' ticks');
+  const cs = digitChiSq(live);
   const chiEl = get('dgChiSq');
   if(chiEl){
     chiEl.textContent = cs ? cs.toFixed(1) : '--';
@@ -4120,52 +4130,63 @@ function updateDigitsUI(){
   }
   const dgMarket = get('dgMarketName');
   if(dgMarket){ const s = G.CURRENT_MARKET; const info = SYMBOLS.find(x=>x.sym===s); dgMarket.textContent = info?info.name+' ('+s+')':s; }
-  // EO stats (from tickQueue window)
+  // EO stats (live window)
   let eCnt=0, oCnt=0, eoStr=0, eoLast=null, eoCur=0;
-  for(const d of q){
+  for(const d of live){
     const p = d%2===0?'e':'o';
     if(p==='e') eCnt++; else oCnt++;
     if(eoLast===p) eoCur++; else { eoCur=1; eoLast=p; }
     if(eoCur>eoStr) eoStr=eoCur;
   }
-  const qLen = q.length || 1;
+  const lLen = liveLen || 1;
   const eoStrEl = get('dgAEOStr');
   if(eoStrEl) eoStrEl.textContent = eoStr>1?`${eoStr} ${eoLast==='e'?'EVEN':'ODD'}`:'—';
-  setText('dgAEven', `${((eCnt/qLen)*100).toFixed(1)}%`);
-  setText('dgAOdd', `${((oCnt/qLen)*100).toFixed(1)}%`);
-  // OU stats
-  let ovCnt=0, unCnt=0, midCnt=0;
-  for(const d of q){
-    if(d>=5) ovCnt++; else unCnt++;
-  }
-  setText('dgAOver', `${((ovCnt/qLen)*100).toFixed(1)}%`);
-  setText('dgDUnder', `${((unCnt/qLen)*100).toFixed(1)}%`);
+  setText('dgAEven', `${((eCnt/lLen)*100).toFixed(1)}%`);
+  setText('dgAOdd', `${((oCnt/lLen)*100).toFixed(1)}%`);
+  // OU stats (live window)
+  let ovCnt=0, unCnt=0;
+  for(const d of live){ if(d>=5) ovCnt++; else unCnt++; }
+  setText('dgAOver', `${((ovCnt/lLen)*100).toFixed(1)}%`);
+  setText('dgDUnder', `${((unCnt/lLen)*100).toFixed(1)}%`);
   setText('dgAMid', `—`);
-  // Mode
-  const modeFreq = Array(10).fill(0);
-  for(const d of q) modeFreq[d]++;
-  let modeD=-1, modeC=0;
-  for(let i=0;i<10;i++){ if(modeFreq[i]>modeC){ modeC=modeFreq[i]; modeD=i; } }
   setText('dgATicks', String(histLen));
-  // Chi-square test for uniformity
-  let chiSq = 0;
-  const expected = hTotal / 10;
-  if(expected > 0){
-    for(let i=0;i<10;i++) chiSq += (hfreq[i]-expected)*(hfreq[i]-expected)/expected;
+  // === MARKET BIAS WATCH (all subscribed markets) ===
+  const watch = get('dgBiasWatch');
+  if(watch && G.MARKET.digHist){
+    const SIG = 3.84;
+    const cands = [
+      { dir:'OVER',  barrier:3 },
+      { dir:'OVER',  barrier:4 },
+      { dir:'UNDER', barrier:6 },
+      { dir:'UNDER', barrier:7 }
+    ];
+    const rows = [];
+    for(const sym of Object.keys(G.MARKET.digHist)){
+      const h = G.MARKET.digHist[sym];
+      if(h.length < 30) continue;
+      const liveW = h.slice(-30), confW = h.slice(-90);
+      let best=null;
+      for(const c of cands){
+        const dir = c.dir==='OVER'?'DIGITOVER':'DIGITUNDER';
+        const lc = digChi(liveW, dir, c.barrier);
+        const cc = digChi(confW, dir, c.barrier);
+        if(lc.chi>=SIG && cc.chi>=SIG && lc.over===cc.over){
+          if(!best || lc.chi>best.chi) best = { ...c, chi:lc.chi };
+        }
+      }
+      const info = SYMBOLS.find(x=>x.sym===sym);
+      const name = info ? info.name : sym;
+      const sel = sym===G.CURRENT_MARKET;
+      if(best){
+        rows.push(`<div onclick="selectMarket('${sym}')" style="display:flex;justify-content:space-between;align-items:center;font-size:8px;padding:2px 4px;border:1px solid var(--line);background:var(--acc-dim);cursor:pointer${sel?';outline:1px solid var(--accent)':''}"><span style="color:var(--text);font-weight:600">${name}</span><span style="color:var(--positive);font-weight:700">${best.dir} ${best.barrier} · χ²${best.chi.toFixed(1)}</span></div>`);
+      } else {
+        rows.push(`<div onclick="selectMarket('${sym}')" style="display:flex;justify-content:space-between;align-items:center;font-size:8px;padding:2px 4px;border:1px solid var(--line);opacity:0.6;cursor:pointer${sel?';outline:1px solid var(--accent)':''}"><span style="color:var(--muted)">${name}</span><span style="color:var(--muted)">—</span></div>`);
+      }
+    }
+    watch.innerHTML = rows.join('');
   }
-  const chiStr = hTotal>=50 ? (chiSq>16.92?'BIASED':'uniform') : 'insufficient';
-  // Runs test for randomness
-  let runs = 1, up = null;
-  for(let i=1;i<hist.length;i++){
-    const d = hist[i] > hist[i-1] ? 1 : hist[i] < hist[i-1] ? -1 : 0;
-    if(up !== null && d !== 0 && d !== up) runs++;
-    if(d !== 0) up = d;
-  }
-  const n1 = hist.filter(d=>d>=5).length, n2 = hist.length - n1;
-  const expRuns = 1 + (2*n1*n2)/(n1+n2);
-  const runStr = hist.length>=30 ? (runs < expRuns*0.85 ? 'CLUSTERED' : runs > expRuns*1.15 ? 'OSCILLATING' : 'random') : '—';
-  // Confidence indicator
-  setText('dgDistRange', 'Last '+histLen+' ticks · χ²='+chiSq.toFixed(1)+' ('+chiStr+') · runs='+runStr);
+  // Live-window chi-square already computed above (cs); show a short note.
+  setText('dgDistRange', 'Live '+liveLen+' ticks · χ²='+cs.toFixed(1));
   // Risk mode display
   setText('dgWinStreak', 'W:'+BotState.winStreak);
   setText('dgLossStreak', 'L:'+BotState.lossStreak);
