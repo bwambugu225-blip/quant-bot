@@ -2187,12 +2187,11 @@ function isSuppressed(fp){
 // ============================================================
 function processDigit(sym, price){
   const digit = (price.toFixed(2)).slice(-1)|0;
-  const q = BotState.tickQueue;
-  if(q.length>=5){ BotState._tqOff=(BotState._tqOff+1)%5; q[BotState._tqOff]=digit; }
-  else q.push(digit);
-  const h = BotState.tickHistory;
+  // Per-market digit history for the multimarket digit engine.
+  if(!G.MARKET.digHist) G.MARKET.digHist = {};
+  const h = G.MARKET.digHist[sym] || (G.MARKET.digHist[sym] = []);
   h.push(digit);
-  if(h.length>1000) h.splice(0,500);
+  if(h.length > 1000) h.splice(0, 500);
   const pq = BotState.priceQueue;
   pq.push(price);
   if(pq.length>10) pq.splice(0,5);
@@ -2220,7 +2219,7 @@ function placeDigitManual(contractType){
   const factor = mult > 1 ? Math.pow(mult, BotState.lossStreak) : 1;
   const stake = +(BotState.baseStake * factor).toFixed(2);
   BotState.currentStake = stake;
-  const hist = BotState.tickHistory;
+  const hist = (G.MARKET.digHist && G.MARKET.digHist[sym]) || [];
   if(hist.length < 20){ log('[DIGIT] Not enough ticks','w'); return; }
   const isOU = contractType === 'DIGITOVER' || contractType === 'DIGITUNDER';
   if(!isOU) return;
@@ -2282,8 +2281,8 @@ function digChi(window, direction, barrier){
 function evaluateDigitStrategy(sym){
   if(!BotState.isTrading) return;
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
-  const hist = BotState.tickHistory;
-  if(hist.length < 200) return;   // need the confirm window
+  const hist = (G.MARKET.digHist && G.MARKET.digHist[sym]) || [];
+  if(hist.length < 90) return;   // fast warm-up: 30 live + 90 confirm
 
   // Base stake and martingale calculations
   BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
@@ -2293,9 +2292,10 @@ function evaluateDigitStrategy(sym){
   const stake = +(BotState.baseStake * factor).toFixed(2);
   BotState.currentStake = stake;
 
-  // Two windows: a live 60-tick window (current bias) and a 200-tick confirm window.
-  const live = hist.slice(-60);
-  const confirm = hist.slice(-200);
+  // Two windows: a live 30-tick window (current bias) and a 90-tick confirm window.
+  // Short windows = fast reaction across many markets.
+  const live = hist.slice(-30);
+  const confirm = hist.slice(-90);
 
   // 95% significance for a 1-df chi-square test.
   const SIG = 3.84;
@@ -2317,12 +2317,12 @@ function evaluateDigitStrategy(sym){
 
   if(!best){
     if(BotState.lossStreak < 2)
-      log(`[DIGIT·AUTO] No significant bias (χ²<${SIG} on 60/200) — waiting`, 'i');
+      log(`[DIGIT·AUTO] ${sym}: no significant bias (χ²<${SIG}) — wait`, 'i');
     return;
   }
 
   const dirLabel = best.dir === 'DIGITOVER' ? 'OVER' : 'UNDER';
-  const label = `🌊 Sig OU: ${dirLabel} ${best.barrier} (χ²=${best.chi.toFixed(1)}/${best.cchi.toFixed(1)})`;
+  const label = `🌊 Sig OU ${sym}: ${dirLabel} ${best.barrier} (χ²=${best.chi.toFixed(1)}/${best.cchi.toFixed(1)})`;
   const orderPayload = {
     contract_type: best.dir,
     barrier: String(best.barrier),
@@ -2772,8 +2772,16 @@ function handleTick(data){
       haxPush(`TICK ${sym} ${arrow} ${price.toFixed(4)}`, cls);
     }
   }
-  if(G.TRADE_MODE==='DIGITS' && BotState.isTrading && G.ACTIVE_CONTRACTS.size===0 && BotState.tickHistory.length >= 200){
+  // Multimarket digit engine: evaluate the just-arrived market (and any other
+  // subscribed market that is ready) whenever a contract slot is free.
+  if(G.TRADE_MODE==='DIGITS' && BotState.isTrading && G.ACTIVE_CONTRACTS.size===0){
     evaluateDigitStrategy(sym);
+    if(G.ACTIVE_CONTRACTS.size===0 && G.MARKET.digHist){
+      for(const m of Object.keys(G.MARKET.digHist)){
+        if(m===sym) continue;
+        if((G.MARKET.digHist[m]||[]).length >= 90){ evaluateDigitStrategy(m); if(G.ACTIVE_CONTRACTS.size>=1) break; }
+      }
+    }
   }
   let candles=G.MARKET.candles[sym]; if(!candles) G.MARKET.candles[sym]=candles=[];
   let buf=G.MARKET.tickBuf[sym]; if(!buf) G.MARKET.tickBuf[sym]=buf=[];
@@ -4009,7 +4017,8 @@ function switchMode(mode){
   log('[MODE] Switched to '+mode,'i');
 }
 function updateDigitsUI(){
-  const q = BotState.tickQueue;
+  const _dh = (G.MARKET.digHist && G.MARKET.digHist[G.CURRENT_MARKET]) || [];
+  const q = _dh.slice(-5);
   // Tick visualizer (create cells if missing — hidden div is empty)
   const viz = document.getElementById('dgTickVisualizer');
   if(viz){
@@ -4052,7 +4061,7 @@ function updateDigitsUI(){
   }
   // === ANALYSIS (full 1000-tick window) ===
   const get = (id) => document.getElementById(id);
-  const hist = BotState.tickHistory; // capped at 1000
+  const hist = (G.MARKET.digHist && G.MARKET.digHist[G.CURRENT_MARKET]) || []; // per-market, capped at 1000
   const histLen = hist.length;
   // Throttle full SVG rebuild to every 5th tick (cursor stays smooth)
   const throttleKey = '_dgThrottle';
