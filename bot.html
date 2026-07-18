@@ -2231,7 +2231,7 @@ function placeDigitManual(contractType){
   const allowed = isOver ? [3,4] : [6,7];
   if(!allowed.includes(barrier)) barrier = allowed[0];
   // Note the chi bias for the manual pick (informational only).
-  const chi = digChi(hist, contractType, barrier, hist.slice(-60));
+  const chi = digChi(hist.slice(-60), contractType, barrier).chi;
   const analysis = `barrier=${barrier} χ²=${chi.toFixed(1)}`;
   log(`[DIGIT] ${label} $${stake.toFixed(2)} ${sym} · ${analysis}`,'t');
   G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
@@ -2264,31 +2264,26 @@ function toggleDigitEngine(){
   }
 }
 
-// Shared OVER/UNDER edge evaluator.
-// Measures the empirical win rate of OVER/UNDER <barrier> across THREE independent
-// Chi-square score for one focus barrier's OVER/UNDER split vs the uniform
-// expectation. Higher = stronger, more exploitable bias in the recent sample.
-// Uses a short "live" window so the engine auto-switches to whatever is hottest now.
-function digChi(hist, direction, barrier, win){
+// Chi-square for one focus barrier's OVER/UNDER split vs uniform expectation,
+// over a given window. Returns { chi, over } where `over` = bias is OVER.
+function digChi(window, direction, barrier){
   const isOver = direction === 'DIGITOVER';
   const wins = d => isOver ? d > barrier : d < barrier;
-  const w = win;
-  if(w.length < 20) return 0;
-  const obsWin = w.filter(wins).length;
-  const obsLose = w.length - obsWin;
-  // Uniform expectation for this barrier.
-  const expWin = w.length * (isOver ? (9 - barrier) / 10 : barrier / 10);
-  const expLose = w.length - expWin;
+  if(window.length < 20) return { chi:0, over:isOver };
+  const obsWin = window.filter(wins).length;
+  const obsLose = window.length - obsWin;
+  const expWin = window.length * (isOver ? (9 - barrier) / 10 : barrier / 10);
+  const expLose = window.length - expWin;
   const cw = (obsWin - expWin) ** 2 / expWin;
   const cl = (obsLose - expLose) ** 2 / expLose;
-  return cw + cl;
+  return { chi: cw + cl, over:isOver };
 }
 
 function evaluateDigitStrategy(sym){
   if(!BotState.isTrading) return;
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
   const hist = BotState.tickHistory;
-  if(hist.length < 60) return;   // small warm-up, then trade constantly
+  if(hist.length < 200) return;   // need the confirm window
 
   // Base stake and martingale calculations
   BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
@@ -2298,9 +2293,12 @@ function evaluateDigitStrategy(sym){
   const stake = +(BotState.baseStake * factor).toFixed(2);
   BotState.currentStake = stake;
 
-  // Live window = most recent 60 ticks → always picks the currently hottest barrier.
-  const win = hist.slice(-60);
+  // Two windows: a live 60-tick window (current bias) and a 200-tick confirm window.
+  const live = hist.slice(-60);
+  const confirm = hist.slice(-200);
 
+  // 95% significance for a 1-df chi-square test.
+  const SIG = 3.84;
   const cands = [
     { dir:'DIGITOVER',  barrier:3 },
     { dir:'DIGITOVER',  barrier:4 },
@@ -2309,12 +2307,22 @@ function evaluateDigitStrategy(sym){
   ];
   let best = null;
   for(const c of cands){
-    const chi = digChi(hist, c.dir, c.barrier, win);
-    if(!best || chi > best.chi) best = { ...c, chi };
+    const lc = digChi(live, c.dir, c.barrier);
+    const cc = digChi(confirm, c.dir, c.barrier);
+    // Require BOTH windows to show a statistically significant, same-direction bias.
+    if(lc.chi >= SIG && cc.chi >= SIG && lc.over === cc.over){
+      if(!best || lc.chi > best.chi) best = { ...c, chi: lc.chi, cchi: cc.chi };
+    }
+  }
+
+  if(!best){
+    if(BotState.lossStreak < 2)
+      log(`[DIGIT·AUTO] No significant bias (χ²<${SIG} on 60/200) — waiting`, 'i');
+    return;
   }
 
   const dirLabel = best.dir === 'DIGITOVER' ? 'OVER' : 'UNDER';
-  const label = `🌊 Chi OU: ${dirLabel} ${best.barrier} (χ²=${best.chi.toFixed(1)})`;
+  const label = `🌊 Sig OU: ${dirLabel} ${best.barrier} (χ²=${best.chi.toFixed(1)}/${best.cchi.toFixed(1)})`;
   const orderPayload = {
     contract_type: best.dir,
     barrier: String(best.barrier),
@@ -2764,7 +2772,7 @@ function handleTick(data){
       haxPush(`TICK ${sym} ${arrow} ${price.toFixed(4)}`, cls);
     }
   }
-  if(G.TRADE_MODE==='DIGITS' && BotState.isTrading && G.ACTIVE_CONTRACTS.size===0 && BotState.tickHistory.length >= 60){
+  if(G.TRADE_MODE==='DIGITS' && BotState.isTrading && G.ACTIVE_CONTRACTS.size===0 && BotState.tickHistory.length >= 200){
     evaluateDigitStrategy(sym);
   }
   let candles=G.MARKET.candles[sym]; if(!candles) G.MARKET.candles[sym]=candles=[];
