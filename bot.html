@@ -2604,14 +2604,7 @@ function connectMarketWS(){
         subscribe:1, req_id:genId()
       }));
     });
-    // Import 10s OHLC history for the chart so it starts populated (no blank build).
-    SYMBOLS.forEach(s=>{
-      mws.send(JSON.stringify({
-        ticks_history:s.sym, style:'candles', granularity:10, count:300,
-        end:'latest', req_id:genId()
-      }));
-    });
-    log(`[SUB] ${SYMBOLS.length} markets · live ticks → 15s candles + 10s OHLC import`,'i');
+    log(`[SUB] ${SYMBOLS.length} markets · live ticks → 15s candles`,'i');
     startHeartbeat();
   };
   mws.onmessage = (e)=>{
@@ -2700,23 +2693,19 @@ function handleBal(data){
   }
 }
 
-function buildCandlesFromTicks(sym, times, prices){
-  if(!sym || !times?.length || !prices?.length) return;
-  const interval = G.CANDLE_INTERVAL_MS;
+function bucketTicks(times, prices, intervalMs){
   const len = Math.min(times.length, prices.length);
   const candles = [];
-  let candleStart = null; // ms epoch of current candle window
+  let candleStart = null;
   let bucket = [];
   for(let i=0;i<len;i++){
     const epochSec = +times[i];
     const epochMs = epochSec * 1000;
     const price = +prices[i];
     if(!Number.isFinite(epochMs) || !Number.isFinite(price)) continue;
-    processDigit(sym, price);
-    if(i<=2) log(`[DIGIT] ${sym} history price #${i}: ${price} → digit ${BotState.tickQueue[BotState.tickQueue.length-1]}`,'i');
     if(candleStart === null) candleStart = epochMs;
     bucket.push({ epoch:epochSec, price });
-    if(epochMs - candleStart >= interval){
+    if(epochMs - candleStart >= intervalMs){
       const ps = bucket.map(b=>b.price);
       candles.push({
         epoch: bucket[bucket.length-1].epoch,
@@ -2729,6 +2718,25 @@ function buildCandlesFromTicks(sym, times, prices){
       candleStart = epochMs;
       bucket = [];
     }
+  }
+  return { candles, bucket, candleStart };
+}
+
+function buildCandlesFromTicks(sym, times, prices){
+  if(!sym || !times?.length || !prices?.length) return;
+  for(let i=0;i<Math.min(times.length,prices.length);i++){
+    const p = +prices[i];
+    if(Number.isFinite(p)){ processDigit(sym, p); if(i<=2) log(`[DIGIT] ${sym} history price #${i}: ${p} → digit ${BotState.tickQueue[BotState.tickQueue.length-1]}`,'i'); }
+  }
+  const { candles, bucket, candleStart } = bucketTicks(times, prices, G.CANDLE_INTERVAL_MS);
+  // Same logic, 10s bucket, into the chart buffer (candles10)
+  const c10 = bucketTicks(times, prices, 10000);
+  G.MARKET.tickBuf10[sym] = c10.bucket.map(b=>b.price);
+  G.MARKET.candle10OpenAt[sym] = c10.candleStart || (Date.now());
+  const arr10 = c10.candles.slice(-300);
+  if(arr10.length){
+    G.MARKET.candles10[sym] = arr10;
+    log(`[HIST] ${sym}: 10s chart candles built → ${arr10.length}`,'i');
   }
   G.MARKET.tickBuf[sym] = bucket.map(b=>b.price);
   G.MARKET.candleOpenAt[sym] = candleStart || (Date.now());
@@ -2858,27 +2866,8 @@ function handleTick(data){
 }
 
 function handleCandles(data){
-  if (!data.candles) return;
-  const sym = data.echo_req?.ticks_history;
-  if (!sym) return;
-  // Import 10s OHLC into the chart buffer so the chart starts pre-populated.
-  const arr = data.candles.map(c=>({
-    epoch: c.epoch,
-    open: +c.open, high: +c.high, low: +c.low, close: +c.close,
-    ticks: c.open === c.close ? 1 : 2
-  })).filter(c=>Number.isFinite(c.open)&&Number.isFinite(c.close));
-  if(arr.length){
-    const buf = G.MARKET.candles10[sym] || (G.MARKET.candles10[sym]=[]);
-    const existing = buf.length ? buf[buf.length-1].epoch : 0;
-    const fresh = arr.filter(c=>c.epoch > existing);
-    if(fresh.length){
-      buf.push(...fresh);
-      if(buf.length > 300) buf.splice(0, buf.length - 300);
-    } else if(buf.length === 0){
-      G.MARKET.candles10[sym] = arr.slice(-300);
-    }
-    log(`[CHART] ${sym}: imported 10s OHLC → ${G.MARKET.candles10[sym].length} candles (${G.MARKET.candles10[sym].length>=200?'ready':'buffering'})`, 'i');
-  }
+  // Chart uses ticks_history via buildCandlesFromTicks — bulk candle data ignored.
+  return;
 }
 
 function handleOhlc(data){
