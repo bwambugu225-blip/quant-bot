@@ -945,14 +945,6 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       </div>
       <div id="modeIndicator" style="font-size:8px;color:var(--muted);margin-top:3px">Auto</div>
     </div>
-
-    <!-- Markets Watchlist -->
-    <div class="section">
-      <details open>
-        <summary style="font-family:var(--font-serif); font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:1px; font-size:9px;">Markets Watchlist</summary>
-        <div id="watchlistBody" style="max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; margin-top:8px;"></div>
-      </details>
-    </div>
   </div>
 
   <!-- TAB 4: SETTINGS -->
@@ -962,18 +954,6 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       <div id="dashTarget" style="font-size:12px;font-weight:600">$0.00</div>
       <div style="font-size:8px;color:var(--muted);margin-top:2px">Daily Stop</div>
       <div id="dashLoss" style="font-size:12px;font-weight:600;color:var(--negative)">$0.00</div>
-    </div>
-
-    <!-- Telegram -->
-    <div class="section" style="display:none" id="tgSection">
-      <div class="section-title">Telegram Bot</div>
-      <div style="display:flex;align-items:center;gap:6px;font-size:9px">
-        <span id="tgStatusDot" class="blink-dot gray"></span>
-        <span id="tgBotName" style="color:var(--muted)">Not connected</span>
-        <input id="tgToken" type="hidden">
-        <input id="tgChatId" type="hidden">
-        <button class="btn btn-ghost" onclick="testTg()" style="padding:2px 6px;font-size:7px;margin-left:auto">Test</button>
-      </div>
     </div>
 
     <!-- Copy Trading -->
@@ -1008,12 +988,6 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       <div id="copyClientsList" style="max-height:200px; overflow-y:auto; display:flex; flex-direction:column; gap:4px;">
         <div style="font-size:7px;color:var(--muted);padding:4px;text-align:center;">No clients configured</div>
       </div>
-    </div>
-
-    <!-- Info -->
-    <div class="section">
-      <div class="section-title">Info</div>
-      <div id="watchTopMarket" style="font-size:8px;color:var(--muted)">Signal: --</div>
     </div>
   </div>
 
@@ -3904,27 +3878,8 @@ function selectMarketFromDropdown(sym){
 }
 
 function updateWatchlist(){
-  const body = document.getElementById('watchlistBody');
-  if(!body) return;
-  const topSig=evaluateSingleMarket(G.CURRENT_MARKET);
-  document.getElementById('watchTopMarket').textContent=topSig?`${G.CURRENT_MARKET}: ${topSig.action} ${topSig.conf}%`:'—';
-  // Throttle full rebuild to every 3rd call
-  if(!G._wlThrottle) G._wlThrottle=0;
-  if((++G._wlThrottle)%3!==0) return;
-  let rise=0, fall=0;
-  if(!G._mktSig) G._mktSig={};
-  const html=SYMBOLS.map(s=>{
-    const c=G.MARKET.candles[s.sym]||[];
-    const price=c.length?c[c.length-1].close.toFixed(3):'—';
-    let sigTxt='—',sigCls='sig-none';
-    // Use cached signal from last evaluateSingleMarket
-    const sig=s.sym===G.CURRENT_MARKET?topSig:evaluateSingleMarket(s.sym);
-    if(sig) G._mktSig[s.sym]={action:sig.action,conf:sig.conf,src:sig.src};
-    if(sig){sigTxt=`${sig.action} ${sig.conf}%`; sigCls=sig.action==='RISE'?'sig-rise':'sig-fall'; if(sig.action==='RISE')rise++;else fall++;}
-    const src=sig?sig.src:'—';
-    return `<div class="watch-item ${s.sym===G.CURRENT_MARKET?'selected':''}" onclick="selectMarket('${s.sym}')"><div><div class="sym">${s.name} <span style="font-size:10px;color:var(--muted);font-weight:500;">${s.sym}</span></div><div style="font-size:9px;color:var(--muted);margin-top:2px;">${c.length} candles · ${src}</div></div><div style="text-align:right;"><div class="price">${price}</div><div class="signal ${sigCls}">${sigTxt}</div></div></div>`;
-  }).join('');
-  body.innerHTML=html;
+  // Markets Watchlist UI removed — bias watch panel in Digits tab replaces it.
+  return;
 }
 
 function selectMarket(sym){
