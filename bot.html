@@ -669,7 +669,9 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
     </div>
 
     <!-- RF Controls -->
-    <div id="rfSection" class="section">
+    <details open style="margin-bottom:8px">
+      <summary style="font-family:var(--font-serif);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-size:9px;cursor:pointer">Trade Config</summary>
+      <div id="rfSection" class="section" style="margin-top:6px">
       <div class="section-title">Rise/Fall <span id="rfModeBadge" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">AUTO</span></div>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
         <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
@@ -727,7 +729,8 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
         <span id="rfCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
         <span id="rfSysBadge" style="font-size:7px;color:var(--warn)"></span>
       </div>
-    </div>
+      </div>
+    </details>
 
     <!-- Analysis Panel -->
     <div class="section" style="padding:10px 0">
@@ -840,7 +843,9 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
 
   <!-- TAB 3: DIGITS -->
   <div class="tab-view" id="tab-digits">
-    <div id="dgSection" class="section">
+    <details open style="margin-bottom:8px">
+      <summary style="font-family:var(--font-serif);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-size:9px;cursor:pointer">Digit Config</summary>
+      <div id="dgSection" class="section" style="margin-top:6px">
       <div class="section-title">Digits <span id="dgModeLabel" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">OVER/UNDER</span></div>
       <div style="display:flex;gap:4px;margin-bottom:4px">
         <div class="field" style="flex:1"><label>Stake</label><input class="inp" id="dgBaseStake" type="number" value="1" min="0.5" step="0.5"></div>
@@ -876,6 +881,8 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
         <button id="dgEngineBtn" class="btn btn-accent" onclick="toggleDigitEngine()" style="padding:3px 6px;font-size:7px;margin-left:auto">AUTO</button>
         <button class="btn btn-ghost" onclick="resetDigitPnL()" style="padding:2px 4px;font-size:7px">RESET</button>
       </div>
+      </div>
+    </details>
 
       <div style="margin-top:6px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
@@ -4138,13 +4145,11 @@ function updateDigitsUI(){
           if(!best || lc.chi>best.chi) best = { ...c, chi:lc.chi };
         }
       }
-      const info = SYMBOLS.find(x=>x.sym===sym);
-      const name = info ? info.name : sym;
       const sel = sym===G.CURRENT_MARKET;
       if(best){
-        rows.push(`<div onclick="selectMarket('${sym}')" style="display:flex;justify-content:space-between;align-items:center;font-size:8px;padding:2px 4px;border:1px solid var(--line);background:var(--acc-dim);cursor:pointer${sel?';outline:1px solid var(--accent)':''}"><span style="color:var(--text);font-weight:600">${name}</span><span style="color:var(--positive);font-weight:700">${best.dir} ${best.barrier} · χ²${best.chi.toFixed(1)}</span></div>`);
+        rows.push(`<div onclick="selectMarket('${sym}')" style="display:flex;justify-content:space-between;align-items:center;font-size:8px;padding:2px 4px;border:1px solid var(--line);background:var(--acc-dim);cursor:pointer${sel?';outline:1px solid var(--accent)':''}"><span style="color:var(--text);font-weight:600">${sym}</span><span style="color:var(--positive);font-weight:700">${best.dir} ${best.barrier} · χ²${best.chi.toFixed(1)}</span></div>`);
       } else {
-        rows.push(`<div onclick="selectMarket('${sym}')" style="display:flex;justify-content:space-between;align-items:center;font-size:8px;padding:2px 4px;border:1px solid var(--line);opacity:0.6;cursor:pointer${sel?';outline:1px solid var(--accent)':''}"><span style="color:var(--muted)">${name}</span><span style="color:var(--muted)">—</span></div>`);
+        rows.push(`<div onclick="selectMarket('${sym}')" style="display:flex;justify-content:space-between;align-items:center;font-size:8px;padding:2px 4px;border:1px solid var(--line);opacity:0.6;cursor:pointer${sel?';outline:1px solid var(--accent)':''}"><span style="color:var(--muted)">${sym}</span><span style="color:var(--muted)">—</span></div>`);
       }
     }
     watch.innerHTML = rows.join('');
@@ -5609,7 +5614,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Populate market dropdown
   const sel = document.getElementById('marketSelect');
   if(sel){
-    sel.innerHTML = SYMBOLS.map(s => `<option value="${s.sym}">${s.name}</option>`).join('');
+    sel.innerHTML = SYMBOLS.map(s => `<option value="${s.sym}">${s.sym}</option>`).join('');
     sel.value = G.CURRENT_MARKET || SYMBOLS[0]?.sym;
   }
   syncMarketSelection();
