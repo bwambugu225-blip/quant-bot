@@ -2733,7 +2733,7 @@ function buildCandlesFromTicks(sym, times, prices){
   const c10 = bucketTicks(times, prices, 10000);
   G.MARKET.tickBuf10[sym] = c10.bucket.map(b=>b.price);
   G.MARKET.candle10OpenAt[sym] = c10.candleStart || (Date.now());
-  const arr10 = c10.candles.slice(-300);
+  const arr10 = c10.candles.slice(-180);
   if(arr10.length){
     G.MARKET.candles10[sym] = arr10;
     log(`[HIST] ${sym}: 10s chart candles built → ${arr10.length}`,'i');
@@ -2817,7 +2817,7 @@ function handleTick(data){
   if((epoch*1000)-openAt10 >= 10000){
     const c10={epoch,open:buf10[0]||price,high:max(buf10),low:min(buf10),close:price,ticks:buf10.length};
     candles10.push(c10);
-    if(candles10.length>300) candles10.shift();
+    if(candles10.length>180) candles10.shift();
     G.MARKET.tickBuf10[sym]=[];
     G.MARKET.candle10OpenAt[sym]=epoch*1000;
   }
@@ -3549,13 +3549,13 @@ function drawChart(){
   const h = canvas.clientHeight || 250;
   const wrH = Math.round(h * 0.20);
   const cdlH = h - wrH;
-  if(all.length<2 || raw.length<200){
+  if(all.length<2 || raw.length<180){
     canvas.style.width = '100%'; canvas.style.minWidth = '';
     canvas.width = w*dpr; canvas.height = h*dpr;
     ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
     ctx.fillStyle=MUTED; ctx.font='11px monospace';
     if(raw.length<200){
-      ctx.fillText('Importing 10s OHLC… '+raw.length+'/200',12,h/2);
+      ctx.fillText('Importing 10s OHLC… '+raw.length+'/180',12,h/2);
     } else {
       ctx.fillText('Waiting for data...',12,h/2);
     }
