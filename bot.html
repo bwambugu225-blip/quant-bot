@@ -2302,12 +2302,12 @@ function evaluateDigitStrategy(sym){
   const live = hist.slice(-30);
   const confirm = hist.slice(-90);
 
-  // "PERFECT" gate — only trade a genuinely strong, confirmed edge.
-  // Live window must be decisively significant (χ²≥10) and the confirm window
-  // must also be significant (χ²≥6.63 = 99%) with the SAME direction.
+  // "PERFECT" gate — trade only a statistically significant, confirmed edge,
+  // but keep it frequent: 95% significance (χ²≥3.84) on BOTH the live and confirm
+  // windows, with the SAME direction. Auto-switch to the strongest barrier.
   // If either window is weak or they disagree, we do NOT trade (bad analysis).
-  const LIVE_SIG = 10.0;   // strong live conviction
-  const CONF_SIG = 6.63;   // 99% significance on the confirm window
+  const LIVE_SIG = 3.84;   // 95% significance, live window
+  const CONF_SIG = 3.84;   // 95% significance, confirm window
   const cands = [
     { dir:'DIGITOVER',  barrier:3 },
     { dir:'DIGITOVER',  barrier:4 },
@@ -4172,7 +4172,7 @@ function updateDigitsUI(){
         const dir = c.dir==='OVER'?'DIGITOVER':'DIGITUNDER';
         const lc = digChi(liveW, dir, c.barrier);
         const cc = digChi(confW, dir, c.barrier);
-        if(lc.chi>=10.0 && cc.chi>=6.63 && lc.over===cc.over){
+        if(lc.chi>=3.84 && cc.chi>=3.84 && lc.over===cc.over){
           if(!best || lc.chi>best.chi) best = { ...c, chi:lc.chi };
         }
       }
