@@ -663,13 +663,19 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       <div class="kpi"><div id="dashConsLoss" class="v" style="color:var(--negative)">0</div><div class="l">Streak</div></div>
     </div>
 
+    <!-- Reset controls -->
+    <div style="display:flex;gap:4px;margin-top:6px">
+      <button class="btn btn-ghost" onclick="resetDemo()" style="flex:1;padding:4px;font-size:8px">RESET DEMO</button>
+      <button class="btn btn-ghost" onclick="resetSession()" style="flex:1;padding:4px;font-size:8px">RESET SESSION</button>
+    </div>
+
     <!-- RF Controls -->
     <div id="rfSection" class="section">
       <div class="section-title">Rise/Fall <span id="rfModeBadge" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">AUTO</span></div>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
         <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
           <input type="checkbox" id="marketModeToggle" onchange="toggleMarketMode()" checked style="width:13px;height:13px;accent-color:var(--accent)">
-          <span>Multi Market</span>
+          <span>MULTI</span>
         </label>
         <span id="marketModeLabel" style="font-size:8px;color:var(--accent);font-weight:600">ON</span>
       </div>
@@ -680,11 +686,11 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       <div style="margin-bottom:6px">
         <div class="field">
           <label>Trading Strategy</label>
-          <select id="strategySelect" class="inp" onchange="selectStrategy(this.value)" style="font-size:10px;width:100%">
-            <option value="BB_WPR_REV" selected>📊 Bollinger Bands + Williams %R Reversal</option>
-            <option value="BB_EMA_MACD">📈 Bollinger Bands + EMA/MACD Trend</option>
-            <option value="BB_RSI_CCI">🎯 Bollinger Bands + RSI/CCI pullback</option>
-          </select>
+            <select id="strategySelect" class="inp" onchange="selectStrategy(this.value)" style="font-size:10px;width:100%">
+              <option value="BB_WPR_REV" selected>Bollinger + Williams %R</option>
+              <option value="BB_EMA_MACD">Bollinger + EMA/MACD</option>
+              <option value="BB_RSI_CCI">Bollinger + RSI/CCI</option>
+            </select>
           <div id="stratList" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px"></div>
         </div>
       </div>
@@ -728,7 +734,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
     <div class="section" style="padding:10px 0">
       <div class="hax-head">
         <span class="hax-ring" id="haxRing"><i></i><b id="haxDot"></b></span>
-        <span class="hax-title">⟁ NEURAL ANALYSIS CORE</span>
+        <span class="hax-title">ANALYSIS</span>
         <span class="hax-sub" id="haxSub">initialising…</span>
         <span class="hax-clk" id="haxClk">--:--:--</span>
       </div>
@@ -762,7 +768,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
           <div class="hax-row"><span class="k">W·L</span><span class="v mono" id="haxWL">0 / 0</span></div>
         </div>
       </div>
-      <div class="hax-matrix-head">◢ MARKET MATRIX · <span id="haxMktCount">0</span> LIVE</div>
+      <div class="hax-matrix-head">MARKETS · <span id="haxMktCount">0</span> LIVE</div>
       <div class="hax-matrix" id="haxMatrix"></div>
       <div class="hax-tape" id="haxTape"></div>
     </div>
@@ -936,10 +942,6 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       <div style="display:flex;gap:4px">
         <button id="btnModeRF" class="mode-tab active" onclick="switchMode('RISEFALL')" style="flex:1">R/F</button>
         <button id="btnModeDigits" class="mode-tab" onclick="switchMode('DIGITS')" style="flex:1">DIGITS</button>
-      </div>
-      <div style="display:flex;gap:4px;margin-top:4px">
-        <button class="btn btn-ghost" onclick="resetDemo()" style="flex:1;padding:3px 6px;font-size:7px">RESET DEMO</button>
-        <button class="btn btn-ghost" onclick="resetSession()" style="flex:1;padding:3px 6px;font-size:7px">RESET SESSION</button>
       </div>
       <div id="modeIndicator" style="font-size:8px;color:var(--muted);margin-top:3px">Auto</div>
     </div>
