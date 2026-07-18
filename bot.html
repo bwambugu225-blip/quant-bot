@@ -837,11 +837,6 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
   <div class="tab-view" id="tab-digits">
     <div id="dgSection" class="section">
       <div class="section-title">Digits <span id="dgModeLabel" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">OVER/UNDER</span></div>
-      <div style="display:flex;gap:4px;margin-bottom:6px">
-        <button id="dgModeOU" class="btn btn-ghost" onclick="setDigitContract('OU')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">OVER/UNDER</button>
-        <button id="dgModeEO" class="btn btn-ghost" onclick="setDigitContract('EO')" style="flex:1;padding:4px;font-size:8px">EVEN/ODD</button>
-        <button id="dgModeMC" class="btn btn-ghost" onclick="setDigitContract('MC')" style="flex:1;padding:4px;font-size:8px">MATCH</button>
-      </div>
       <div style="display:flex;gap:4px;margin-bottom:4px">
         <div class="field" style="flex:1"><label>Stake</label><input class="inp" id="dgBaseStake" type="number" value="1" min="0.5" step="0.5"></div>
         <div class="field" style="flex:1"><label>Target</label><input class="inp" id="dgTakeProfit" type="number" value="10" min="1" step="1"></div>
@@ -856,28 +851,16 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       </div>
       <div id="dgTradeBtnsOU" class="trade-btn-row" style="flex-wrap:wrap;gap:3px">
         <div style="display:flex;gap:3px;width:100%;margin-bottom:2px">
-          <span style="font-size:7px;color:var(--muted);align-self:center">Barrier:</span>
-          <select id="dgBarrier" class="inp inp-sm" style="width:50px;font-size:9px;padding:2px">
-            <option>0</option><option>1</option><option>2</option><option>3</option><option>4</option>
-            <option selected>5</option><option>6</option><option>7</option><option>8</option><option>9</option>
+          <span style="font-size:7px;color:var(--muted);align-self:center">Focus barrier:</span>
+          <select id="dgBarrier" class="inp inp-sm" style="width:70px;font-size:9px;padding:2px">
+            <option value="3">OVER 3</option>
+            <option value="4">OVER 4</option>
+            <option value="6">UNDER 6</option>
+            <option value="7">UNDER 7</option>
           </select>
         </div>
         <button class="btn btn-call" onclick="placeDigitManual('DIGITOVER')" style="flex:1">OVER</button>
         <button class="btn btn-put" onclick="placeDigitManual('DIGITUNDER')" style="flex:1">UNDER</button>
-      </div>
-      <div id="dgTradeBtnsEO" class="trade-btn-row" style="display:none">
-        <button class="btn btn-call" onclick="placeDigitManual('DIGITEVEN')" style="flex:1">EVEN</button>
-        <button class="btn btn-put" onclick="placeDigitManual('DIGITODD')" style="flex:1">ODD</button>
-      </div>
-      <div id="dgTradeBtnsMC" class="trade-btn-row" style="display:none; flex-direction:column; gap:4px; width:100%">
-        <div style="display:flex; gap:4px; align-items:center; width:100%">
-          <span style="font-size:8px; color:var(--muted)">Submode:</span>
-          <select id="dgMcSubMode" class="inp inp-sm" style="flex:1; font-size:9px; padding:2px" onchange="saveState()">
-            <option value="DIFF" selected>🛡️ Differ (99% ultra winrate)</option>
-            <option value="MATCH">🎯 Match (10x high payout)</option>
-            <option value="AUTO">🤖 Hybrid Intelligent (Auto-switch)</option>
-          </select>
-        </div>
       </div>
 
       <div style="display:flex;gap:4px;margin-top:5px;align-items:center">
@@ -1444,7 +1427,7 @@ function collectSettings(){
     botstate: {
       contractType: BotState.contractType,
       baseStake: BotState.baseStake, targetProfit: BotState.targetProfit, stopLoss: BotState.stopLoss,
-      subMode: elVal('dgMcSubMode') || 'DIFF'
+      subMode: 'OU'
     },
     martingale: {
       enabled: Martingale.enabled, mult: Martingale.mult,
@@ -1485,7 +1468,6 @@ function applySettings(s){
       if(s.botstate.baseStake) BotState.baseStake = s.botstate.baseStake;
       if(s.botstate.targetProfit) BotState.targetProfit = s.botstate.targetProfit;
       if(s.botstate.stopLoss) BotState.stopLoss = s.botstate.stopLoss;
-      if(s.botstate.subMode){ const e=document.getElementById('dgMcSubMode'); if(e) e.value=s.botstate.subMode; }
     }
     if(s.martingale){ const m=s.martingale;
       if(typeof m.enabled==='boolean') Martingale.enabled=m.enabled;
@@ -2217,27 +2199,6 @@ function processDigit(sym, price){
   return digit;
 }
 
-function setDigitContract(type){
-  BotState.contractType = type;
-  const btnOU = document.getElementById('dgModeOU');
-  const btnEO = document.getElementById('dgModeEO');
-  const btnMC = document.getElementById('dgModeMC');
-  const tradesOU = document.getElementById('dgTradeBtnsOU');
-  const tradesEO = document.getElementById('dgTradeBtnsEO');
-  const tradesMC = document.getElementById('dgTradeBtnsMC');
-  const label = document.getElementById('dgModeLabel');
-  // Clear all
-  [btnOU,btnEO,btnMC].forEach(b=>{if(b){b.style.background='transparent';b.style.color='var(--muted)';b.style.borderColor='var(--line)';}});
-  [tradesOU,tradesEO,tradesMC].forEach(t=>{if(t)t.style.display='none';});
-  const act = (btn, lbl)=>{
-    if(btn){btn.style.background='var(--accent)';btn.style.color='#fff';btn.style.borderColor='var(--accent)';}
-    if(label)label.textContent=lbl;
-  };
-  if(type==='OU'){ act(btnOU,'OVER/UNDER'); if(tradesOU)tradesOU.style.display='flex'; }
-  else if(type==='EO'){ act(btnEO,'EVEN/ODD'); if(tradesEO)tradesEO.style.display='flex'; }
-  else { act(btnMC,'MATCH'); if(tradesMC)tradesMC.style.display='flex'; }
-}
-
 function placeManualRF(action){
   if(!G.AUTH){ log('[RF] Authorize first','e'); return; }
   if(!G.WS || G.WS.readyState!==WebSocket.OPEN){ log('[RF] WS not open','e'); return; }
@@ -2262,38 +2223,19 @@ function placeDigitManual(contractType){
   const hist = BotState.tickHistory;
   if(hist.length < 20){ log('[DIGIT] Not enough ticks','w'); return; }
   const isOU = contractType === 'DIGITOVER' || contractType === 'DIGITUNDER';
-  const isEO = contractType === 'DIGITEVEN' || contractType === 'DIGITODD';
-  const label = isOU ? (contractType==='DIGITOVER'?'OVER':'UNDER') : (contractType==='DIGITEVEN'?'EVEN':'ODD');
+  if(!isOU) return;
+  const label = contractType==='DIGITOVER'?'OVER':'UNDER';
   const mid = hist.slice(-50);
-  let barrier = '5', confidence = 0, analysis = '', warnMsg = '';
-  if(isOU){
-    const total = mid.length;
-    let bestConf = 0, bestBar = 5, bestDir = contractType;
-    for(let b=0; b<=9; b++){
-      const over = mid.filter(d=>d>b).length / total;
-      const under = mid.filter(d=>d<b).length / total;
-      if(over > bestConf && over > 0.55){ bestConf = over; bestBar = b; bestDir = 'DIGITOVER'; }
-      if(under > bestConf && under > 0.55){ bestConf = under; bestBar = b; bestDir = 'DIGITUNDER'; }
-    }
-    if(bestConf < 0.55){
-      bestConf = contractType==='DIGITOVER' ? mid.filter(d=>d>5).length/total : mid.filter(d=>d<5).length/total;
-      bestBar = 5;
-    }
-    confidence = Math.round(bestConf*100);
-    barrier = String(bestBar);
-    if(contractType !== bestDir) warnMsg = `better direction: ${bestDir==='DIGITOVER'?'OVER':'UNDER'}`;
-    analysis = `barrier=${barrier} conf=${confidence}%`;
-    if(confidence < 58) warnMsg = (warnMsg?'; ':'')+'low confidence';
-  } else if(isEO){
-    const eoScore = scoreEOPrecision(mid, hist);
-    confidence = Math.round(eoScore.confidence * 100);
-    analysis = `even=${(eoScore.even*100).toFixed(0)}% odd=${(eoScore.odd*100).toFixed(0)}% runs=${eoScore.runs} alt=${eoScore.alternation.toFixed(2)} streak=${eoScore.streak}${eoScore.lastParity===0?'E':'O'}`;
-    const isEven = contractType === 'DIGITEVEN';
-    const fitsDirection = (isEven && eoScore.even >= 0.5) || (!isEven && eoScore.odd >= 0.5);
-    if(!fitsDirection) warnMsg = `reverse direction favored (${eoScore.even >= 0.5 ? 'EVEN' : 'ODD'} ${Math.round(Math.max(eoScore.even, eoScore.odd)*100)}%)`;
-    if(eoScore.streak >= 5) warnMsg = (warnMsg?'; ':'')+'long streak — revert likely';
-  }
-  if(warnMsg) log(`[DIGIT] ${label} ⚠ ${warnMsg}`,'w');
+  const total = mid.length;
+  let barrier = document.getElementById('dgBarrier')?.value || '5';
+  // Restrict to the elite focus set: OVER 3/4, UNDER 6/7
+  const isOver = contractType==='DIGITOVER';
+  const allowed = isOver ? ['3','4'] : ['6','7'];
+  if(!allowed.includes(barrier)) barrier = allowed[0];
+  const cnt = mid.filter(d => isOver ? d > parseInt(barrier) : d < parseInt(barrier)).length;
+  const confidence = Math.round((cnt/total)*100);
+  const analysis = `barrier=${barrier} conf=${confidence}%`;
+  if(confidence < 75) log(`[DIGIT] ${label} low confidence (${confidence}%) — still placing (manual)`,'w');
   log(`[DIGIT] ${label} $${stake.toFixed(2)} ${sym} · ${analysis}`,'t');
   G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
   const payload = {
@@ -2301,7 +2243,7 @@ function placeDigitManual(contractType){
     contract_type:contractType, currency:'USD', duration:1, duration_unit:'t',
     underlying_symbol:sym, req_id:genId()
   };
-  if(isOU) payload.barrier = barrier;
+  payload.barrier = barrier;
   G.WS.send(JSON.stringify(payload));
   BotState.contractActive = true;
   if(G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
@@ -2333,73 +2275,9 @@ function evaluateDigitStrategy(sym){
 
   const short = hist.slice(-30);
   const mid = hist.slice(-100);
-  const currentDigit = hist[hist.length-1];
 
-  // 1. Build 10x10 state transition matrix on the mid-term window
-  const transitions = Array.from({length: 10}, () => Array(10).fill(0));
-  const rowTotals = Array(10).fill(0);
-  for(let i = 1; i < mid.length; i++) {
-    const prevDigit = mid[i-1];
-    const currDigit = mid[i];
-    transitions[prevDigit][currDigit]++;
-    rowTotals[prevDigit]++;
-  }
-
-  // 2. State transition probability for current digit
-  const probRow = Array(10).fill(0);
-  const currRowTotal = rowTotals[currentDigit];
-  if(currRowTotal > 0) {
-    for(let d = 0; d < 10; d++) {
-      probRow[d] = transitions[currentDigit][d] / currRowTotal;
-    }
-  } else {
-    for(let d = 0; d < 10; d++) probRow[d] = 0.10; // uniform fallback
-  }
-
-  // Choose the most likely (hot transition) and coldest transition digits
-  let mostLikelyDigit = 0, highestProb = -1;
-  let leastLikelyDigit = 0, lowestProb = 2;
-  for(let d = 0; d < 10; d++) {
-    if(probRow[d] > highestProb) { highestProb = probRow[d]; mostLikelyDigit = d; }
-    if(probRow[d] < lowestProb) { lowestProb = probRow[d]; leastLikelyDigit = d; }
-  }
-
-  // Standard digit frequency on mid-term window
-  const freq100 = Array(10).fill(0);
-  for(const d of mid) freq100[d]++;
-  let coldestOverallDigit = 0, coldestCount = 9999;
-  for(let d = 0; d < 10; d++) {
-    if(freq100[d] < coldestCount) { coldestCount = freq100[d]; coldestOverallDigit = d; }
-  }
-
-  // Pattern and sequence analysis
-  const patterns = detectDigitPatterns(hist, 30);
-  if(patterns){
-    if(patterns.isAlternating){
-      // Strong alternation: penalize streak continuation (reversion likely)
-      const lastRun = hist.slice(-5);
-      let streak = 1;
-      for(let i=lastRun.length-2;i>=0;i--){ if(lastRun[i]===lastRun[lastRun.length-1]) streak++; else break; }
-      if(streak >= 3){
-        for(let d=0; d<10; d++) probRow[d] = 0.111; // flatten (reversion)
-        probRow[lastRun[lastRun.length-1]] = 0.02; // nearly eliminate streak digit
-      }
-    }
-    if(patterns.isClustered && highestProb > 0.15){
-      // Clustered: boost the hot transition further
-      probRow[mostLikelyDigit] = Math.min(0.6, probRow[mostLikelyDigit] * 1.3);
-    }
-    // Gap digit bonus: digits that haven't appeared recently get a small probability boost
-    for(const g of patterns.gaps){
-      probRow[g] = Math.max(probRow[g], 0.08);
-    }
-    // Re-normalize
-    const sum = probRow.reduce((a,b)=>a+b, 0);
-    if(sum > 0) for(let d=0; d<10; d++) probRow[d] /= sum;
-  }
-
-  // 3. Resolve active contract type
-  const mode = BotState.contractType || 'MC';
+  // OVER/UNDER only — elite analysis over the focus barriers OVER 3/4 and UNDER 6/7
+  const mode = 'OU';
 
   // Base stake and martingale calculations
   BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
@@ -2412,156 +2290,42 @@ function evaluateDigitStrategy(sym){
   let orderPayload = null;
   let label = '';
 
-  if(mode === 'MC') {
-    // MATCH / DIFFER Killer logic
-    const subMode = document.getElementById('dgMcSubMode')?.value || 'DIFF';
+  // Elite gate: only trade when a focus barrier shows a very high empirical win rate.
+  const ELITE_WIN = 0.80;          // win-rate floor for an elite setup
+  const OVER_BARRIERS = [3, 4];   // OVER 3, OVER 4
+  const UNDER_BARRIERS = [6, 7];  // UNDER 6, UNDER 7
 
-    if(subMode === 'DIFF') {
-      // Differ trade: place DIFF on the absolute lowest probability state transition digit combined with cold digit
-      // This has a 99%+ statistical win rate!
-      const targetDigit = (lowestProb < 0.06) ? leastLikelyDigit : coldestOverallDigit;
-      label = `🛡️ DIFFER from digit ${targetDigit} (prob=${(lowestProb*100).toFixed(1)}% count=${coldestCount})`;
-      orderPayload = {
-        contract_type: 'DIGITDIFF',
-        barrier: String(targetDigit),
-        underlying_symbol: sym,
-        amount: stake,
-        basis: 'stake',
-        currency: 'USD',
-        duration: 1,
-        duration_unit: 't'
-      };
-    } else if(subMode === 'MATCH') {
-      // Match trade: place MATCH only on a massive transition anomaly (> 22% transition likelihood)
-      const threshold = 0.22;
-      if(highestProb >= threshold) {
-        label = `🎯 MATCH digit ${mostLikelyDigit} (extreme transition prob=${(highestProb*100).toFixed(1)}%)`;
-        orderPayload = {
-          contract_type: 'DIGITMATCH',
-          barrier: String(mostLikelyDigit),
-          underlying_symbol: sym,
-          amount: stake,
-          basis: 'stake',
-          currency: 'USD',
-          duration: 1,
-          duration_unit: 't'
-        };
-      } else {
-        log(`[DIGIT·AUTO] Match has no peak transition (${(highestProb*100).toFixed(1)}% < 22%) — skip`, 'i');
-        return;
-      }
-    } else {
-      // Hybrid Auto mode: default to Differ for safe consistency, or Match on massive peaks
-      if(highestProb >= 0.24) {
-        label = `🎯 AUTO-MATCH digit ${mostLikelyDigit} (peak prob=${(highestProb*100).toFixed(1)}%)`;
-        orderPayload = {
-          contract_type: 'DIGITMATCH',
-          barrier: String(mostLikelyDigit),
-          underlying_symbol: sym,
-          amount: stake,
-          basis: 'stake',
-          currency: 'USD',
-          duration: 1,
-          duration_unit: 't'
-        };
-      } else {
-        const targetDigit = (lowestProb < 0.06) ? leastLikelyDigit : coldestOverallDigit;
-        label = `🛡️ AUTO-DIFFER from digit ${targetDigit} (prob=${(lowestProb*100).toFixed(1)}%)`;
-        orderPayload = {
-          contract_type: 'DIGITDIFF',
-          barrier: String(targetDigit),
-          underlying_symbol: sym,
-          amount: stake,
-          basis: 'stake',
-          currency: 'USD',
-          duration: 1,
-          duration_unit: 't'
-        };
-      }
-    }
-  } else if(mode === 'OU') {
-    // OVER/UNDER Killer logic: dynamically scans and selects safest barrier
-    // Scan barriers 1 to 8 across multiple lookbacks
-    let bestBarrier = 5;
-    let safestDirection = 'DIGITOVER';
-    let maxWinProb = -1;
+  let bestBarrier = null, safestDirection = null, maxWinProb = -1;
 
-    for(let b = 1; b <= 8; b++) {
-      // Calculate empirical success rate
-      const overShort = short.filter(d => d > b).length / short.length;
-      const overMid = mid.filter(d => d > b).length / mid.length;
-      const overWeighted = overShort * 0.4 + overMid * 0.6;
+  for(const b of OVER_BARRIERS) {
+    const overShort = short.filter(d => d > b).length / short.length;
+    const overMid = mid.filter(d => d > b).length / mid.length;
+    const overWeighted = overShort * 0.4 + overMid * 0.6;
+    if(overWeighted > maxWinProb) { maxWinProb = overWeighted; bestBarrier = b; safestDirection = 'DIGITOVER'; }
+  }
+  for(const b of UNDER_BARRIERS) {
+    const underShort = short.filter(d => d < b).length / short.length;
+    const underMid = mid.filter(d => d < b).length / mid.length;
+    const underWeighted = underShort * 0.4 + underMid * 0.6;
+    if(underWeighted > maxWinProb) { maxWinProb = underWeighted; bestBarrier = b; safestDirection = 'DIGITUNDER'; }
+  }
 
-      const underShort = short.filter(d => d < b).length / short.length;
-      const underMid = mid.filter(d => d < b).length / mid.length;
-      const underWeighted = underShort * 0.4 + underMid * 0.6;
-
-      // Prioritize extremely high winrates (> 74%)
-      if(overWeighted > maxWinProb && overWeighted > 0.74) {
-        maxWinProb = overWeighted;
-        bestBarrier = b;
-        safestDirection = 'DIGITOVER';
-      }
-      if(underWeighted > maxWinProb && underWeighted > 0.74) {
-        maxWinProb = underWeighted;
-        bestBarrier = b;
-        safestDirection = 'DIGITUNDER';
-      }
-    }
-
-    if(maxWinProb > 0.74) {
-      const dirLabel = safestDirection === 'DIGITOVER' ? 'OVER' : 'UNDER';
-      label = `🌊 Dynamic OU: ${dirLabel} barrier=${bestBarrier} (win prob=${(maxWinProb*100).toFixed(1)}%)`;
-      orderPayload = {
-        contract_type: safestDirection,
-        barrier: String(bestBarrier),
-        underlying_symbol: sym,
-        amount: stake,
-        basis: 'stake',
-        currency: 'USD',
-        duration: 1,
-        duration_unit: 't'
-      };
-    } else {
-      // Fallback safe defaults if no high probability barrier is found
-      const over5Count = mid.filter(d => d > 5).length;
-      const under5Count = mid.filter(d => d < 5).length;
-      const fallbackDir = over5Count > under5Count ? 'DIGITOVER' : 'DIGITUNDER';
-      label = `🌊 Default OU: ${fallbackDir=== 'DIGITOVER'?'OVER':'UNDER'} barrier=5`;
-      orderPayload = {
-        contract_type: fallbackDir,
-        barrier: '5',
-        underlying_symbol: sym,
-        amount: stake,
-        basis: 'stake',
-        currency: 'USD',
-        duration: 1,
-        duration_unit: 't'
-      };
-    }
+  if(maxWinProb >= ELITE_WIN) {
+    const dirLabel = safestDirection === 'DIGITOVER' ? 'OVER' : 'UNDER';
+    label = `🌊 Elite OU: ${dirLabel} barrier=${bestBarrier} (win prob=${(maxWinProb*100).toFixed(1)}%)`;
+    orderPayload = {
+      contract_type: safestDirection,
+      barrier: String(bestBarrier),
+      underlying_symbol: sym,
+      amount: stake,
+      basis: 'stake',
+      currency: 'USD',
+      duration: 1,
+      duration_unit: 't'
+    };
   } else {
-    // EVEN / ODD Killer logic
-    const eoShort = scoreEOPrecision(short, hist);
-    const eoMid = scoreEOPrecision(mid.slice(-60), hist);
-    const eoWeighted = (eoShort.confidence * 4 + eoMid.confidence * 6) / 10;
-    const eoEven = (eoShort.even * 4 + eoMid.even * 6) / 10;
-
-    if(eoWeighted >= 0.64) {
-      const contractType = eoEven > 0.5 ? 'DIGITEVEN' : 'DIGITODD';
-      label = `🏹 EO: ${contractType==='DIGITEVEN'?'EVEN':'ODD'} (weighted conf=${(eoWeighted*100).toFixed(1)}%)`;
-      orderPayload = {
-        contract_type: contractType,
-        underlying_symbol: sym,
-        amount: stake,
-        basis: 'stake',
-        currency: 'USD',
-        duration: 1,
-        duration_unit: 't'
-      };
-    } else {
-      log(`[DIGIT·AUTO] Even/Odd has no clear edge (${(eoWeighted*100).toFixed(1)}% < 64%) — skip`, 'i');
-      return;
-    }
+    log(`[DIGIT·AUTO] No elite OU setup (best win prob=${(maxWinProb*100).toFixed(1)}% < ${(ELITE_WIN*100).toFixed(0)}%) — skip`, 'i');
+    return;
   }
 
   if(orderPayload) {
@@ -2588,89 +2352,6 @@ function digitChiSq(hist){
   for(let i=0;i<10;i++){const d=freq[i]-exp; cs+=d*d/exp;}
   return cs;
 }
-function digitRunTest(hist){
-  const l=hist.length; if(l<30) return 0;
-  let runs=1,up=null,n1=0;
-  for(let i=0;i<l;i++) if(hist[i]>=5) n1++;
-  const n2=l-n1;
-  for(let i=1;i<l;i++){
-    const d=hist[i]>hist[i-1]?1:hist[i]<hist[i-1]?-1:0;
-    if(up!==null&&d!==0&&d!==up) runs++;
-    if(d!==0) up=d;
-  }
-  const expR=1+(2*n1*n2)/(n1+n2);
-  return (runs-expR)/Math.sqrt(2*n1*n2*(2*n1*n2-n1-n2)/((n1+n2)*(n1+n2)*(n1+n2-1)));
-}
-function scoreEOPrecision(sample, fullHist){
-  const total = sample.length;
-  if(total < 10) return {confidence:0.5, even:0.5, odd:0.5, runs:0, alternation:0, streak:0, lastParity:0};
-
-  // Calculate standard frequency ratios
-  const even = sample.filter(d=>d%2===0).length / total;
-  const odd = 1 - even;
-
-  // Markov transition matrix on sample
-  let ee = 0, eo = 0, oe = 0, oo = 0;
-  for(let i = 1; i < sample.length; i++) {
-    const prev = sample[i-1] % 2 === 0 ? 'E' : 'O';
-    const curr = sample[i] % 2 === 0 ? 'E' : 'O';
-    if(prev === 'E' && curr === 'E') ee++;
-    else if(prev === 'E' && curr === 'O') eo++;
-    else if(prev === 'O' && curr === 'E') oe++;
-    else if(prev === 'O' && curr === 'O') oo++;
-  }
-
-  const lastVal = fullHist[fullHist.length-1] % 2 === 0 ? 'E' : 'O';
-  let predictedEvenProb = 0.5;
-  if(lastVal === 'E') {
-    const sum = ee + eo;
-    if(sum > 0) predictedEvenProb = ee / sum;
-  } else {
-    const sum = oe + oo;
-    if(sum > 0) predictedEvenProb = oe / sum;
-  }
-
-  const exp = total/2;
-  const eFreq = sample.filter(d=>d%2===0).length;
-  const oFreq = total - eFreq;
-  const chiParity = ((eFreq-exp)**2 + (oFreq-exp)**2) / exp;
-  const parities = sample.map(d=>d%2);
-  let runs = 1;
-  for(let i=1; i<parities.length; i++) if(parities[i] !== parities[i-1]) runs++;
-  const expRuns = 1 + (2*eFreq*oFreq)/total;
-  const runsZ = total > 20 ? (runs - expRuns) / Math.sqrt(2*eFreq*oFreq*(2*eFreq*oFreq-total)/(total*total*(total-1))) : 0;
-  const alternation = runs / expRuns;
-
-  let streak = 1, lastParity = fullHist[fullHist.length-1]%2;
-  for(let i=fullHist.length-2; i>=Math.max(0, fullHist.length-20); i--){
-    if(fullHist[i]%2 === lastParity) streak++; else break;
-  }
-
-  // Merge standard frequency confidence with Markov transition probability
-  let finalEven = predictedEvenProb * 0.6 + even * 0.4;
-  let finalOdd = (1 - predictedEvenProb) * 0.6 + odd * 0.4;
-
-  const maxRatio = Math.max(finalEven, finalOdd);
-  let confidence = 0.5 + (maxRatio - 0.5) * 0.7;
-
-  if(chiParity > 3.84) confidence += 0.05;
-  if(alternation < 0.8) confidence -= 0.05;
-  if(alternation > 1.2) confidence += 0.05;
-  if(runsZ < -2) confidence -= 0.05;
-  if(runsZ > 2) confidence += 0.05;
-  if(streak >= 5) {
-    if(lastParity === 0) { // last was EVEN
-      finalEven -= 0.1 * (streak - 4);
-      finalOdd += 0.1 * (streak - 4);
-    } else {
-      finalOdd -= 0.1 * (streak - 4);
-      finalEven += 0.1 * (streak - 4);
-    }
-  }
-
-  confidence = Math.max(0.5, Math.min(0.98, confidence));
-  return {confidence, even: finalEven, odd: finalOdd, runs, alternation, streak, lastParity};
-}
 
 function placeDigitContract(sym, contractType, barrier){
   const stake = BotState.currentStake;
@@ -2680,11 +2361,7 @@ function placeDigitContract(sym, contractType, barrier){
   const actionLabel = isRF
     ? (contractType === 'CALL' ? 'CALL ↑' : 'PUT ↓')
     : contractType==='DIGITOVER' ? `OVER ${barrier}`
-    : contractType==='DIGITUNDER' ? `UNDER ${barrier}`
-    : contractType==='DIGITEVEN' ? 'EVEN'
-    : contractType==='DIGITODD' ? 'ODD'
-    : contractType==='DIGITMATCH' ? `=${barrier}`
-    : `≠${barrier}`;
+    : `UNDER ${barrier}`;
   BotState.lastAction = actionLabel;
   const payload = {
     proposal:1, subscribe:1, amount:+stake.toFixed(2), basis:'stake',
@@ -3199,62 +2876,6 @@ function calcKelly(pWin, payoutRatio=0.8){
   const b = payoutRatio;
   const f = (pWin * b - q) / b;
   return Math.max(0.05, Math.min(0.95, f || 0.5));
-}
-function buildDigitMarkov(hist, order=1){
-  if(hist.length < 20) return null;
-  const trans = {};
-  for(let i=order; i<hist.length; i++){
-    const key = hist.slice(i-order, i).join(',');
-    const next = hist[i];
-    if(!trans[key]) trans[key] = Array(10).fill(0);
-    trans[key][next]++;
-  }
-  const probs = {};
-  for(const [key, counts] of Object.entries(trans)){
-    const total = counts.reduce((a,b)=>a+b, 0);
-    probs[key] = counts.map(c => c/total);
-  }
-  return probs;
-}
-function predictDigitMarkov(markov, recent, order=1){
-  if(!markov || recent.length < order) return null;
-  const key = recent.slice(-order).join(',');
-  const probs = markov[key];
-  if(!probs) return null;
-  let bestD=0, bestP=0;
-  for(let d=0; d<10; d++){
-    if(probs[d] > bestP){ bestP = probs[d]; bestD = d; }
-  }
-  return { digit: bestD, prob: bestP, all: probs };
-}
-function detectDigitPatterns(hist, lookback=20){
-  const seq = hist.slice(-lookback);
-  if(seq.length < 6) return null;
-  let repeatScore = 0, bestRepeat = null;
-  for(let plen=2; plen<=5; plen++){
-    let matches=0; const maxChecks = Math.min(seq.length - plen*2, plen*3);
-    for(let i=0; i<maxChecks; i++){
-      if(seq[i] === seq[i+plen]) matches++;
-    }
-    const ratio = maxChecks > 0 ? matches/maxChecks : 0;
-    if(ratio > repeatScore && plen <= seq.length/2){
-      repeatScore = ratio; bestRepeat = plen;
-    }
-  }
-  let alt=0;
-  for(let i=1; i<seq.length; i++) if(seq[i] !== seq[i-1]) alt++;
-  const altRatio = alt/(seq.length-1);
-  const recent = new Set(seq.slice(-5));
-  const gaps = [];
-  for(let d=0; d<10; d++) if(!recent.has(d)) gaps.push(d);
-  return {
-    repeatPattern: repeatScore > 0.6 ? { length: bestRepeat, confidence: repeatScore } : null,
-    alternation: altRatio,
-    isAlternating: altRatio > 0.75,
-    isClustered: altRatio < 0.3,
-    gaps,
-    gapCount: gaps.length
-  };
 }
 function calibrateThresholds(){
   if(G.TRADE_HISTORY.length < 10) return;
@@ -5121,7 +4742,7 @@ function flushState(){
     localStorage.setItem('deriv_botstate', JSON.stringify({
       isTrading: bs.isTrading, contractType: bs.contractType,
       baseStake: bs.baseStake, targetProfit: bs.targetProfit, stopLoss: bs.stopLoss,
-      subMode: document.getElementById('dgMcSubMode')?.value || 'DIFF'
+      subMode: 'OU'
     }));
     localStorage.setItem('deriv_selected_strategy', G.SELECTED_STRATEGY || 'BB_WPR_REV');
     localStorage.setItem('deriv_trade_mode', G.TRADE_MODE || 'DIGITS');
@@ -5206,10 +4827,6 @@ function restoreState(){
       if(d.baseStake) BotState.baseStake = d.baseStake;
       if(d.targetProfit) BotState.targetProfit = d.targetProfit;
       if(d.stopLoss) BotState.stopLoss = d.stopLoss;
-      if(d.subMode){
-        const el = document.getElementById('dgMcSubMode');
-        if(el) el.value = d.subMode;
-      }
     }
     // Restore trade mode, market, duration, martingale
     const tm = localStorage.getItem('deriv_trade_mode');
