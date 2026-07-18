@@ -2604,7 +2604,14 @@ function connectMarketWS(){
         subscribe:1, req_id:genId()
       }));
     });
-    log(`[SUB] ${SYMBOLS.length} markets · live ticks → 15s candles`,'i');
+    // Import 10s OHLC history for the chart so it starts populated (no blank build).
+    SYMBOLS.forEach(s=>{
+      mws.send(JSON.stringify({
+        ticks_history:s.sym, style:'candles', granularity:10, count:300,
+        end:'latest', req_id:genId()
+      }));
+    });
+    log(`[SUB] ${SYMBOLS.length} markets · live ticks → 15s candles + 10s OHLC import`,'i');
     startHeartbeat();
   };
   mws.onmessage = (e)=>{
@@ -2854,8 +2861,24 @@ function handleCandles(data){
   if (!data.candles) return;
   const sym = data.echo_req?.ticks_history;
   if (!sym) return;
-  // Canvas chart builds candles from ticks — bulk candle data ignored
-  log(`[CHART] Skipped ${data.candles.length} bulk candles (tick-driven)`, 'i');
+  // Import 10s OHLC into the chart buffer so the chart starts pre-populated.
+  const arr = data.candles.map(c=>({
+    epoch: c.epoch,
+    open: +c.open, high: +c.high, low: +c.low, close: +c.close,
+    ticks: c.open === c.close ? 1 : 2
+  })).filter(c=>Number.isFinite(c.open)&&Number.isFinite(c.close));
+  if(arr.length){
+    const buf = G.MARKET.candles10[sym] || (G.MARKET.candles10[sym]=[]);
+    const existing = buf.length ? buf[buf.length-1].epoch : 0;
+    const fresh = arr.filter(c=>c.epoch > existing);
+    if(fresh.length){
+      buf.push(...fresh);
+      if(buf.length > 300) buf.splice(0, buf.length - 300);
+    } else if(buf.length === 0){
+      G.MARKET.candles10[sym] = arr.slice(-300);
+    }
+    log(`[CHART] ${sym}: imported 10s OHLC → ${G.MARKET.candles10[sym].length} candles (${G.MARKET.candles10[sym].length>=200?'ready':'buffering'})`, 'i');
+  }
 }
 
 function handleOhlc(data){
@@ -3537,12 +3560,16 @@ function drawChart(){
   const h = canvas.clientHeight || 250;
   const wrH = Math.round(h * 0.20);
   const cdlH = h - wrH;
-  if(all.length<2){
+  if(all.length<2 || raw.length<200){
     canvas.style.width = '100%'; canvas.style.minWidth = '';
     canvas.width = w*dpr; canvas.height = h*dpr;
     ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
     ctx.fillStyle=MUTED; ctx.font='11px monospace';
-    ctx.fillText('Waiting for data...',12,h/2);
+    if(raw.length<200){
+      ctx.fillText('Importing 10s OHLC… '+raw.length+'/200',12,h/2);
+    } else {
+      ctx.fillText('Waiting for data...',12,h/2);
+    }
     return;
   }
   if(G.CHART_MODE === 'line'){
