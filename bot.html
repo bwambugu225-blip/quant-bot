@@ -789,6 +789,11 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
 
   <!-- TAB 2: CHART -->
   <div class="tab-view" id="tab-chart">
+    <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center">
+      <span style="font-size:8px;color:var(--muted);white-space:nowrap">CHART</span>
+      <button id="chartCandleBtn" class="btn btn-ghost" onclick="setChartMode('candle')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">10s CANDLES</button>
+      <button id="chartLineBtn" class="btn btn-ghost" onclick="setChartMode('line')" style="flex:1;padding:4px;font-size:8px">LINE</button>
+    </div>
     <div class="section" style="padding:8px 0; overflow:hidden;">
       <div style="width:100%; overflow:hidden; background:rgba(6,9,18,0.4); border:1px solid var(--line); padding:3px;">
         <canvas id="liveChart" style="width:100%; height:46vh; display:block; cursor:crosshair;"></canvas>
@@ -1052,7 +1057,7 @@ const G = {
   HEARTBEAT:null, PING_TIMEOUT:null, RECONN:null, RECONN_ATT:0, RECONN_ACTIVE:false,
   STRATEGIES:[], STRATEGY_ACTIVE:[],
   WINS:0, LOSSES:0, CONS_LOSS:0, PNL:0, TRADES:0,
-  MARKET:{ candles:{}, prices:{}, tickSubs:{}, tickBuf:{}, candleOpenAt:{}, lastCloseAt:{}, subOk:{}, cooldown:{}, liveBuf:{}, lastPrice:{} },
+  MARKET:{ candles:{}, candles10:{}, prices:{}, tickSubs:{}, tickBuf:{}, tickBuf10:{}, candleOpenAt:{}, candle10OpenAt:{}, lastCloseAt:{}, subOk:{}, cooldown:{}, liveBuf:{}, lastPrice:{}, digHist:{} },
   CURRENT_MARKET:'R_50',
   MARKET_SELECTION_MODE:'auto',
   SELECTED_MARKET:'R_50',
@@ -1063,6 +1068,7 @@ const G = {
   LAST_SIGNAL:null, LAST_MARKET_MSG_AT:0, LAST_TRADE_MSG_AT:0,
   BOOT_AT:0, PENDING_SIGNAL:null, PENDING_SIGNAL_AT:0,
   CANDLE_INTERVAL_MS:15000,   // 15-second candles
+  CHART_MODE:'candle',        // 'candle' (10s) or 'line'
   CANDLE_BUFFER_MS:3000,     // 3s buffer for settlement between trades
   TRADE_DURATION_SECONDS:10,  // 10s — matches candle interval for back-to-back trades
   DURATION_MODE:'fixed',       // 'fixed' = 15s locked; 'auto_ticks' = per-trade 1-10 tick auto pick
@@ -2788,6 +2794,18 @@ function handleTick(data){
   let buf=G.MARKET.tickBuf[sym]; if(!buf) G.MARKET.tickBuf[sym]=buf=[];
   let openAt=G.MARKET.candleOpenAt[sym]; if(!openAt) G.MARKET.candleOpenAt[sym]=openAt=epoch*1000;
   buf.push(price);
+  // --- 10s candle buffer (chart only; strategy still uses 15s candles) ---
+  let candles10=G.MARKET.candles10[sym]; if(!candles10) G.MARKET.candles10[sym]=candles10=[];
+  let buf10=G.MARKET.tickBuf10[sym]; if(!buf10) G.MARKET.tickBuf10[sym]=buf10=[];
+  let openAt10=G.MARKET.candle10OpenAt[sym]; if(!openAt10) G.MARKET.candle10OpenAt[sym]=openAt10=epoch*1000;
+  buf10.push(price);
+  if((epoch*1000)-openAt10 >= 10000){
+    const c10={epoch,open:buf10[0]||price,high:max(buf10),low:min(buf10),close:price,ticks:buf10.length};
+    candles10.push(c10);
+    if(candles10.length>300) candles10.shift();
+    G.MARKET.tickBuf10[sym]=[];
+    G.MARKET.candle10OpenAt[sym]=epoch*1000;
+  }
   if((epoch*1000)-openAt >= G.CANDLE_INTERVAL_MS){
     const info=SYMBOLS.find(x=>x.sym===sym);
     const expT=info&&(info.cat==='VOL1S'||info.cat==='STEP')?15:7;
@@ -3448,22 +3466,65 @@ function toggleTheme(){
 }
 
 // ============================================================
-// CANVAS CHART (15s candles)
+// CANVAS CHART (10s candles + line mode)
 // ============================================================
+function setChartMode(mode){
+  G.CHART_MODE = mode;
+  const cb = document.getElementById('chartCandleBtn');
+  const lb = document.getElementById('chartLineBtn');
+  if(cb){ cb.style.background = mode==='candle' ? 'var(--accent)' : 'transparent'; cb.style.color = mode==='candle' ? '#fff' : 'var(--muted)'; cb.style.borderColor = mode==='candle' ? 'var(--accent)' : 'var(--line)'; }
+  if(lb){ lb.style.background = mode==='line' ? 'var(--accent)' : 'transparent'; lb.style.color = mode==='line' ? '#fff' : 'var(--muted)'; lb.style.borderColor = mode==='line' ? 'var(--accent)' : 'var(--line)'; }
+  drawChart();
+}
+
+function drawLineChart(canvas, ctx, all, w, h, dpr, C){
+  canvas.style.width = '100%'; canvas.style.minWidth = '';
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  let lo=Infinity, hi=-Infinity;
+  for(const k of all){ if(k.low<lo)lo=k.low; if(k.high>hi)hi=k.high; }
+  const pad=(hi-lo)*0.1||0.001, yMin=lo-pad, yMax=hi+pad;
+  const ny=v=>h-((v-yMin)/(yMax-yMin))*h;
+  const stepX=w/(all.length-1);
+  if(ChartSettings.grid){
+    ctx.strokeStyle=C.LINE; ctx.lineWidth=1;
+    for(let i=1;i<5;i++){const y=h*i/5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+  }
+  // Area fill
+  ctx.beginPath();
+  for(let i=0;i<all.length;i++){ const x=i*stepX, y=ny(all[i].close); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+  ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath();
+  const grad=ctx.createLinearGradient(0,0,0,h);
+  grad.addColorStop(0,'rgba(54,225,255,0.22)');
+  grad.addColorStop(1,'rgba(54,225,255,0.0)');
+  ctx.fillStyle=grad; ctx.fill();
+  // Price line
+  ctx.strokeStyle=C.ACC; ctx.lineWidth=1.6; ctx.setLineDash([]);
+  ctx.beginPath();
+  for(let i=0;i<all.length;i++){ const x=i*stepX, y=ny(all[i].close); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+  ctx.stroke();
+  // Last price dot
+  const lastX=(all.length-1)*stepX, lastY=ny(all[all.length-1].close);
+  ctx.fillStyle=C.POS; ctx.beginPath(); ctx.arc(lastX,lastY,2.5,0,Math.PI*2); ctx.fill();
+}
+
 function drawChart(){
   const canvas = document.getElementById('liveChart');
   if(!canvas) return;
+  const ctx = canvas.getContext('2d');
   const s = getComputedStyle(document.documentElement);
   const clr = k=>s.getPropertyValue('--'+k).trim();
-  const MUTED=clr('muted'), LINE=clr('line'), POS=clr('positive'), NEG=clr('negative');
+  const MUTED=clr('muted'), LINE=clr('line'), POS=clr('positive'), NEG=clr('negative'), ACC=clr('accent');
   const sym = G.CURRENT_MARKET;
-  const raw = G.MARKET.candles[sym] || [];
+  // 10s candle source for the chart (strategy still uses 15s candles internally)
+  const raw = G.MARKET.candles10[sym] || [];
 
   const w = canvas.parentNode.clientWidth || canvas.clientWidth || 800;
-  const numCandles = Math.max(30, Math.min(120, Math.floor(w / 7.5)));
+  const numCandles = Math.max(30, Math.min(160, Math.floor(w / 6)));
   const c = raw.slice(-numCandles);
 
-  const liveBuf = G.MARKET.tickBuf?.[sym] || [];
+  const liveBuf = G.MARKET.tickBuf10?.[sym] || [];
   const hasLive = liveBuf.length > 0;
   const liveCandle = hasLive ? {
     open: c.length ? c[c.length-1].close : liveBuf[0],
@@ -3479,15 +3540,17 @@ function drawChart(){
   if(all.length<2){
     canvas.style.width = '100%'; canvas.style.minWidth = '';
     canvas.width = w*dpr; canvas.height = h*dpr;
-    const ctx = canvas.getContext('2d');
     ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
     ctx.fillStyle=MUTED; ctx.font='11px monospace';
     ctx.fillText('Waiting for data...',12,h/2);
     return;
   }
+  if(G.CHART_MODE === 'line'){
+    drawLineChart(canvas, ctx, all, w, h, dpr, { MUTED, ACC, POS, NEG, LINE });
+    return;
+  }
   canvas.style.width = '100%'; canvas.style.minWidth = '';
   canvas.width = w * dpr; canvas.height = h * dpr;
-  const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,w,h);
 
