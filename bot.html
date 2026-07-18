@@ -519,7 +519,6 @@ body::after{
 .section::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(54,225,255,0.012) 0 1px,transparent 1px 4px);pointer-events:none;opacity:.5}
 .section::after{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:.5;box-shadow:0 0 8px rgba(54,225,255,0.4)}
 .section>.section-title:first-child{position:relative;display:inline-flex;align-items:center;gap:6px}
-.section>.section-title:first-child::before{content:'⟁';color:var(--accent);font-size:9px;opacity:.7;filter:drop-shadow(0 0 6px rgba(54,225,255,0.6))}
 
 /* CALL / PUT buttons: neon core glow + animated ring */
 .btn-call{background:linear-gradient(135deg,#1bd49a,#36e0a6);box-shadow:0 6px 22px rgba(54,224,166,0.35),inset 0 0 14px rgba(255,255,255,0.18),0 0 0 1px rgba(54,224,166,0.25);color:#04130d;border-radius:var(--radius-sm);position:relative;overflow:hidden}
@@ -617,7 +616,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
 <!-- Login Overlay -->
 <div class="login-overlay" id="loginOverlay">
   <div class="login-card">
-    <h1>⚡ BTraders</h1>
+    <h1>BTraders</h1>
     <p id="loginPrompt">Authorize with your Deriv account</p>
     <button class="btn-login" onclick="oauthLogin()" id="oauthBtn">Login with Deriv</button>
     <div class="login-error" id="loginError"></div>
@@ -995,18 +994,18 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
 
 <!-- ============ BOTTOM NAV ============ -->
 <div class="bottomnav">
-  <button class="nav-btn active" data-tab="home" onclick="switchTab('home')">
-    <span class="nav-ico">◉</span><span class="nav-lbl">HOME</span>
-  </button>
-  <button class="nav-btn" data-tab="chart" onclick="switchTab('chart')">
-    <span class="nav-ico">▤</span><span class="nav-lbl">CHART</span>
-  </button>
-  <button class="nav-btn" data-tab="digits" onclick="switchTab('digits')">
-    <span class="nav-ico">⥹</span><span class="nav-lbl">DIGITS</span>
-  </button>
-  <button class="nav-btn" data-tab="settings" onclick="switchTab('settings')">
-    <span class="nav-ico">⚙</span><span class="nav-lbl">SETTINGS</span>
-  </button>
+    <button class="nav-btn active" data-tab="home" onclick="switchTab('home')">
+      <span class="nav-lbl">HOME</span>
+    </button>
+    <button class="nav-btn" data-tab="chart" onclick="switchTab('chart')">
+      <span class="nav-lbl">CHART</span>
+    </button>
+    <button class="nav-btn" data-tab="digits" onclick="switchTab('digits')">
+      <span class="nav-lbl">DIGITS</span>
+    </button>
+    <button class="nav-btn" data-tab="settings" onclick="switchTab('settings')">
+      <span class="nav-lbl">SETTINGS</span>
+    </button>
 </div>
 
   <!-- Toast notifications -->
@@ -1495,7 +1494,7 @@ function showAdminLogin(){
   el.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:100000;background:rgba(0,0,0,0.88);display:flex;align-items:center;justify-content:center;font-family:var(--font,monospace)';
   el.innerHTML = `
     <div style="background:#141210;border:1px solid #2a251f;border-radius:8px;padding:24px;width:300px;text-align:center">
-      <div style="font-size:14px;color:var(--accent,#d4a84b);font-weight:600;margin-bottom:16px">⚙ Admin Login</div>
+      <div style="font-size:14px;color:var(--accent,#d4a84b);font-weight:600;margin-bottom:16px">Admin Login</div>
       <input id="adminPwInput" type="password" placeholder="Admin password" style="width:100%;box-sizing:border-box;background:#1c1915;border:1px solid #2a251f;color:#f0e8da;padding:8px 10px;border-radius:4px;font-size:12px;margin-bottom:12px">
       <button onclick="submitAdminLogin()" style="width:100%;background:var(--accent,#d4a84b);border:none;color:#0d0c0a;padding:8px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600">Login</button>
       <div id="adminLoginErr" style="font-size:10px;color:#c45a5a;margin-top:10px;min-height:12px"></div>
@@ -1538,7 +1537,7 @@ function renderAdminPanel(){
   el.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:rgba(0,0,0,0.85);display:flex;flex-direction:column;font-family:var(--font,monospace);color:#f0e8da;overflow:hidden';
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 16px;background:#141210;border-bottom:1px solid #2a251f">
-      <span style="font-size:13px;font-weight:600;color:var(--accent,#d4a84b)">⚙ Admin Panel</span>
+      <span style="font-size:13px;font-weight:600;color:var(--accent,#d4a84b)">Admin Panel</span>
       <button onclick="closeAdminPanel()" style="background:none;border:none;color:#c45a5a;cursor:pointer;font-size:18px">✕</button>
     </div>
     <div style="display:flex;flex:1;overflow:hidden">
@@ -2307,7 +2306,7 @@ function evaluateDigitStrategy(sym){
   }
 
   const dirLabel = best.dir === 'DIGITOVER' ? 'OVER' : 'UNDER';
-  const label = `🌊 Sig OU ${sym}: ${dirLabel} ${best.barrier} (χ²=${best.chi.toFixed(1)}/${best.cchi.toFixed(1)})`;
+  const label = `Sig OU ${sym}: ${dirLabel} ${best.barrier} (χ²=${best.chi.toFixed(1)}/${best.cchi.toFixed(1)})`;
   const orderPayload = {
     contract_type: best.dir,
     barrier: String(best.barrier),
