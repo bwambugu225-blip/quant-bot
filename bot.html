@@ -826,6 +826,34 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
             <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">EMA 50</span>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
+            <label class="switch" title="EMA 9">
+              <input type="checkbox" id="settingEma9" checked onchange="updateChartSetting('ema9', this.checked)">
+              <span class="slider"></span>
+            </label>
+            <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">EMA 9</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label class="switch" title="EMA 30">
+              <input type="checkbox" id="settingEma30" checked onchange="updateChartSetting('ema30', this.checked)">
+              <span class="slider"></span>
+            </label>
+            <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">EMA 30</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label class="switch" title="Fractals">
+              <input type="checkbox" id="settingFractals" checked onchange="updateChartSetting('fractals', this.checked)">
+              <span class="slider"></span>
+            </label>
+            <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">Fractals</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label class="switch" title="HA Patterns">
+              <input type="checkbox" id="settingHaPatterns" checked onchange="updateChartSetting('haPatterns', this.checked)">
+              <span class="slider"></span>
+            </label>
+            <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">HA Pat</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
             <label class="switch" title="BB (20,2)">
               <input type="checkbox" id="settingBB" checked onchange="updateChartSetting('bb', this.checked)">
               <span class="slider"></span>
@@ -1484,6 +1512,10 @@ function applySettings(s){
       const e2=document.getElementById('settingEma50'); if(e2) e2.checked=ChartSettings.ema50;
       const ebb=document.getElementById('settingBB'); if(ebb) ebb.checked=ChartSettings.bb;
       const e3=document.getElementById('settingGrid'); if(e3) e3.checked=ChartSettings.grid;
+      const e9=document.getElementById('settingEma9'); if(e9) e9.checked=ChartSettings.ema9;
+      const e30=document.getElementById('settingEma30'); if(e30) e30.checked=ChartSettings.ema30;
+      const ef=document.getElementById('settingFractals'); if(ef) ef.checked=ChartSettings.fractals;
+      const eh=document.getElementById('settingHaPatterns'); if(eh) eh.checked=ChartSettings.haPatterns;
       const e4=document.getElementById('settingBodyRatio'); if(e4) e4.value=ChartSettings.bodyRatio;
     }
     if(s.token){ G.TOKEN = s.token; const e=document.getElementById('apiToken'); if(e) e.value=s.token; }
@@ -1872,9 +1904,13 @@ async function saveAdminPassword(){
 // Global Chart Settings
 const ChartSettings = {
   type: 'heiken-ashi', // 'standard' or 'heiken-ashi'
+  ema9: true,
   ema20: true,
+  ema30: true,
   ema50: false,
   bb: true,
+  fractals: true,
+  haPatterns: true,
   grid: true,
   bodyRatio: 0.6
 };
@@ -3758,6 +3794,75 @@ function drawChart(){
   }
   if (ChartSettings.ema20) drawEMALine(20, 'rgba(223, 186, 115, 0.7)');
   if (ChartSettings.ema50) drawEMALine(50, 'rgba(156, 124, 56, 0.7)');
+  if (ChartSettings.ema9)  drawEMALine(9,  'rgba(54, 225, 255, 0.9)');
+  if (ChartSettings.ema30) drawEMALine(30, 'rgba(255, 138, 76, 0.9)');
+
+  // ── Williams Fractals (5-bar) ──
+  function drawFractals(){
+    if (chartCandles.length < 5) return;
+    for(let i=2; i<chartCandles.length-2; i++){
+      const c = chartCandles[i];
+      const a = chartCandles[i-2], b = chartCandles[i-1], d = chartCandles[i+1], e = chartCandles[i+2];
+      const x = i*cw + cw/2;
+      // Bearish (up) fractal: this high is the highest of 5
+      if(c.high > a.high && c.high > b.high && c.high >= d.high && c.high >= e.high){
+        ctx.fillStyle = NEG;
+        ctx.beginPath();
+        ctx.moveTo(x, ny(c.high)-2);
+        ctx.lineTo(x-4, ny(c.high)-9);
+        ctx.lineTo(x+4, ny(c.high)-9);
+        ctx.closePath(); ctx.fill();
+      }
+      // Bullish (down) fractal: this low is the lowest of 5
+      if(c.low < a.low && c.low < b.low && c.low <= d.low && c.low <= e.low){
+        ctx.fillStyle = POS;
+        ctx.beginPath();
+        ctx.moveTo(x, ny(c.low)+2);
+        ctx.lineTo(x-4, ny(c.low)+9);
+        ctx.lineTo(x+4, ny(c.low)+9);
+        ctx.closePath(); ctx.fill();
+      }
+    }
+  }
+  if (ChartSettings.fractals) drawFractals();
+
+  // ── Heiken Ashi candlestick patterns ──
+  // Detect on the HA-transformed series (chartCandles when type==='heiken-ashi'),
+  // otherwise fall back to raw candles. Mark doji, strong/weak HA, and HA engulfing.
+  function drawHAPatterns(){
+    if (chartCandles.length < 3) return;
+    const isHA = ChartSettings.type === 'heiken-ashi';
+    for(let i=1; i<chartCandles.length; i++){
+      const k = chartCandles[i], p = chartCandles[i-1];
+      const x = i*cw + cw/2;
+      const body = Math.abs(k.close - k.open);
+      const range = (k.high - k.low) || 0.0001;
+      const bodyRatio = body / range;
+      const up = k.close >= k.open;
+      const prevUp = p.close >= p.open;
+      let label = null, col = null;
+      // Doji: tiny body relative to range
+      if(bodyRatio < 0.18){
+        label = '◊'; col = 'rgba(180,180,200,0.95)';
+      }
+      // HA engulfing: opposite colour, current body swallows prior body
+      else if(up !== prevUp && body > Math.abs(p.close - p.open) * 1.2 && bodyRatio > 0.6){
+        label = up ? '⇈' : '⇊'; col = up ? POS : NEG;
+      }
+      // Strong momentum HA candle
+      else if(bodyRatio > 0.8){
+        label = up ? '▲' : '▼'; col = up ? POS : NEG;
+      }
+      if(label && isHA){
+        ctx.fillStyle = col;
+        ctx.font = '11px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, x, up ? ny(k.low)+12 : ny(k.high)-12);
+        ctx.textAlign = 'left';
+      }
+    }
+  }
+  if (ChartSettings.haPatterns) drawHAPatterns();
 
   // Bollinger Bands overlay helper
   function drawBB() {
@@ -4879,6 +4984,10 @@ function restoreState(){
         const elEma50 = document.getElementById('settingEma50'); if(elEma50) elEma50.checked = ChartSettings.ema50;
         const elBB = document.getElementById('settingBB'); if(elBB) elBB.checked = ChartSettings.bb;
         const elGrid = document.getElementById('settingGrid'); if(elGrid) elGrid.checked = ChartSettings.grid;
+        const elEma9 = document.getElementById('settingEma9'); if(elEma9) elEma9.checked = ChartSettings.ema9;
+        const elEma30 = document.getElementById('settingEma30'); if(elEma30) elEma30.checked = ChartSettings.ema30;
+        const elFractals = document.getElementById('settingFractals'); if(elFractals) elFractals.checked = ChartSettings.fractals;
+        const elHa = document.getElementById('settingHaPatterns'); if(elHa) elHa.checked = ChartSettings.haPatterns;
         const elRatio = document.getElementById('settingBodyRatio'); if(elRatio) elRatio.value = ChartSettings.bodyRatio;
       } catch(ex){ console.log('[RESTORE CHART SETTINGS]', ex.message); }
     }
