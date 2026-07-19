@@ -2152,7 +2152,7 @@ function initStrategies(){
     code: 'AROON',
     analyze: (candles, sym) => {
       if (candles.length < 30) return null;
-      const st = G._aroonState[sym] || (G._aroonState[sym] = { dirs: [], traded: null });
+      const st = G._aroonState[sym] || (G._aroonState[sym] = { dirs: [], traded: null, touched: false });
       const { up, down } = aroon(candles, 25);
       const dir = up > down ? 'U' : 'D';
 
@@ -2163,20 +2163,22 @@ function initStrategies(){
       for(let i=1;i<st.dirs.length;i++) if(st.dirs[i] !== st.dirs[i-1]) flips++;
       if(flips > 3) return null;
 
-      // One trade per crossing — unlock when direction flips
-      if(st.traded === dir) return null;
-      if(st.traded && st.traded !== dir) st.traded = null;
+      // Direction flip → reset cycle state (allow fresh entry)
+      if(st.traded && st.traded !== dir){ st.traded = null; st.touched = false; }
+      if(st.touched && st.dir !== dir) st.touched = false;
+      st.dir = dir;
+      if(st.traded === dir) return null; // already traded this direction
 
       let action = null, conf = 0;
-      if(up === 100 && down <= 30){
-        action = 'RISE';
-        conf = Math.min(96, 80 + (30 - down) * 0.6);
-      } else if(down === 100 && up <= 30){
-        action = 'FALL';
-        conf = Math.min(96, 80 + (30 - up) * 0.6);
+      if(dir === 'U' && up === 100 && down <= 30){
+        if(st.touched) return null; // first touch already passed
+        action = 'RISE'; conf = Math.min(96, 80 + (30 - down) * 0.6);
+      } else if(dir === 'D' && down === 100 && up <= 30){
+        if(st.touched) return null;
+        action = 'FALL'; conf = Math.min(96, 80 + (30 - up) * 0.6);
       }
       if(!action) return null;
-      st.traded = dir;
+      st.traded = dir; st.touched = true;
       return { action, conf: Math.round(conf), src: 'AROON' };
     }
   });
