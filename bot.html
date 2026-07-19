@@ -3336,26 +3336,6 @@ function evaluateAndTrade(sym, liveBuf){
     execTrade(result, sym);
     return;
   }
-  // Fallback: the analysis core's RISE/FALL bias is used for high-probability mean reversion.
-  // When RSI is extremely overbought (>=75) or oversold (<=25), we trade the pullback/rebound.
-  const seriesB = haxLiveSeries(sym);
-  if(seriesB.length >= 15){
-    const rB = rsi(seriesB, 14);
-    if(rB != null){
-      let bias = rB <= 25 ? 'RISE' : rB >= 75 ? 'FALL' : null;
-      if(bias){
-            const liveConf = Math.min(92, Math.max(40, Math.round(50 + Math.abs(rB-50)*1.1)));
-        if(liveConf >= 72){
-          const sig = { action: bias, conf: liveConf, src:'BIAS_REV', lastPrice: arr[arr.length-1].close, sym };
-          storeSignal(sym, arr[arr.length-1]?.epoch||0, sig, true);
-          log(`[SIGNAL] ${sym}: ${bias} ${liveConf}% (BIAS_REV)`,'t');
-          G.CURRENT_MARKET = sym; G.SELECTED_MARKET = sym;
-          syncMarketSelection(); updateWatchlist();
-          execTrade(sig, sym);
-        }
-      }
-    }
-  }
   } catch(e){ log(`[CRASH] evaluateAndTrade: ${e.message}`,'e'); console.error(e); }
 }
 
