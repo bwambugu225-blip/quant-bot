@@ -4106,8 +4106,8 @@ function drawChart(){
   function drawAroon(){
     // re-use the WR panel's pixel space — negate values so 0‑100 maps to -100..0
     const aArr = [];
-    for(let i=24;i<chartCandles.length;i++){
-      const slice = chartCandles.slice(i-24,i+1);
+    for(let i=25;i<chartCandles.length;i++){
+      const slice = chartCandles.slice(i-25,i+1);
       const v = aroon(slice,25);
       aArr.push({ up: -v.up, down: -v.down });
     }
