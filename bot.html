@@ -684,7 +684,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       </div>
       <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center">
         <span style="font-size:8px;color:var(--muted);white-space:nowrap">TRADE LENGTH</span>
-        <button id="durFixedBtn" class="btn btn-ghost" onclick="setDurationMode('fixed')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">15s</button>
+        <button id="durFixedBtn" class="btn btn-ghost" onclick="setDurationMode('fixed')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">10s</button>
         <button id="durAutoBtn" class="btn btn-ghost" onclick="setDurationMode('auto_ticks')" style="flex:1;padding:4px;font-size:8px">AUTO 1-10t</button>
       </div>
       <div class="trade-btn-row">
@@ -707,14 +707,17 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
               <option value="BB_WPR_REV" selected>Bollinger + Williams %R</option>
               <option value="BB_EMA_MACD">Bollinger + EMA/MACD</option>
               <option value="BB_RSI_CCI">Bollinger + RSI/CCI</option>
+              <option value="EMA9_30_X">EMA 9/30 Cross</option>
+              <option value="FRACTAL_BRK">Williams Fractal Breakout</option>
+              <option value="HA_PAT">Heiken Ashi Pattern</option>
             </select>
             <div id="stratList" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px"></div>
           </div>
           <div class="stake-row" style="margin-bottom:6px">
             <div class="field"><label>Stake</label><input class="inp" id="rfStake" type="number" value="1" min="0.35" step="0.5"></div>
             <div class="field"><label>Duration</label>
-              <span style="font-size:11px;font-weight:700;padding:4px 0;display:block">15s <span style="font-size:7px;color:var(--muted);font-weight:400">(locked)</span></span>
-              <input type="hidden" id="rfDuration" value="15">
+              <span style="font-size:11px;font-weight:700;padding:4px 0;display:block">10s <span style="font-size:7px;color:var(--muted);font-weight:400">(locked)</span></span>
+              <input type="hidden" id="rfDuration" value="10">
             </div>
           </div>
           <div style="display:flex;gap:6px;align-items:center;margin-top:5px">
@@ -1095,11 +1098,11 @@ const G = {
   SG_TAB:0,
   LAST_SIGNAL:null, LAST_MARKET_MSG_AT:0, LAST_TRADE_MSG_AT:0,
   BOOT_AT:0, PENDING_SIGNAL:null, PENDING_SIGNAL_AT:0,
-  CANDLE_INTERVAL_MS:15000,   // 15-second candles
+  CANDLE_INTERVAL_MS:10000,   // 10-second candles (matches chart)
   CHART_MODE:'candle',        // 'candle' (10s) or 'line'
   CANDLE_BUFFER_MS:3000,     // 3s buffer for settlement between trades
   TRADE_DURATION_SECONDS:10,  // 10s — matches candle interval for back-to-back trades
-  DURATION_MODE:'fixed',       // 'fixed' = 15s locked; 'auto_ticks' = per-trade 1-10 tick auto pick
+  DURATION_MODE:'fixed',       // 'fixed' = 10s locked; 'auto_ticks' = per-trade 1-10 tick auto pick
   // Market-specific parameters derived from 15s OHLC analysis (see analyze.py)
   // vol: high/mid/low classification, minConf: minimum confidence floor,
   // revPenalty: penalty for fighting trend (lighter on high vol)
@@ -1116,7 +1119,7 @@ const G = {
     'R_25':   { avgRangePct:0.0195, rangeP25:0.0139, rangeP50:0.0182, rangeP75:0.0238, upPct:48.9, vol:'mid',  minConf:55, revPenalty:12, bestStrat:'ENG, FKT, SRE' },
     'R_10':   { avgRangePct:0.0076, rangeP25:0.0052, rangeP50:0.0070, rangeP75:0.0093, upPct:50.5, vol:'low',  minConf:55, revPenalty:15, bestStrat:'EXH, MACDX, HAM' },
   },
-  MAX_SIGNAL_LATENCY_MS:4000, // 4s window after candle close (26% of 15s candles)
+  MAX_SIGNAL_LATENCY_MS:4000, // 4s window after candle close (40% of 10s candles)
   TRADE_MODE:'DIGITS',        // 'RISEFALL' or 'DIGITS'
   DIGITS:{},                  // legacy placeholder (not used by digit engine)
   // Supabase configuration
@@ -2161,6 +2164,76 @@ function initStrategies(){
     }
   });
 
+  S.push({
+    name: 'EMA 9 / 30 Cross',
+    code: 'EMA9_30_X',
+    analyze: (candles, sym) => {
+      if (candles.length < 32) return null;
+      const prices = candles.map(c => c.close);
+      const last = candles[candles.length-1];
+      const e9c = ema(prices, 9),  e9p = ema(prices.slice(0,-1), 9);
+      const e30c = ema(prices, 30), e30p = ema(prices.slice(0,-1), 30);
+      if(e9c===null||e9p===null||e30c===null||e30p===null) return null;
+      // Bullish cross: EMA9 crosses above EMA30 with momentum confirmation
+      if(e9p <= e30p && e9c > e30c && last.close > e9c){
+        return {action:'RISE', conf: 84, src:'EMA9_30_X'};
+      }
+      // Bearish cross: EMA9 crosses below EMA30
+      if(e9p >= e30p && e9c < e30c && last.close < e9c){
+        return {action:'FALL', conf: 84, src:'EMA9_30_X'};
+      }
+      return null;
+    }
+  });
+
+  S.push({
+    name: 'Williams Fractal Breakout',
+    code: 'FRACTAL_BRK',
+    analyze: (candles, sym) => {
+      if (candles.length < 12) return null;
+      const n = candles.length;
+      const last = candles[n-1];
+      // Bullish fractal (lowest of 5) within window
+      let bullFractal = null, bearFractal = null;
+      for(let i=2; i<n-2; i++){
+        const c = candles[i];
+        const a=candles[i-2], b=candles[i-1], d=candles[i+1], e=candles[i+2];
+        if(c.low < a.low && c.low < b.low && c.low <= d.low && c.low <= e.low) bullFractal = c.low;
+        if(c.high > a.high && c.high > b.high && c.high >= d.high && c.high >= e.high) bearFractal = c.high;
+      }
+      if(bullFractal!==null && last.close > bullFractal && last.close > candles[n-2].close){
+        return {action:'RISE', conf: 83, src:'FRACTAL_BRK'};
+      }
+      if(bearFractal!==null && last.close < bearFractal && last.close < candles[n-2].close){
+        return {action:'FALL', conf: 83, src:'FRACTAL_BRK'};
+      }
+      return null;
+    }
+  });
+
+  S.push({
+    name: 'Heiken Ashi Pattern',
+    code: 'HA_PAT',
+    analyze: (candles, sym) => {
+      if (candles.length < 3) return null;
+      const ha = heikenAshi(candles);
+      const n = ha.length;
+      const k = ha[n-1], p = ha[n-2];
+      const range = (k.high - k.low) || 0.0001;
+      const body = Math.abs(k.close - k.open);
+      const bodyRatio = body / range;
+      const up = k.close >= k.open, prevUp = p.close >= p.open;
+      // HA strong bullish candle after bearish, or vice versa
+      if(up && !prevUp && bodyRatio > 0.7){
+        return {action:'RISE', conf: 83, src:'HA_PAT'};
+      }
+      if(!up && prevUp && bodyRatio > 0.7){
+        return {action:'FALL', conf: 83, src:'HA_PAT'};
+      }
+      return null;
+    }
+  });
+
   G.STRATEGY_ACTIVE = G.STRATEGIES.map(()=>true);
 }
 
@@ -2168,7 +2241,7 @@ function initStrategies(){
 // AUTO-PICK TRADE DURATION (based on volatility + signal strength)
 // ============================================================
 function autoPickDuration(sym, signal){
-  return 15; // 15s — matches candle interval for consistent expiry
+  return 10; // 10s — matches candle interval for consistent expiry
 }
 
 // ============================================================
@@ -3268,7 +3341,7 @@ function execTrade(signal, asset){
     dur = pickAutoTickDuration(signal, asset);
     durUnit = 't';
   } else {
-    dur = G.TRADE_DURATION || 15;
+    dur = G.TRADE_DURATION || 10;
     durUnit = G.TRADE_DURATION_UNIT || 's';
   }
   const ct = signal.action==='RISE'?'CALL':'PUT';
@@ -5033,7 +5106,7 @@ function restoreState(){
     const cm = localStorage.getItem('deriv_current_market');
     if(cm) G.CURRENT_MARKET = cm;
     const td = localStorage.getItem('deriv_trade_duration');
-    if(td) G.TRADE_DURATION = parseInt(td, 10) || 15;
+    if(td) G.TRADE_DURATION = parseInt(td, 10) || 10;
     const tdu = localStorage.getItem('deriv_trade_duration_unit');
     if(tdu) G.TRADE_DURATION_UNIT = tdu;
     const mg = localStorage.getItem('deriv_martingale');
