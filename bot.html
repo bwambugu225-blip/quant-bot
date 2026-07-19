@@ -4104,32 +4104,29 @@ function drawChart(){
 
   // ── Aroon (25) oscillator lines in WR panel ──
   function drawAroon(){
-    // re-use the WR panel's pixel space — negate values so 0‑100 maps to -100..0
+    const wry2=v=>cdlH+(1-v/100)*(h-cdlH); // map 0..100 to WR panel (100 at top)
     const aArr = [];
     for(let i=25;i<chartCandles.length;i++){
       const slice = chartCandles.slice(i-25,i+1);
       const v = aroon(slice,25);
-      aArr.push({ up: -v.up, down: -v.down });
+      aArr.push({ up: v.up, down: v.down });
     }
     if(aArr.length < 2) return;
     const start = chartCandles.length - aArr.length;
-    // Aroon Up
     ctx.strokeStyle='rgba(54,225,255,0.8)'; ctx.lineWidth=1.5;
     ctx.beginPath();
     aArr.forEach((v,i)=>{
       const x=(start+i)*cw+cw/2;
-      i===0?ctx.moveTo(x,wry(v.up)):ctx.lineTo(x,wry(v.up));
+      i===0?ctx.moveTo(x,wry2(v.up)):ctx.lineTo(x,wry2(v.up));
     });
     ctx.stroke();
-    // Aroon Down
     ctx.strokeStyle='rgba(255,138,210,0.8)'; ctx.lineWidth=1.5;
     ctx.beginPath();
     aArr.forEach((v,i)=>{
       const x=(start+i)*cw+cw/2;
-      i===0?ctx.moveTo(x,wry(v.down)):ctx.lineTo(x,wry(v.down));
+      i===0?ctx.moveTo(x,wry2(v.down)):ctx.lineTo(x,wry2(v.down));
     });
     ctx.stroke();
-    // label in WR area
     ctx.fillStyle='rgba(128,128,128,0.5)'; ctx.font='9px monospace'; ctx.textAlign='right';
     ctx.fillText('Aroon(25)', w-4, h-4);
   }
