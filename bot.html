@@ -3547,6 +3547,9 @@ function startBot(){
   if(!G.AUTH){ log('[ERROR] Authorize first','e'); return; }
   if(G.ACCOUNT_BLOCKED){ log(`[HALT] Cannot start — this account is ${G.ACCOUNT_BLOCKED_ACTION}`,'e'); return; }
   if(G.RUNNING) return;
+  // Flush tick buffers so the first candle after start forms from fresh ticks only
+  for(const sym of Object.keys(G.MARKET?.tickBuf||{})){ G.MARKET.tickBuf[sym]=[]; G.MARKET.candleOpenAt[sym]=Date.now(); }
+  G._aroonState = {};
   G.RUNNING=true;
   const raw = document.getElementById('rfDuration')?.value || '15';
   if(raw.endsWith('t')){ G.TRADE_DURATION = parseInt(raw); G.TRADE_DURATION_UNIT = 't'; }
