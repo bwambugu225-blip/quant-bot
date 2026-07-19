@@ -680,13 +680,12 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       <div class="kpi"><div id="dashConsLoss" class="v" style="color:var(--negative)">0</div><div class="l">Streak</div></div>
     </div>
 
-    <!-- RF Controls (start lives in the floating button; all config is in Settings tab) -->
+    <!-- RF Controls (start lives in floating button; config in Settings) -->
     <div id="rfSection" class="section">
       <div class="section-title">Rise/Fall <span id="rfModeBadge" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">AUTO</span></div>
-      <div style="display:flex;gap:4px;margin-top:4px">
+      <div style="display:flex;gap:4px">
         <button class="btn btn-ghost" onclick="downloadTradeLog()" style="flex:1;padding:4px;font-size:8px">EXPORT LOG</button>
-        <button class="btn btn-call" onclick="placeManualRF('RISE')" style="flex:1;padding:6px;font-size:9px">RISE</button>
-        <button class="btn btn-put" onclick="placeManualRF('FALL')" style="flex:1;padding:6px;font-size:9px">FALL</button>
+        <button class="btn btn-ghost" onclick="resetSession()" style="width:34px;height:30px;padding:0;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center" title="Reset Session">⟳</button>
       </div>
     </div>
 
@@ -728,8 +727,6 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
           <div class="hax-row"><span class="k">W·L</span><span class="v mono" id="haxWL">0 / 0</span></div>
         </div>
       </div>
-      <div class="hax-matrix-head">MARKETS · <span id="haxMktCount">0</span> LIVE</div>
-      <div class="hax-matrix" id="haxMatrix"></div>
       <div class="hax-tape" id="haxTape"></div>
     </div>
 
@@ -743,12 +740,25 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
     </div>
   </div>
 
-  <!-- TAB 2: CHART -->
+  <!-- TAB 2: MARKETS -->
+  <div class="tab-view" id="tab-markets">
+    <div class="section" style="padding:10px 0">
+      <div class="hax-matrix-head">MARKETS · <span id="haxMktCount">0</span> LIVE</div>
+      <div class="hax-matrix" id="haxMatrix"></div>
+      <div class="hax-tape" id="haxTape"></div>
+    </div>
+  </div>
+
+  <!-- TAB 3: CHART -->
   <div class="tab-view" id="tab-chart">
     <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center">
       <span style="font-size:8px;color:var(--muted);white-space:nowrap">CHART</span>
       <button id="chartCandleBtn" class="btn btn-ghost" onclick="setChartMode('candle')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">10s CANDLES</button>
       <button id="chartLineBtn" class="btn btn-ghost" onclick="setChartMode('line')" style="flex:1;padding:4px;font-size:8px">LINE</button>
+    </div>
+    <div style="display:flex;gap:4px;margin-bottom:6px">
+      <button class="btn btn-call" onclick="placeManualRF('RISE')" style="flex:1;padding:6px;font-size:9px">RISE</button>
+      <button class="btn btn-put" onclick="placeManualRF('FALL')" style="flex:1;padding:6px;font-size:9px">FALL</button>
     </div>
     <div class="section" style="padding:8px 0; overflow:hidden;">
       <div style="width:100%; overflow:hidden; background:rgba(6,9,18,0.4); border:1px solid var(--line); padding:3px;">
@@ -1063,6 +1073,9 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
 <div class="bottomnav">
     <button class="nav-btn active" data-tab="home" onclick="switchTab('home')">
       <span class="nav-lbl">HOME</span>
+    </button>
+    <button class="nav-btn" data-tab="markets" onclick="switchTab('markets')">
+      <span class="nav-lbl">MARKETS</span>
     </button>
     <button class="nav-btn" data-tab="chart" onclick="switchTab('chart')">
       <span class="nav-lbl">CHART</span>
