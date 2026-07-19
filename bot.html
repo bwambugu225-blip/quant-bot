@@ -2148,57 +2148,37 @@ function initStrategies(){
   G._aroonState = G._aroonState || {};
 
   S.push({
-    name: 'Aroon (period 25)',
+    name: 'Aroon (25) — Traffic Light',
     code: 'AROON',
     analyze: (candles, sym) => {
       if (candles.length < 30) return null;
-      const n = candles.length;
-      const st = G._aroonState[sym] || (G._aroonState[sym] = { armed:null, prevUp:50, prevDown:50 });
       const { up, down } = aroon(candles, 25);
-      const last = candles[n-1];
-      const prev = candles[n-2];
-      let out = null;
-
-      // Detect the cross (arms the trade) but do NOT enter here.
-      if(st.prevUp <= st.prevDown && up > down) st.armed = 'RISE';
-      else if(st.prevDown <= st.prevUp && down > up) st.armed = 'FALL';
-
-      // Trigger only after cross: wait for the relevant Aroon line to hit 100, then confirm next move.
-      let triggered = null;
-      if(st.armed === 'RISE'){
-        if(up >= 100 && last.close > prev.close) triggered = 'RISE';
-        if(down >= 100 && last.close > prev.close) triggered = 'RISE'; // exhaustion reversal
-      } else if(st.armed === 'FALL'){
-        if(down >= 100 && last.close < prev.close) triggered = 'FALL';
-        if(up >= 100 && last.close < prev.close) triggered = 'FALL';
+      // Noise guard: count direction flips in last 12 bars (>3 flips = skip)
+      const st = G._aroonState[sym] || (G._aroonState[sym] = { dirs: [] });
+      if(!st.dirs.length){
+        for(let i=4;i<12;i++){
+          const v = aroon(candles.slice(i-25,i+1), 25);
+          st.dirs.push(v.up > v.down ? 'U' : 'D');
+        }
       }
-      st.prevUp = up; st.prevDown = down;
-      if(!triggered) return null;
+      const newDir = up > down ? 'U' : 'D';
+      st.dirs.push(newDir);
+      if(st.dirs.length > 12) st.dirs.shift();
+      let flips = 0;
+      for(let i=1;i<st.dirs.length;i++) if(st.dirs[i] !== st.dirs[i-1]) flips++;
+      if(flips > 3) return null;
 
-      // ── SUBSTANTIAL CONFIRMATION (beyond the rule) ──
-      // 1) Trend alignment: price above EMA(20) for RISE, below for FALL
-      const pr = candles.map(c=>c.close);
-      const e20 = ema(pr, 20);
-      if(e20 !== null){
-        if(triggered==='RISE' && last.close <= e20) return null;
-        if(triggered==='FALL' && last.close >= e20) return null;
+      const TH = 70; // threshold: one line above, the other below
+      let action = null, conf = 0;
+      if(up >= TH && down <= 100 - TH){
+        action = 'RISE';
+        conf = Math.min(96, 70 + (up - TH) * 0.5 + (TH - down) * 0.5);
+      } else if(down >= TH && up <= 100 - TH){
+        action = 'FALL';
+        conf = Math.min(96, 70 + (down - TH) * 0.5 + (TH - up) * 0.5);
       }
-      // 2) Momentum: AO histogram same colour as intended direction
-      const aoArr = ao(candles); const acArr = ac(aoArr);
-      if(aoArr.length && acArr.length){
-        const aNow = aoArr[aoArr.length-1], cNow = acArr[acArr.length-1];
-        if(triggered==='RISE' && (aNow < 0 || cNow < 0)) return null;
-        if(triggered==='FALL' && (aNow > 0 || cNow > 0)) return null;
-      }
-      // 3) Structure: at least 2 of last 3 candles agree with direction (not choppy)
-      let agree = 0;
-      for(let i=n-3;i<n;i++){ if(triggered==='RISE' && candles[i].close > candles[i].open) agree++; if(triggered==='FALL' && candles[i].close < candles[i].open) agree++; }
-      if(agree < 2) return null;
-      // 4) Range expansion: trigger candle body not tiny (real move, not doji)
-      const rng = (last.high - last.low) || 0.0001;
-      if(Math.abs(last.close - last.open) / rng < 0.35) return null;
-
-      return { action: triggered, conf: 88, src: 'AROON' };
+      if(!action) return null;
+      return { action, conf: Math.round(conf), src: 'AROON' };
     }
   });
 
