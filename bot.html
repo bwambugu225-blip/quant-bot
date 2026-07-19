@@ -2446,6 +2446,8 @@ function toggleDigitEngine(){
   if(btn) btn.textContent = BotState.isTrading ? 'STOP' : 'AUTO';
   if(BotState.isTrading){
     BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
+    BotState.lossStreak = 0;
+    G.ACTIVE_CONTRACTS.clear();
     log('[DIGIT] Auto engine started','s');
   } else {
     log('[DIGIT] Auto engine stopped','w');
@@ -2916,7 +2918,7 @@ function buildCandlesFromTicks(sym, times, prices){
   if(!sym || !times?.length || !prices?.length) return;
   for(let i=0;i<Math.min(times.length,prices.length);i++){
     const p = +prices[i];
-    if(Number.isFinite(p)){ processDigit(sym, p); if(i<=2) log(`[DIGIT] ${sym} history price #${i}: ${p} → digit ${BotState.tickQueue[BotState.tickQueue.length-1]}`,'i'); }
+    if(Number.isFinite(p)){ const d = processDigit(sym, p); if(i<=2) log(`[DIGIT] ${sym} history price #${i}: ${p} → digit ${d}`,'i'); }
   }
   const { candles, bucket, candleStart } = bucketTicks(times, prices, G.CANDLE_INTERVAL_MS);
   // Same logic, 10s bucket, into the chart buffer (candles10)
