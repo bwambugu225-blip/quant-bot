@@ -2168,14 +2168,13 @@ function initStrategies(){
       for(let i=1;i<st.dirs.length;i++) if(st.dirs[i] !== st.dirs[i-1]) flips++;
       if(flips > 3) return null;
 
-      const TH = 70; // threshold: one line above, the other below
       let action = null, conf = 0;
-      if(up >= TH && down <= 100 - TH){
+      if(up === 100 && down <= 30){
         action = 'RISE';
-        conf = Math.min(96, 70 + (up - TH) * 0.5 + (TH - down) * 0.5);
-      } else if(down >= TH && up <= 100 - TH){
+        conf = Math.min(96, 80 + (30 - down) * 0.6);
+      } else if(down === 100 && up <= 30){
         action = 'FALL';
-        conf = Math.min(96, 70 + (down - TH) * 0.5 + (TH - up) * 0.5);
+        conf = Math.min(96, 80 + (30 - up) * 0.6);
       }
       if(!action) return null;
       return { action, conf: Math.round(conf), src: 'AROON' };
