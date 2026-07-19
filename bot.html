@@ -3741,8 +3741,7 @@ function drawChart(){
   const all = liveCandle ? [...c, liveCandle] : c;
   const dpr = window.devicePixelRatio || 1;
   const h = canvas.clientHeight || 250;
-  const wrH = Math.round(h * 0.20);
-  const cdlH = h - wrH;
+  const cdlH = h;
   if(all.length<2 || raw.length<180){
     canvas.style.width = '100%'; canvas.style.minWidth = '';
     canvas.width = w*dpr; canvas.height = h*dpr;
@@ -4172,52 +4171,6 @@ function drawChart(){
     ctx.textBaseline = isRise ? 'top' : 'bottom';
     ctx.fillText(sig.conf+'%', x, isRise ? sy+hh+2 : sy-hh-2);
   });
-  // ── Williams %R panel (bottom 20%) ──
-  const p=10;
-  const wrArr=[];
-  for(let i=p-1;i<all.length;i++){
-    const slice=all.slice(i-p+1,i+1);
-    const hh=max(slice.map(k=>k.high)), ll=min(slice.map(k=>k.low));
-    wrArr.push(hh===ll?-50:((hh-all[i].close)/(hh-ll))*-100);
-  }
-  const wrY0 = cdlH, wrY1 = h;
-  const wrMin=-100, wrMax=0;
-  const wry=v=>wrY0+((v-wrMax)/(wrMin-wrMax))*(wrY1-wrY0);
-  const wrCw = cw;
-  const wrStart = all.length - wrArr.length;
-  // OB/OS zones (values in standard 0-100 notation) using elegant terracotta/sage colors
-  ctx.fillStyle = 'rgba(178,80,80,0.05)';
-  ctx.fillRect(0, wry(-20), w, wrY1 - wry(-20));
-  ctx.fillStyle = 'rgba(74,110,81,0.05)';
-  ctx.fillRect(0, wrY0, w, wry(-80) - wrY0);
-  // Reference lines
-  ctx.strokeStyle='rgba(178,80,80,0.3)'; ctx.lineWidth=1; ctx.setLineDash([4,3]);
-  ctx.beginPath(); const obY=wry(-20); ctx.moveTo(0,obY); ctx.lineTo(w,obY); ctx.stroke();
-  ctx.fillStyle='rgba(178,80,80,0.6)'; ctx.font='9px monospace'; ctx.textAlign='right';
-  ctx.fillText('-20 OB', w-4, obY-2);
-  ctx.strokeStyle='rgba(74,110,81,0.3)'; ctx.lineWidth=1;
-  ctx.beginPath(); const osY=wry(-80); ctx.moveTo(0,osY); ctx.lineTo(w,osY); ctx.stroke();
-  ctx.fillStyle='rgba(74,110,81,0.6)'; ctx.font='9px monospace';
-  ctx.fillText('-80 OS', w-4, osY-2);
-  // Mid line
-  ctx.strokeStyle='rgba(128,128,128,0.2)'; ctx.lineWidth=1;
-  ctx.beginPath(); const midY=wry(-50); ctx.moveTo(0,midY); ctx.lineTo(w,midY); ctx.stroke();
-  ctx.setLineDash([]);
-  // WR line with elegant accent gold
-  ctx.strokeStyle=clr('accent') || '#9c7c38'; ctx.lineWidth=1.5;
-  ctx.beginPath();
-  wrArr.forEach((v,i)=>{
-    const x=(wrStart+i)*wrCw+wrCw/2;
-    i===0?ctx.moveTo(x,wry(v)):ctx.lineTo(x,wry(v));
-  });
-  ctx.stroke();
-  // Divider between sections
-  ctx.strokeStyle=LINE; ctx.lineWidth=1; ctx.setLineDash([]);
-  ctx.beginPath(); ctx.moveTo(0,cdlH); ctx.lineTo(w,cdlH); ctx.stroke();
-  // Labels
-  ctx.fillStyle=MUTED; ctx.font='9px monospace'; ctx.textAlign='left';
-  ctx.fillText('WR(10)', 4, cdlH+11);
-  ctx.textAlign='left'; ctx.textBaseline='alphabetic';
   // ── Chart cursor ──
   if(G._chartCursor && G._chartCursor.x >= 0 && G._chartCursor.x < w){
     const cx = G._chartCursor.x, cy = G._chartCursor.y;
@@ -4234,16 +4187,6 @@ function drawChart(){
       ctx.fillStyle='rgba(0,0,0,0.75)'; ctx.fillRect(cx+6, Math.max(0,cy-12), 80, 18);
       ctx.fillStyle='#fff'; ctx.font='10px monospace'; ctx.textAlign='left'; ctx.textBaseline='middle';
       ctx.fillText(crossPrice.toFixed(3), cx+10, cy);
-    }
-    // WR label at cursor
-    if(cy >= cdlH && cy <= h && wrArr.length > 0){
-      const wrIdx = Math.max(0, Math.min(wrArr.length-1, ci - wrStart));
-      const wrVal = wrArr[wrIdx];
-      ctx.fillStyle='rgba(42,36,30,0.85)'; ctx.fillRect(cx+6, Math.max(cdlH+2,cy-12), 60, 18);
-      ctx.fillStyle=clr('accent') || '#9c7c38'; ctx.font='10px monospace'; ctx.textAlign='left'; ctx.textBaseline='middle';
-      ctx.fillText('WR: '+wrVal.toFixed(1), cx+10, cy);
-      ctx.fillStyle='rgba(128,128,128,0.2)';
-      ctx.beginPath(); ctx.moveTo(cx,cdlH); ctx.lineTo(cx,h); ctx.stroke();
     }
     // Candle info tooltip
     if(ci >= 0 && ci < all.length && cy >= 0 && cy <= cdlH){
