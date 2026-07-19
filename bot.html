@@ -834,6 +834,13 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
             <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">BB (20,2)</span>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
+            <label class="switch" title="Aroon (25)">
+              <input type="checkbox" id="settingAroon" checked onchange="updateChartSetting('aroon', this.checked)">
+              <span class="slider"></span>
+            </label>
+            <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">Aroon(25)</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
             <label class="switch" title="Grid Lines">
               <input type="checkbox" id="settingGrid" checked onchange="updateChartSetting('grid', this.checked)">
               <span class="slider"></span>
@@ -1551,6 +1558,7 @@ function applySettings(s){
       const ef=document.getElementById('settingFractals'); if(ef) ef.checked=ChartSettings.fractals;
       const eh=document.getElementById('settingHaPatterns'); if(eh) eh.checked=ChartSettings.haPatterns;
       const eao=document.getElementById('settingAO'); if(eao) eao.checked=ChartSettings.ao;
+      const ear=document.getElementById('settingAroon'); if(ear) ear.checked=ChartSettings.aroon;
       const e4=document.getElementById('settingBodyRatio'); if(e4) e4.value=ChartSettings.bodyRatio;
     }
     if(s.token){ G.TOKEN = s.token; const e=document.getElementById('apiToken'); if(e) e.value=s.token; }
@@ -1948,6 +1956,7 @@ const ChartSettings = {
   ema30: true,
   ema50: false,
   bb: true,
+  aroon: true,
   fractals: true,
   haPatterns: true,
   ao: true,
@@ -4093,6 +4102,39 @@ function drawChart(){
   }
   if (ChartSettings.bb) drawBB();
 
+  // ── Aroon (25) oscillator lines in WR panel ──
+  function drawAroon(){
+    // re-use the WR panel's pixel space — negate values so 0‑100 maps to -100..0
+    const aArr = [];
+    for(let i=24;i<chartCandles.length;i++){
+      const slice = chartCandles.slice(i-24,i+1);
+      const v = aroon(slice,25);
+      aArr.push({ up: -v.up, down: -v.down });
+    }
+    if(aArr.length < 2) return;
+    const start = chartCandles.length - aArr.length;
+    // Aroon Up
+    ctx.strokeStyle='rgba(54,225,255,0.8)'; ctx.lineWidth=1.5;
+    ctx.beginPath();
+    aArr.forEach((v,i)=>{
+      const x=(start+i)*cw+cw/2;
+      i===0?ctx.moveTo(x,wry(v.up)):ctx.lineTo(x,wry(v.up));
+    });
+    ctx.stroke();
+    // Aroon Down
+    ctx.strokeStyle='rgba(255,138,210,0.8)'; ctx.lineWidth=1.5;
+    ctx.beginPath();
+    aArr.forEach((v,i)=>{
+      const x=(start+i)*cw+cw/2;
+      i===0?ctx.moveTo(x,wry(v.down)):ctx.lineTo(x,wry(v.down));
+    });
+    ctx.stroke();
+    // label in WR area
+    ctx.fillStyle='rgba(128,128,128,0.5)'; ctx.font='9px monospace'; ctx.textAlign='right';
+    ctx.fillText('Aroon(25)', w-4, h-4);
+  }
+  if (ChartSettings.aroon) drawAroon();
+
   // Signal markers on candlestick panel
   const allSigs = G._allSignals || [];
   const sigIndex = new Map();
@@ -5160,6 +5202,7 @@ function restoreState(){
         const elFractals = document.getElementById('settingFractals'); if(elFractals) elFractals.checked = ChartSettings.fractals;
         const elHa = document.getElementById('settingHaPatterns'); if(elHa) elHa.checked = ChartSettings.haPatterns;
         const elAO = document.getElementById('settingAO'); if(elAO) elAO.checked = ChartSettings.ao;
+        const elAroon = document.getElementById('settingAroon'); if(elAroon) elAroon.checked = ChartSettings.aroon;
         const elRatio = document.getElementById('settingBodyRatio'); if(elRatio) elRatio.value = ChartSettings.bodyRatio;
       } catch(ex){ console.log('[RESTORE CHART SETTINGS]', ex.message); }
     }
