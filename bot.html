@@ -3741,7 +3741,9 @@ function drawChart(){
   const all = liveCandle ? [...c, liveCandle] : c;
   const dpr = window.devicePixelRatio || 1;
   const h = canvas.clientHeight || 250;
-  const cdlH = h;
+  const aroonPanel = ChartSettings.aroon;
+  const panelH = aroonPanel ? Math.round(h * 0.20) : 0;
+  const cdlH = h - panelH;
   if(all.length<2 || raw.length<180){
     canvas.style.width = '100%'; canvas.style.minWidth = '';
     canvas.width = w*dpr; canvas.height = h*dpr;
@@ -4101,9 +4103,29 @@ function drawChart(){
   }
   if (ChartSettings.bb) drawBB();
 
-  // ── Aroon (25) oscillator lines in WR panel ──
-  function drawAroon(){
-    const wry2=v=>cdlH+(1-v/100)*(h-cdlH); // map 0..100 to WR panel (100 at top)
+  // ── Aroon (25) oscillator panel (bottom 20%) ──
+  function drawAroonPanel(){
+    const y0 = cdlH, y1 = h;
+    const aroY = v => y0 + (1 - v/100) * (y1 - y0); // 100 at top
+    // Divider
+    ctx.strokeStyle = LINE; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, y0); ctx.lineTo(w, y0); ctx.stroke();
+    // Panel background
+    ctx.fillStyle = 'rgba(20,18,15,0.3)';
+    ctx.fillRect(0, y0, w, y1 - y0);
+    // Reference lines at 70 (strong trend) and 30 (weak)
+    ctx.strokeStyle = 'rgba(178,80,80,0.25)'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+    ctx.beginPath();
+    const y70 = aroY(70); ctx.moveTo(0, y70); ctx.lineTo(w, y70); ctx.stroke();
+    ctx.fillStyle = 'rgba(178,80,80,0.5)'; ctx.font = '8px monospace'; ctx.textAlign = 'right';
+    ctx.fillText('70', w-4, y70-2);
+    ctx.strokeStyle = 'rgba(74,110,81,0.25)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    const y30 = aroY(30); ctx.moveTo(0, y30); ctx.lineTo(w, y30); ctx.stroke();
+    ctx.fillStyle = 'rgba(74,110,81,0.5)'; ctx.font = '8px monospace';
+    ctx.fillText('30', w-4, y30-2);
+    ctx.setLineDash([]);
+    // Compute values
     const aArr = [];
     for(let i=25;i<chartCandles.length;i++){
       const slice = chartCandles.slice(i-25,i+1);
@@ -4112,24 +4134,24 @@ function drawChart(){
     }
     if(aArr.length < 2) return;
     const start = chartCandles.length - aArr.length;
-    ctx.strokeStyle='rgba(54,225,255,0.8)'; ctx.lineWidth=1.5;
+    ctx.strokeStyle = 'rgba(54,225,255,0.8)'; ctx.lineWidth = 1.5;
     ctx.beginPath();
     aArr.forEach((v,i)=>{
-      const x=(start+i)*cw+cw/2;
-      i===0?ctx.moveTo(x,wry2(v.up)):ctx.lineTo(x,wry2(v.up));
+      const x = (start+i)*cw + cw/2;
+      i===0 ? ctx.moveTo(x, aroY(v.up)) : ctx.lineTo(x, aroY(v.up));
     });
     ctx.stroke();
-    ctx.strokeStyle='rgba(255,138,210,0.8)'; ctx.lineWidth=1.5;
+    ctx.strokeStyle = 'rgba(255,138,210,0.8)'; ctx.lineWidth = 1.5;
     ctx.beginPath();
     aArr.forEach((v,i)=>{
-      const x=(start+i)*cw+cw/2;
-      i===0?ctx.moveTo(x,wry2(v.down)):ctx.lineTo(x,wry2(v.down));
+      const x = (start+i)*cw + cw/2;
+      i===0 ? ctx.moveTo(x, aroY(v.down)) : ctx.lineTo(x, aroY(v.down));
     });
     ctx.stroke();
-    ctx.fillStyle='rgba(128,128,128,0.5)'; ctx.font='9px monospace'; ctx.textAlign='right';
-    ctx.fillText('Aroon(25)', w-4, h-4);
+    ctx.fillStyle = 'rgba(128,128,128,0.5)'; ctx.font = '9px monospace'; ctx.textAlign = 'left';
+    ctx.fillText('Aroon(25)', 4, y1 - 6);
   }
-  if (ChartSettings.aroon) drawAroon();
+  if (ChartSettings.aroon) drawAroonPanel();
 
   // Signal markers on candlestick panel
   const allSigs = G._allSignals || [];
