@@ -2921,15 +2921,17 @@ function buildCandlesFromTicks(sym, times, prices){
   const { candles, bucket, candleStart } = bucketTicks(times, prices, G.CANDLE_INTERVAL_MS);
   // Same logic, 10s bucket, into the chart buffer (candles10)
   const c10 = bucketTicks(times, prices, 10000);
-  G.MARKET.tickBuf10[sym] = c10.bucket.map(b=>b.price);
-  G.MARKET.candle10OpenAt[sym] = c10.candleStart || (Date.now());
+  G.MARKET.tickBuf10[sym] = [];
+  G.MARKET.candle10OpenAt[sym] = Date.now();
   const arr10 = c10.candles.slice(-180);
   if(arr10.length){
     G.MARKET.candles10[sym] = arr10;
     log(`[HIST] ${sym}: 10s chart candles built → ${arr10.length}`,'i');
   }
-  G.MARKET.tickBuf[sym] = bucket.map(b=>b.price);
-  G.MARKET.candleOpenAt[sym] = candleStart || (Date.now());
+  // Clear stale tick buffer so first live tick starts a fresh candle.
+  // The leftover bucket ticks are already reflected in the last candle's close.
+  G.MARKET.tickBuf[sym] = [];
+  G.MARKET.candleOpenAt[sym] = Date.now();
   const arr = candles.slice(-250);
   if(arr.length){
     G.MARKET.candles[sym] = arr;
