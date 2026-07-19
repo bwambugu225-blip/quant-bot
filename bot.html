@@ -2709,7 +2709,7 @@ function connectMarketWS(){
     log('[MARKET] Connected','s');
     SYMBOLS.forEach(s=>{
       mws.send(JSON.stringify({
-        ticks_history:s.sym, end:'latest', count:900, style:'ticks',
+        ticks_history:s.sym, end:'latest', count:3000, style:'ticks',
         subscribe:1, req_id:genId()
       }));
     });
