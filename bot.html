@@ -968,6 +968,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
   <!-- TAB 4: SETTINGS -->
   <div class="tab-view" id="tab-settings">
     <div class="section">
+      <div id="logBox" class="console-box" style="max-height:100px;margin-bottom:10px"></div>
       <div class="section-title">Trading Config</div>
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
         <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
@@ -3371,8 +3372,8 @@ function evaluateAndTrade(sym, liveBuf){
     if(rB != null){
       let bias = rB <= 25 ? 'RISE' : rB >= 75 ? 'FALL' : null;
       if(bias){
-        const liveConf = Math.min(92, Math.max(40, Math.round(50 + Math.abs(rB-50)*1.1)));
-        if(liveConf >= 82){
+            const liveConf = Math.min(92, Math.max(40, Math.round(50 + Math.abs(rB-50)*1.1)));
+        if(liveConf >= 72){
           const sig = { action: bias, conf: liveConf, src:'BIAS_REV', lastPrice: arr[arr.length-1].close, sym };
           storeSignal(sym, arr[arr.length-1]?.epoch||0, sig, true);
           log(`[SIGNAL] ${sym}: ${bias} ${liveConf}% (BIAS_REV)`,'t');
