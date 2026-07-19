@@ -2111,28 +2111,54 @@ function initStrategies(){
     name: 'Aroon (period 25)',
     code: 'AROON',
     analyze: (candles, sym) => {
-      if (candles.length < 27) return null;
+      if (candles.length < 30) return null;
+      const n = candles.length;
       const st = G._aroonState[sym] || (G._aroonState[sym] = { armed:null, prevUp:50, prevDown:50 });
       const { up, down } = aroon(candles, 25);
-      const last = candles[candles.length-1];
-      const prev = candles[candles.length-2];
+      const last = candles[n-1];
+      const prev = candles[n-2];
       let out = null;
 
       // Detect the cross (arms the trade) but do NOT enter here.
       if(st.prevUp <= st.prevDown && up > down) st.armed = 'RISE';
       else if(st.prevDown <= st.prevUp && down > up) st.armed = 'FALL';
 
-      // Entry only after cross: wait for the relevant line to hit 100, then confirm next move.
+      // Trigger only after cross: wait for the relevant Aroon line to hit 100, then confirm next move.
+      let triggered = null;
       if(st.armed === 'RISE'){
-        if(up >= 100 && last.close > prev.close){ out = {action:'RISE', conf:85, src:'AROON'}; }
-        // Aroon-Up hitting 0 after bearish context confirms downtrend exhaustion → RISE on recovery
-        if(down >= 100 && last.close > prev.close){ out = {action:'RISE', conf:84, src:'AROON'}; }
+        if(up >= 100 && last.close > prev.close) triggered = 'RISE';
+        if(down >= 100 && last.close > prev.close) triggered = 'RISE'; // exhaustion reversal
       } else if(st.armed === 'FALL'){
-        if(down >= 100 && last.close < prev.close){ out = {action:'FALL', conf:85, src:'AROON'}; }
-        if(up >= 100 && last.close < prev.close){ out = {action:'FALL', conf:84, src:'AROON'}; }
+        if(down >= 100 && last.close < prev.close) triggered = 'FALL';
+        if(up >= 100 && last.close < prev.close) triggered = 'FALL';
       }
       st.prevUp = up; st.prevDown = down;
-      return out;
+      if(!triggered) return null;
+
+      // ── SUBSTANTIAL CONFIRMATION (beyond the rule) ──
+      // 1) Trend alignment: price above EMA(20) for RISE, below for FALL
+      const pr = candles.map(c=>c.close);
+      const e20 = ema(pr, 20);
+      if(e20 !== null){
+        if(triggered==='RISE' && last.close <= e20) return null;
+        if(triggered==='FALL' && last.close >= e20) return null;
+      }
+      // 2) Momentum: AO histogram same colour as intended direction
+      const aoArr = ao(candles); const acArr = ac(aoArr);
+      if(aoArr.length && acArr.length){
+        const aNow = aoArr[aoArr.length-1], cNow = acArr[acArr.length-1];
+        if(triggered==='RISE' && (aNow < 0 || cNow < 0)) return null;
+        if(triggered==='FALL' && (aNow > 0 || cNow > 0)) return null;
+      }
+      // 3) Structure: at least 2 of last 3 candles agree with direction (not choppy)
+      let agree = 0;
+      for(let i=n-3;i<n;i++){ if(triggered==='RISE' && candles[i].close > candles[i].open) agree++; if(triggered==='FALL' && candles[i].close < candles[i].open) agree++; }
+      if(agree < 2) return null;
+      // 4) Range expansion: trigger candle body not tiny (real move, not doji)
+      const rng = (last.high - last.low) || 0.0001;
+      if(Math.abs(last.close - last.open) / rng < 0.35) return null;
+
+      return { action: triggered, conf: 88, src: 'AROON' };
     }
   });
 
@@ -2140,7 +2166,7 @@ function initStrategies(){
     name: 'Williams Fractal Reversal',
     code: 'FRACTAL_BRK',
     analyze: (candles, sym) => {
-      if (candles.length < 8) return null;
+      if (candles.length < 12) return null;
       const n = candles.length;
       const last = candles[n-1];
       // Locate most recent 5-bar fractals + track S/R from prior fractals
@@ -2157,26 +2183,50 @@ function initStrategies(){
         if(f.type==='bear' && f.lvl > last.high && (lastBearLvl===null || f.lvl < lastBearLvl)) lastBearLvl = f.lvl;
       }
       const tol = last.close * 0.0005;
-      // Bullish fractal reversal: pinbar OR S/R bounce OR elite (3 down + engulfing)
+
+      // Bullish reversal candidate (your rule): pinbar OR S/R bounce OR elite engulfing
+      let riseBase = false;
       if(bullF){
         const pin = isPinbar(bullF) === 'bull';
         const atSR = lastBullLvl!==null && Math.abs(bullF.low - lastBullLvl) <= tol;
         const elite = candles[n-2].close < candles[n-2].open && candles[n-3].close < candles[n-3].open &&
                       last.close > last.open && last.close > candles[n-2].high;
-        if((pin || atSR || elite) && last.close > bullF.low && last.close > candles[n-2].close){
-          return {action:'RISE', conf:84, src:'FRACTAL_BRK'};
-        }
+        riseBase = (pin || atSR || elite) && last.close > bullF.low && last.close > candles[n-2].close;
       }
+      let fallBase = false;
       if(bearF){
         const pin = isPinbar(bearF) === 'bear';
         const atSR = lastBearLvl!==null && Math.abs(bearF.high - lastBearLvl) <= tol;
         const elite = candles[n-2].close > candles[n-2].open && candles[n-3].close > candles[n-3].open &&
                       last.close < last.open && last.close < candles[n-2].low;
-        if((pin || atSR || elite) && last.close < bearF.high && last.close < candles[n-2].close){
-          return {action:'FALL', conf:84, src:'FRACTAL_BRK'};
-        }
+        fallBase = (pin || atSR || elite) && last.close < bearF.high && last.close < candles[n-2].close;
       }
-      return null;
+      if(!riseBase && !fallBase) return null;
+
+      // ── SUBSTANTIAL CONFIRMATION (beyond the rule) ──
+      // 1) Trend pullback context: price must be stretched from EMA(20) (reversal into mean)
+      const pr = candles.map(c=>c.close);
+      const e20 = ema(pr, 20);
+      if(e20 !== null){
+        if(riseBase && last.close >= e20) return null;       // bounce only valid below mean
+        if(fallBase && last.close <= e20) return null;
+      }
+      // 2) Momentum flip on AO: AO crossed to our side within last 3 bars
+      const aoArr = ao(candles);
+      let flipped = false;
+      for(let i=Math.max(1,n-3); i<n; i++){
+        if(riseBase && aoArr[i-1] < 0 && aoArr[i] >= 0) flipped = true;
+        if(fallBase && aoArr[i-1] > 0 && aoArr[i] <= 0) flipped = true;
+      }
+      if(!flipped) return null;
+      // 3) Rejection strength: trigger candle closed away from the wick (real rejection, body >= 45%)
+      const rng = (last.high - last.low) || 0.0001;
+      if(Math.abs(last.close - last.open) / rng < 0.45) return null;
+      // 4) Follow-through: current candle breaks the fractal extreme
+      if(riseBase && last.close <= bullF.low) return null;
+      if(fallBase && last.close >= bearF.high) return null;
+
+      return { action: riseBase ? 'RISE' : 'FALL', conf: 87, src: 'FRACTAL_BRK' };
     }
   });
 
@@ -2184,33 +2234,62 @@ function initStrategies(){
     name: 'Awesome Oscillator',
     code: 'AO',
     analyze: (candles, sym) => {
-      if (candles.length < 37) return null;
+      if (candles.length < 40) return null;
       const aoArr = ao(candles);
       const acArr = ac(aoArr);
       const n = aoArr.length;
-      const aoNow = aoArr[n-1], aoPrev = aoArr[n-2];
-      const acNow = acArr[n-1];
-      const last = candles[n-1], p1 = candles[n-2], p2 = candles[n-3];
+      const a0 = aoArr[n-1], a1 = aoArr[n-2], a2 = aoArr[n-3], a3 = aoArr[n-4];
+      const c0 = candles[n-1], c1 = candles[n-2], c2 = candles[n-3];
+      const lastUp = c0.close > c0.open, lastDn = c0.close < c0.open;
       let out = null;
-      // Bearish zero-line cross → wait, then check first 3 bars for down-AO bar + bullish price candle
-      if(aoPrev >= 0 && aoNow < 0){
-        for(let k=n-1; k>=Math.max(2,n-3); k--){
-          const bullCandle = candles[k].close > candles[k].open;
-          if(aoArr[k] < 0 && bullCandle){ out = {action:'FALL', conf:84, src:'AO'}; break; }
+
+      // ── 1) AO Saucer (Bill Williams) ──
+      // Bullish saucer: AO above 0, two consecutive lower (red) bars, then a green bar → RISE
+      if(a0 > 0 && a1 < a0 && a2 <= a1 && a3 > a2 && lastUp){ out = {action:'RISE', conf:86, src:'AO'}; }
+      // Bearish saucer: AO below 0, two consecutive higher (green) bars, then a red bar → FALL
+      else if(a0 < 0 && a1 > a0 && a2 >= a1 && a3 < a2 && lastDn){ out = {action:'FALL', conf:86, src:'AO'}; }
+
+      // ── 2) Twin-Peaks Divergence ──
+      if(!out){
+        // scan last ~16 bars for two same-side peaks with a swing between
+        const L = 16;
+        let p1i=-1, p2i=-1, swingMin=Infinity, swingMax=-Infinity;
+        for(let i=n-L; i<n; i++){
+          const a = aoArr[i];
+          if(a < aoArr[i-1] && a <= aoArr[i+1]){ // local min
+            if(swingMin > a){ swingMin = a; }
+          }
+          if(a > aoArr[i-1] && a >= aoArr[i+1]){ // local max
+            if(swingMax < a){ swingMax = a; }
+          }
+        }
+        // Bullish twin peaks: two lows below 0, second higher than first
+        const lows = [];
+        for(let i=n-L; i<n; i++){ if(aoArr[i] < aoArr[i-1] && aoArr[i] <= aoArr[i+1] && aoArr[i] < 0) lows.push(i); }
+        if(lows.length >= 2){
+          const f = lows[lows.length-2], s = lows[lows.length-1];
+          if(aoArr[s] > aoArr[f] && aoArr[s] < 0 && lastUp && candles[s].close > candles[f].close){ out = {action:'RISE', conf:87, src:'AO'}; }
+        }
+        // Bearish twin peaks: two highs above 0, second lower than first
+        const highs = [];
+        for(let i=n-L; i<n; i++){ if(aoArr[i] > aoArr[i-1] && aoArr[i] >= aoArr[i+1] && aoArr[i] > 0) highs.push(i); }
+        if(!out && highs.length >= 2){
+          const f = highs[highs.length-2], s = highs[highs.length-1];
+          if(aoArr[s] < aoArr[f] && aoArr[s] > 0 && lastDn && candles[s].close < candles[f].close){ out = {action:'FALL', conf:87, src:'AO'}; }
         }
       }
-      // Bullish zero-line cross → first 3 bars for up-AO bar + bearish price candle
-      else if(aoPrev <= 0 && aoNow > 0){
-        for(let k=n-1; k>=Math.max(2,n-3); k--){
-          const bearCandle = candles[k].close < candles[k].open;
-          if(aoArr[k] > 0 && bearCandle){ out = {action:'RISE', conf:84, src:'AO'}; break; }
-        }
-      }
-      // AC contradiction filter: drop signal if AC strongly opposes the intended direction
-      if(out){
-        if(out.action==='RISE' && acNow < -Math.abs(aoNow)*0.5) out = null;
-        if(out.action==='FALL' && acNow >  Math.abs(aoNow)*0.5) out = null;
-      }
+      if(!out) return null;
+
+      // ── Confirmation: AC must not contradict, and price body must be real ──
+      const acNow = acArr[n-1];
+      if(out.action==='RISE' && acNow < 0) return null;
+      if(out.action==='FALL' && acNow > 0) return null;
+      const rng = (c0.high - c0.low) || 0.0001;
+      if(Math.abs(c0.close - c0.open) / rng < 0.3) return null;
+      // Volatility gate: require some range so we're not trading dead ticks
+      const atrV = atr(candles, 14);
+      if(atrV !== null && atrV < candles[n-1].close * 0.0002) return null;
+
       return out;
     }
   });
