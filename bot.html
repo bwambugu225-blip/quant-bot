@@ -704,12 +704,9 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
           <div class="field" style="margin-bottom:6px">
             <label>Trading Strategy</label>
             <select id="strategySelect" class="inp" onchange="selectStrategy(this.value)" style="font-size:10px;width:100%">
-              <option value="BB_WPR_REV" selected>Bollinger + Williams %R</option>
-              <option value="BB_EMA_MACD">Bollinger + EMA/MACD</option>
-              <option value="BB_RSI_CCI">Bollinger + RSI/CCI</option>
-              <option value="EMA9_30_X">EMA 9/30 Cross</option>
-              <option value="FRACTAL_BRK">Williams Fractal Breakout</option>
-              <option value="HA_PAT">Heiken Ashi Pattern</option>
+              <option value="AROON" selected>Aroon (25)</option>
+              <option value="FRACTAL_BRK">Williams Fractal Reversal</option>
+              <option value="AO">Awesome Oscillator</option>
             </select>
             <div id="stratList" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px"></div>
           </div>
@@ -855,6 +852,13 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
               <span class="slider"></span>
             </label>
             <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">HA Pat</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <label class="switch" title="Awesome Oscillator">
+              <input type="checkbox" id="settingAO" checked onchange="updateChartSetting('ao', this.checked)">
+              <span class="slider"></span>
+            </label>
+            <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">AO</span>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
             <label class="switch" title="BB (20,2)">
@@ -1078,7 +1082,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
 <script>
 // -- GLOBAL BOT STATE --
 const G = {
-  SELECTED_STRATEGY: 'BB_WPR_REV',
+  SELECTED_STRATEGY: 'AROON',
   WS:null, CONNECTED:false, AUTH:false, RID:0, TOKEN:'', CLOSING_TRADE_WS:false,
   APP_ID:'33JFxN3sbe2usdFigbMb8',
   ACCOUNT_ID:null, ACCOUNT_TYPE:'demo', BALANCE:0,
@@ -1519,6 +1523,7 @@ function applySettings(s){
       const e30=document.getElementById('settingEma30'); if(e30) e30.checked=ChartSettings.ema30;
       const ef=document.getElementById('settingFractals'); if(ef) ef.checked=ChartSettings.fractals;
       const eh=document.getElementById('settingHaPatterns'); if(eh) eh.checked=ChartSettings.haPatterns;
+      const eao=document.getElementById('settingAO'); if(eao) eao.checked=ChartSettings.ao;
       const e4=document.getElementById('settingBodyRatio'); if(e4) e4.value=ChartSettings.bodyRatio;
     }
     if(s.token){ G.TOKEN = s.token; const e=document.getElementById('apiToken'); if(e) e.value=s.token; }
@@ -1914,6 +1919,7 @@ const ChartSettings = {
   bb: true,
   fractals: true,
   haPatterns: true,
+  ao: true,
   grid: true,
   bodyRatio: 0.6
 };
@@ -2028,6 +2034,69 @@ function atr(c,p=14){
   return s/p;
 }
 
+// ── Additional indicator helpers (10s-chart tuned) ──
+function median(c){ return c.map(k => (k.high + k.low) / 2); }
+
+// Aroon: periods since N-bar extreme, as percentage. period 25 (10s).
+function aroon(candles, p=25){
+  const n = candles.length;
+  if(n < p+1) return { up:50, down:50 };
+  const last = candles[n-1];
+  let hiIdx = n-1, loIdx = n-1;
+  for(let i=n-1; i>n-1-p; i--){
+    if(candles[i].high >= candles[hiIdx].high) hiIdx = i;
+    if(candles[i].low  <= candles[loIdx].low)  loIdx = i;
+  }
+  const up = 100 * (p - (n-1 - hiIdx)) / p;
+  const down = 100 * (p - (n-1 - loIdx)) / p;
+  return { up, down };
+}
+
+// Awesome Oscillator: SMA(5) - SMA(34) of median price.
+function ao(candles){
+  const m = median(candles);
+  const out = [];
+  for(let i=0;i<m.length;i++){
+    if(i < 33) { out.push(0); continue; }
+    const s5 = sma(m.slice(i-4, i+1), 5);
+    const s34 = sma(m.slice(i-33, i+1), 34);
+    out.push(s5 - s34);
+  }
+  return out;
+}
+
+// Accelerator Oscillator: AO - SMA(5) of AO.
+function ac(aoArr){
+  const out = [];
+  for(let i=0;i<aoArr.length;i++){
+    if(i < 5) { out.push(0); continue; }
+    const s5 = sma(aoArr.slice(i-4, i+1), 5);
+    out.push(aoArr[i] - s5);
+  }
+  return out;
+}
+
+// Pin bar: small body near one end, long wick to the rejection side.
+function isPinbar(k, wickMin=0.6){
+  const range = (k.high - k.low) || 0.0001;
+  const body = Math.abs(k.close - k.open);
+  const up = k.close >= k.open;
+  const upperWick = k.high - Math.max(k.open, k.close);
+  const lowerWick = Math.min(k.open, k.close) - k.low;
+  // Bullish pin: long lower wick (rejection of lows)
+  if(lowerWick / range >= wickMin && body / range < 0.4) return 'bull';
+  // Bearish pin: long upper wick (rejection of highs)
+  if(upperWick / range >= wickMin && body / range < 0.4) return 'bear';
+  return null;
+}
+
+// Strong candle: body dominates range.
+function isStrong(k, minRatio=0.7){
+  const range = (k.high - k.low) || 0.0001;
+  const body = Math.abs(k.close - k.open);
+  return body / range >= minRatio;
+}
+
 // ============================================================
 // WILLIAMS %R STRATEGY
 // ============================================================
@@ -2036,201 +2105,113 @@ function initStrategies(){
   G.DIGIT_AVG = {dou:{0:50,1:49,2:53,3:51,4:52,5:52,6:50,7:52,8:49,9:48},deo:{0:51,1:49,2:49,3:52,4:55,5:52,6:48,7:49,8:53,9:52},ou:{O:51,U:49},eo:{E:51,D:49},pou:{UU:51,UO:50,OO:51,OU:50},peo:{ED:49,DD:52,DE:54,EE:49}};
   G.STRATEGIES = [];
   const S = G.STRATEGIES;
+  G._aroonState = G._aroonState || {};
+
   S.push({
-    name: 'Bollinger Bands + Williams %R Reversal',
-    code: 'BB_WPR_REV',
+    name: 'Aroon (period 25)',
+    code: 'AROON',
     analyze: (candles, sym) => {
-      if (candles.length < 28) return null;
-      const prices = candles.map(c => c.close);
-      const hi = candles.map(c => c.high);
-      const lo = candles.map(c => c.low);
+      if (candles.length < 27) return null;
+      const st = G._aroonState[sym] || (G._aroonState[sym] = { armed:null, prevUp:50, prevDown:50 });
+      const { up, down } = aroon(candles, 25);
       const last = candles[candles.length-1];
+      const prev = candles[candles.length-2];
+      let out = null;
 
-      const bbSma = sma(prices, 20);
-      const bbStd = stddev(prices, 20);
-      if (bbSma === null || bbStd === null) return null;
-      const upperBB = bbSma + 2.0 * bbStd;
-      const lowerBB = bbSma - 2.0 * bbStd;
+      // Detect the cross (arms the trade) but do NOT enter here.
+      if(st.prevUp <= st.prevDown && up > down) st.armed = 'RISE';
+      else if(st.prevDown <= st.prevUp && down > up) st.armed = 'FALL';
 
-      const getWPR = (hiArr, loArr, clArr, period, idx) => {
-        if(idx < period) return -50;
-        const sliceHi = hiArr.slice(idx - period + 1, idx + 1);
-        const sliceLo = loArr.slice(idx - period + 1, idx + 1);
-        const hh = Math.max(...sliceHi);
-        const ll = Math.min(...sliceLo);
-        return hh === ll ? -50 : ((hh - clArr[idx]) / (hh - ll)) * -100;
-      };
-
-      const currIdx = prices.length - 1;
-      const w7curr = getWPR(hi, lo, prices, 7, currIdx);
-      const w7prev = getWPR(hi, lo, prices, 7, currIdx - 1);
-      const w14curr = getWPR(hi, lo, prices, 14, currIdx);
-      const w14prev = getWPR(hi, lo, prices, 14, currIdx - 1);
-
-      const wprRise = (w7prev < -80 && w7curr >= -78) || (w14prev < -80 && w14curr >= -76);
-      const wprFall = (w7prev > -20 && w7curr <= -22) || (w14prev > -20 && w14curr <= -24);
-
-      if (last.close <= lowerBB && wprRise) {
-        return {action:'RISE', conf: 82, src:'BB_WPR_REV'};
-      } else if (last.close >= upperBB && wprFall) {
-        return {action:'FALL', conf: 82, src:'BB_WPR_REV'};
+      // Entry only after cross: wait for the relevant line to hit 100, then confirm next move.
+      if(st.armed === 'RISE'){
+        if(up >= 100 && last.close > prev.close){ out = {action:'RISE', conf:85, src:'AROON'}; }
+        // Aroon-Up hitting 0 after bearish context confirms downtrend exhaustion → RISE on recovery
+        if(down >= 100 && last.close > prev.close){ out = {action:'RISE', conf:84, src:'AROON'}; }
+      } else if(st.armed === 'FALL'){
+        if(down >= 100 && last.close < prev.close){ out = {action:'FALL', conf:85, src:'AROON'}; }
+        if(up >= 100 && last.close < prev.close){ out = {action:'FALL', conf:84, src:'AROON'}; }
       }
-      return null;
+      st.prevUp = up; st.prevDown = down;
+      return out;
     }
   });
 
   S.push({
-    name: 'Bollinger Bands + EMA/MACD Trend',
-    code: 'BB_EMA_MACD',
-    analyze: (candles, sym) => {
-      if (candles.length < 28) return null;
-      const prices = candles.map(c => c.close);
-      const last = candles[candles.length-1];
-
-      const bbSma = sma(prices, 20);
-      const bbStd = stddev(prices, 20);
-      if (bbSma === null || bbStd === null) return null;
-      const upperBB = bbSma + 2.0 * bbStd;
-      const lowerBB = bbSma - 2.0 * bbStd;
-
-      const ema5curr = ema(prices, 5);
-      const ema5prev = ema(prices.slice(0, -1), 5);
-      const ema20curr = ema(prices, 20);
-      const ema20prev = ema(prices.slice(0, -1), 20);
-
-      if (ema5curr === null || ema20curr === null || ema5prev === null || ema20prev === null) return null;
-
-      let macdRise = false, macdFall = false;
-      const ema12 = ema(prices, 12);
-      const ema26 = ema(prices, 26);
-      if (ema12 !== null && ema26 !== null) {
-        const macdVal = ema12 - ema26;
-        const macdHistory = [];
-        for(let i = candles.length - 15; i < candles.length; i++) {
-          const subEma12 = ema(prices.slice(0, i + 1), 12);
-          const subEma26 = ema(prices.slice(0, i + 1), 26);
-          if (subEma12 !== null && subEma26 !== null) {
-            macdHistory.push(subEma12 - subEma26);
-          }
-        }
-        if (macdHistory.length >= 9) {
-          const signalVal = ema(macdHistory, 9);
-          if (signalVal !== null) {
-            const histVal = macdVal - signalVal;
-            const prevHistVal = macdHistory[macdHistory.length-2] - (ema(macdHistory.slice(0, -1), 9) || signalVal);
-            macdRise = histVal > 0 && histVal > prevHistVal;
-            macdFall = histVal < 0 && histVal < prevHistVal;
-          }
-        }
-      }
-
-      const emaRise = (ema5prev <= ema20prev && ema5curr > ema20curr) || (ema5curr > ema20curr + (last.close * 0.0001));
-      const emaFall = (ema5prev >= ema20prev && ema5curr < ema20curr) || (ema5curr < ema20curr - (last.close * 0.0001));
-
-      if (last.close <= lowerBB * 1.015 && macdRise && emaRise) {
-        return {action:'RISE', conf: 84, src:'BB_EMA_MACD'};
-      } else if (last.close >= upperBB * 0.985 && macdFall && emaFall) {
-        return {action:'FALL', conf: 84, src:'BB_EMA_MACD'};
-      }
-      return null;
-    }
-  });
-
-  S.push({
-    name: 'Bollinger Bands + RSI/CCI pullback',
-    code: 'BB_RSI_CCI',
-    analyze: (candles, sym) => {
-      if (candles.length < 28) return null;
-      const prices = candles.map(c => c.close);
-      const last = candles[candles.length-1];
-
-      const bbSma = sma(prices, 20);
-      const bbStd = stddev(prices, 20);
-      if (bbSma === null || bbStd === null) return null;
-      const upperBB = bbSma + 2.0 * bbStd;
-      const lowerBB = bbSma - 2.0 * bbStd;
-
-      const rsi14 = rsi(prices, 14);
-      const cci14 = cci(candles, 14);
-
-      if (rsi14 === null || cci14 === null) return null;
-
-      if (last.close <= lowerBB && rsi14 < 35 && cci14 < -140) {
-        return {action:'RISE', conf: 86, src:'BB_RSI_CCI'};
-      } else if (last.close >= upperBB && rsi14 > 65 && cci14 > 140) {
-        return {action:'FALL', conf: 86, src:'BB_RSI_CCI'};
-      }
-      return null;
-    }
-  });
-
-  S.push({
-    name: 'EMA 9 / 30 Cross',
-    code: 'EMA9_30_X',
-    analyze: (candles, sym) => {
-      if (candles.length < 32) return null;
-      const prices = candles.map(c => c.close);
-      const last = candles[candles.length-1];
-      const e9c = ema(prices, 9),  e9p = ema(prices.slice(0,-1), 9);
-      const e30c = ema(prices, 30), e30p = ema(prices.slice(0,-1), 30);
-      if(e9c===null||e9p===null||e30c===null||e30p===null) return null;
-      // Bullish cross: EMA9 crosses above EMA30 with momentum confirmation
-      if(e9p <= e30p && e9c > e30c && last.close > e9c){
-        return {action:'RISE', conf: 84, src:'EMA9_30_X'};
-      }
-      // Bearish cross: EMA9 crosses below EMA30
-      if(e9p >= e30p && e9c < e30c && last.close < e9c){
-        return {action:'FALL', conf: 84, src:'EMA9_30_X'};
-      }
-      return null;
-    }
-  });
-
-  S.push({
-    name: 'Williams Fractal Breakout',
+    name: 'Williams Fractal Reversal',
     code: 'FRACTAL_BRK',
     analyze: (candles, sym) => {
-      if (candles.length < 12) return null;
+      if (candles.length < 8) return null;
       const n = candles.length;
       const last = candles[n-1];
-      // Bullish fractal (lowest of 5) within window
-      let bullFractal = null, bearFractal = null;
+      // Locate most recent 5-bar fractals + track S/R from prior fractals
+      let bullF = null, bearF = null, lastBullLvl = null, lastBearLvl = null;
+      const fractals = [];
       for(let i=2; i<n-2; i++){
-        const c = candles[i];
-        const a=candles[i-2], b=candles[i-1], d=candles[i+1], e=candles[i+2];
-        if(c.low < a.low && c.low < b.low && c.low <= d.low && c.low <= e.low) bullFractal = c.low;
-        if(c.high > a.high && c.high > b.high && c.high >= d.high && c.high >= e.high) bearFractal = c.high;
+        const c = candles[i], a=candles[i-2], b=candles[i-1], d=candles[i+1], e=candles[i+2];
+        if(c.low < a.low && c.low < b.low && c.low <= d.low && c.low <= e.low){ fractals.push({type:'bull', lvl:c.low}); bullF = c; }
+        if(c.high > a.high && c.high > b.high && c.high >= d.high && c.high >= e.high){ fractals.push({type:'bear', lvl:c.high}); bearF = c; }
       }
-      if(bullFractal!==null && last.close > bullFractal && last.close > candles[n-2].close){
-        return {action:'RISE', conf: 83, src:'FRACTAL_BRK'};
+      // nearest prior fractal levels act as support/resistance
+      for(const f of fractals){
+        if(f.type==='bull' && f.lvl < last.low && (lastBullLvl===null || f.lvl > lastBullLvl)) lastBullLvl = f.lvl;
+        if(f.type==='bear' && f.lvl > last.high && (lastBearLvl===null || f.lvl < lastBearLvl)) lastBearLvl = f.lvl;
       }
-      if(bearFractal!==null && last.close < bearFractal && last.close < candles[n-2].close){
-        return {action:'FALL', conf: 83, src:'FRACTAL_BRK'};
+      const tol = last.close * 0.0005;
+      // Bullish fractal reversal: pinbar OR S/R bounce OR elite (3 down + engulfing)
+      if(bullF){
+        const pin = isPinbar(bullF) === 'bull';
+        const atSR = lastBullLvl!==null && Math.abs(bullF.low - lastBullLvl) <= tol;
+        const elite = candles[n-2].close < candles[n-2].open && candles[n-3].close < candles[n-3].open &&
+                      last.close > last.open && last.close > candles[n-2].high;
+        if((pin || atSR || elite) && last.close > bullF.low && last.close > candles[n-2].close){
+          return {action:'RISE', conf:84, src:'FRACTAL_BRK'};
+        }
+      }
+      if(bearF){
+        const pin = isPinbar(bearF) === 'bear';
+        const atSR = lastBearLvl!==null && Math.abs(bearF.high - lastBearLvl) <= tol;
+        const elite = candles[n-2].close > candles[n-2].open && candles[n-3].close > candles[n-3].open &&
+                      last.close < last.open && last.close < candles[n-2].low;
+        if((pin || atSR || elite) && last.close < bearF.high && last.close < candles[n-2].close){
+          return {action:'FALL', conf:84, src:'FRACTAL_BRK'};
+        }
       }
       return null;
     }
   });
 
   S.push({
-    name: 'Heiken Ashi Pattern',
-    code: 'HA_PAT',
+    name: 'Awesome Oscillator',
+    code: 'AO',
     analyze: (candles, sym) => {
-      if (candles.length < 3) return null;
-      const ha = heikenAshi(candles);
-      const n = ha.length;
-      const k = ha[n-1], p = ha[n-2];
-      const range = (k.high - k.low) || 0.0001;
-      const body = Math.abs(k.close - k.open);
-      const bodyRatio = body / range;
-      const up = k.close >= k.open, prevUp = p.close >= p.open;
-      // HA strong bullish candle after bearish, or vice versa
-      if(up && !prevUp && bodyRatio > 0.7){
-        return {action:'RISE', conf: 83, src:'HA_PAT'};
+      if (candles.length < 37) return null;
+      const aoArr = ao(candles);
+      const acArr = ac(aoArr);
+      const n = aoArr.length;
+      const aoNow = aoArr[n-1], aoPrev = aoArr[n-2];
+      const acNow = acArr[n-1];
+      const last = candles[n-1], p1 = candles[n-2], p2 = candles[n-3];
+      let out = null;
+      // Bearish zero-line cross → wait, then check first 3 bars for down-AO bar + bullish price candle
+      if(aoPrev >= 0 && aoNow < 0){
+        for(let k=n-1; k>=Math.max(2,n-3); k--){
+          const bullCandle = candles[k].close > candles[k].open;
+          if(aoArr[k] < 0 && bullCandle){ out = {action:'FALL', conf:84, src:'AO'}; break; }
+        }
       }
-      if(!up && prevUp && bodyRatio > 0.7){
-        return {action:'FALL', conf: 83, src:'HA_PAT'};
+      // Bullish zero-line cross → first 3 bars for up-AO bar + bearish price candle
+      else if(aoPrev <= 0 && aoNow > 0){
+        for(let k=n-1; k>=Math.max(2,n-3); k--){
+          const bearCandle = candles[k].close < candles[k].open;
+          if(aoArr[k] > 0 && bearCandle){ out = {action:'RISE', conf:84, src:'AO'}; break; }
+        }
       }
-      return null;
+      // AC contradiction filter: drop signal if AC strongly opposes the intended direction
+      if(out){
+        if(out.action==='RISE' && acNow < -Math.abs(aoNow)*0.5) out = null;
+        if(out.action==='FALL' && acNow >  Math.abs(aoNow)*0.5) out = null;
+      }
+      return out;
     }
   });
 
@@ -3077,7 +3058,7 @@ function runStrategyAnalysis(sym, candles, liveBuf){
       const trendDir = adx ? adx.trend : null;
 
       // Strategy selection and execution
-      const stratCode = G.SELECTED_STRATEGY || 'BB_WPR_REV';
+      const stratCode = G.SELECTED_STRATEGY || 'AROON';
       const strategyObj = G.STRATEGIES.find(st => st.code === stratCode);
       if (strategyObj && typeof strategyObj.analyze === 'function') {
         const vote = strategyObj.analyze(candles, sym);
@@ -3932,6 +3913,30 @@ function drawChart(){
     }
   }
   if (ChartSettings.haPatterns) drawHAPatterns();
+
+  // ── Awesome Oscillator histogram (overlay at base of price panel) ──
+  function drawAO(){
+    if (chartCandles.length < 37) return;
+    const aoArr = ao(chartCandles);
+    const start = chartCandles.length - aoArr.length;
+    const baseY = cdlH - 6;                 // baseline near bottom of price area
+    const scale = Math.min(28, cdlH * 0.10); // bar height scale
+    let maxAbs = 1e-9;
+    for(const v of aoArr) maxAbs = Math.max(maxAbs, Math.abs(v));
+    const bw = Math.max(1, cw * 0.6);
+    for(let i=0;i<aoArr.length;i++){
+      const v = aoArr[i];
+      const x = (start+i)*cw + cw/2;
+      const barH = (Math.abs(v)/maxAbs) * scale;
+      ctx.fillStyle = v >= 0 ? 'rgba(54,225,255,0.55)' : 'rgba(255,138,76,0.55)';
+      if(v >= 0) ctx.fillRect(x-bw/2, baseY-barH, bw, barH);
+      else ctx.fillRect(x-bw/2, baseY, bw, barH);
+    }
+    // zero line
+    ctx.strokeStyle='rgba(128,128,128,0.25)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(0,baseY); ctx.lineTo(w,baseY); ctx.stroke();
+  }
+  if (ChartSettings.ao) drawAO();
 
   // Bollinger Bands overlay helper
   function drawBB() {
@@ -5008,7 +5013,7 @@ function flushState(){
       baseStake: bs.baseStake, targetProfit: bs.targetProfit, stopLoss: bs.stopLoss,
       subMode: 'OU'
     }));
-    localStorage.setItem('deriv_selected_strategy', G.SELECTED_STRATEGY || 'BB_WPR_REV');
+    localStorage.setItem('deriv_selected_strategy', G.SELECTED_STRATEGY || 'AROON');
     localStorage.setItem('deriv_trade_mode', G.TRADE_MODE || 'DIGITS');
     localStorage.setItem('deriv_current_market', G.CURRENT_MARKET || 'R_50');
     localStorage.setItem('deriv_trade_duration', String(G.TRADE_DURATION || 15));
@@ -5057,6 +5062,7 @@ function restoreState(){
         const elEma30 = document.getElementById('settingEma30'); if(elEma30) elEma30.checked = ChartSettings.ema30;
         const elFractals = document.getElementById('settingFractals'); if(elFractals) elFractals.checked = ChartSettings.fractals;
         const elHa = document.getElementById('settingHaPatterns'); if(elHa) elHa.checked = ChartSettings.haPatterns;
+        const elAO = document.getElementById('settingAO'); if(elAO) elAO.checked = ChartSettings.ao;
         const elRatio = document.getElementById('settingBodyRatio'); if(elRatio) elRatio.value = ChartSettings.bodyRatio;
       } catch(ex){ console.log('[RESTORE CHART SETTINGS]', ex.message); }
     }
@@ -5085,7 +5091,7 @@ function restoreState(){
       const elS = document.getElementById('strategySelect');
       if(elS) elS.value = savedStrat;
     } else {
-      G.SELECTED_STRATEGY = 'BB_WPR_REV';
+      G.SELECTED_STRATEGY = 'AROON';
     }
     const th = localStorage.getItem('deriv_trade_history');
     if(th) G.TRADE_HISTORY = JSON.parse(th);
