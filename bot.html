@@ -809,7 +809,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
           <div style="display: flex; flex-direction: column; gap: 4px;">
             <label style="font-size: 8px; color: var(--muted); text-transform: uppercase; font-weight: 700;">Chart Type</label>
             <select id="settingChartType" class="inp" onchange="updateChartSetting('type', this.value)" style="font-size: 10px; padding: 4px 8px; width: 120px;">
-              <option value="heiken-ashi" selected>Heiken Ashi</option>
+              <option value="heiken-ashi">Heiken Ashi</option>
               <option value="standard">Standard</option>
               <option value="renko">Renko</option>
             </select>
@@ -1906,7 +1906,7 @@ async function saveAdminPassword(){
 }
 // Global Chart Settings
 const ChartSettings = {
-  type: 'heiken-ashi', // 'standard' or 'heiken-ashi'
+  type: 'standard', // 'standard' or 'heiken-ashi'
   ema9: true,
   ema20: true,
   ema30: true,
@@ -2042,9 +2042,9 @@ function initStrategies(){
     analyze: (candles, sym) => {
       if (candles.length < 28) return null;
       const prices = candles.map(c => c.close);
+      const hi = candles.map(c => c.high);
+      const lo = candles.map(c => c.low);
       const last = candles[candles.length-1];
-      const ha = heikenAshi(candles);
-      const haHi = ha.map(c=>c.high), haLo = ha.map(c=>c.low), haCl = ha.map(c=>c.close);
 
       const bbSma = sma(prices, 20);
       const bbStd = stddev(prices, 20);
@@ -2061,11 +2061,11 @@ function initStrategies(){
         return hh === ll ? -50 : ((hh - clArr[idx]) / (hh - ll)) * -100;
       };
 
-      const currIdx = haCl.length - 1;
-      const w7curr = getWPR(haHi, haLo, haCl, 7, currIdx);
-      const w7prev = getWPR(haHi, haLo, haCl, 7, currIdx - 1);
-      const w14curr = getWPR(haHi, haLo, haCl, 14, currIdx);
-      const w14prev = getWPR(haHi, haLo, haCl, 14, currIdx - 1);
+      const currIdx = prices.length - 1;
+      const w7curr = getWPR(hi, lo, prices, 7, currIdx);
+      const w7prev = getWPR(hi, lo, prices, 7, currIdx - 1);
+      const w14curr = getWPR(hi, lo, prices, 14, currIdx);
+      const w14prev = getWPR(hi, lo, prices, 14, currIdx - 1);
 
       const wprRise = (w7prev < -80 && w7curr >= -78) || (w14prev < -80 && w14curr >= -76);
       const wprFall = (w7prev > -20 && w7curr <= -22) || (w14prev > -20 && w14curr <= -24);
@@ -3063,8 +3063,6 @@ function runStrategyAnalysis(sym, candles, liveBuf){
     const hi = candles.map(c => c.high);
     const lo = candles.map(c => c.low);
     const cl = candles.map(c => c.close);
-    const ha = heikenAshi(candles);
-    const haHi = ha.map(c=>c.high), haLo = ha.map(c=>c.low), haCl = ha.map(c=>c.close);
 
     const votes = [];
 
@@ -3900,11 +3898,9 @@ function drawChart(){
   if (ChartSettings.fractals) drawFractals();
 
   // ── Heiken Ashi candlestick patterns ──
-  // Detect on the HA-transformed series (chartCandles when type==='heiken-ashi'),
-  // otherwise fall back to raw candles. Mark doji, strong/weak HA, and HA engulfing.
+  // Detect on the displayed series (standard or HA). Mark doji, engulfing, strong momentum.
   function drawHAPatterns(){
     if (chartCandles.length < 3) return;
-    const isHA = ChartSettings.type === 'heiken-ashi';
     for(let i=1; i<chartCandles.length; i++){
       const k = chartCandles[i], p = chartCandles[i-1];
       const x = i*cw + cw/2;
@@ -3918,15 +3914,15 @@ function drawChart(){
       if(bodyRatio < 0.18){
         label = '◊'; col = 'rgba(180,180,200,0.95)';
       }
-      // HA engulfing: opposite colour, current body swallows prior body
+      // Engulfing: opposite colour, current body swallows prior body
       else if(up !== prevUp && body > Math.abs(p.close - p.open) * 1.2 && bodyRatio > 0.6){
         label = up ? '⇈' : '⇊'; col = up ? POS : NEG;
       }
-      // Strong momentum HA candle
+      // Strong momentum candle
       else if(bodyRatio > 0.8){
         label = up ? '▲' : '▼'; col = up ? POS : NEG;
       }
-      if(label && isHA){
+      if(label){
         ctx.fillStyle = col;
         ctx.font = '11px monospace';
         ctx.textAlign = 'center';
