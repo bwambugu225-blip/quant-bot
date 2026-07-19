@@ -3318,6 +3318,14 @@ function evaluateAndTrade(sym, liveBuf){
   const c = G.MARKET.candles[sym];
   if(!c || c.length < 10) return;
 
+  // Warm-up: skip the first candle close after Start so analysis runs on a fresh live candle
+  G._warmup = G._warmup || {};
+  if(!G._warmup[sym]){ G._warmup[sym] = true; return; }
+
+  // Visible readout so you can SEE the analysis on every candle close
+  const _ar = aroon(c, 25);
+  log(`[ANAL] ${sym}: Aroon Up=${_ar.up.toFixed(0)} Down=${_ar.down.toFixed(0)}`,'i');
+
   const arr = liveBuf && liveBuf.length >= 2 ? [...c, {
     open: c[c.length-1].close,
     high: max(liveBuf),
@@ -3550,6 +3558,7 @@ function startBot(){
   // Flush tick buffers so the first candle after start forms from fresh ticks only
   for(const sym of Object.keys(G.MARKET?.tickBuf||{})){ G.MARKET.tickBuf[sym]=[]; G.MARKET.candleOpenAt[sym]=Date.now(); }
   G._aroonState = {};
+  G._warmup = {};
   G.RUNNING=true;
   const raw = document.getElementById('rfDuration')?.value || '15';
   if(raw.endsWith('t')){ G.TRADE_DURATION = parseInt(raw); G.TRADE_DURATION_UNIT = 't'; }
