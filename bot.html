@@ -603,6 +603,24 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
 .bottomnav .nav-btn.active{color:var(--accent);border-top-color:var(--accent);text-shadow:0 0 8px rgba(54,225,255,0.4)}
 .bottomnav .nav-btn.active .nav-ico{text-shadow:0 0 12px rgba(54,225,255,0.7)}
 
+/* Floating start/stop action button */
+.fab{position:fixed;right:18px;bottom:72px;z-index:300;width:62px;height:62px;border-radius:50%;border:none;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:var(--font-head);
+  font-size:9px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:#04130d;
+  background:linear-gradient(135deg,#1bd49a,#36e0a6);
+  box-shadow:0 0 0 1px rgba(54,224,166,.4),0 6px 22px rgba(54,224,166,.45),0 0 26px rgba(54,224,166,.35),inset 0 0 12px rgba(255,255,255,.18);
+  transition:transform .2s cubic-bezier(.16,1,.3,1),box-shadow .2s;animation:fabPulse 2.4s ease-in-out infinite}
+.fab:hover{transform:scale(1.06)}
+.fab:active{transform:scale(.94)}
+.fab .fab-lab{display:flex;flex-direction:column;align-items:center;line-height:1.05;text-align:center}
+.fab.running{background:linear-gradient(135deg,#ff3e5c,#ff5d73);color:#1a0408;
+  box-shadow:0 0 0 1px rgba(255,93,115,.4),0 6px 22px rgba(255,93,115,.45),0 0 26px rgba(255,93,115,.35),inset 0 0 12px rgba(255,255,255,.18)}
+@keyframes fabPulse{0%,100%{box-shadow:0 0 0 1px rgba(54,224,166,.4),0 6px 22px rgba(54,224,166,.45),0 0 22px rgba(54,224,166,.3),inset 0 0 12px rgba(255,255,255,.18)}
+  50%{box-shadow:0 0 0 1px rgba(54,224,166,.6),0 6px 28px rgba(54,224,166,.7),0 0 40px rgba(54,224,166,.55),inset 0 0 14px rgba(255,255,255,.22)}}
+.fab.running{animation:fabPulseRed 2.4s ease-in-out infinite}
+@keyframes fabPulseRed{0%,100%{box-shadow:0 0 0 1px rgba(255,93,115,.4),0 6px 22px rgba(255,93,115,.45),0 0 22px rgba(255,93,115,.3),inset 0 0 12px rgba(255,255,255,.18)}
+  50%{box-shadow:0 0 0 1px rgba(255,93,115,.6),0 6px 28px rgba(255,93,115,.7),0 0 40px rgba(255,93,115,.55),inset 0 0 14px rgba(255,255,255,.22)}}
+
 /* Slim top strip */
 .mtop{position:sticky;top:0;z-index:50;background:rgba(20,18,16,.96)!important;border-bottom:1px solid var(--line);
   padding:8px 12px;display:flex;align-items:center;justify-content:space-between;min-height:42px;backdrop-filter:none;-webkit-backdrop-filter:none}
@@ -662,76 +680,14 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       <div class="kpi"><div id="dashConsLoss" class="v" style="color:var(--negative)">0</div><div class="l">Streak</div></div>
     </div>
 
-    <!-- Reset controls -->
-    <div style="display:flex;gap:4px;margin-top:6px">
-      <button class="btn btn-ghost" onclick="resetDemo()" style="flex:1;padding:4px;font-size:8px">RESET DEMO</button>
-      <button class="btn btn-ghost" onclick="resetSession()" style="flex:1;padding:4px;font-size:8px">RESET SESSION</button>
-    </div>
-
-    <!-- RF Controls -->
+    <!-- RF Controls (start lives in the floating button; all config is in Settings tab) -->
     <div id="rfSection" class="section">
       <div class="section-title">Rise/Fall <span id="rfModeBadge" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">AUTO</span></div>
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-        <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
-          <input type="checkbox" id="marketModeToggle" onchange="toggleMarketMode()" checked style="width:13px;height:13px;accent-color:var(--accent)">
-          <span>MULTI</span>
-        </label>
-        <span id="marketModeLabel" style="font-size:8px;color:var(--accent);font-weight:600">ON</span>
+      <div style="display:flex;gap:4px;margin-top:4px">
+        <button class="btn btn-ghost" onclick="downloadTradeLog()" style="flex:1;padding:4px;font-size:8px">EXPORT LOG</button>
+        <button class="btn btn-call" onclick="placeManualRF('RISE')" style="flex:1;padding:6px;font-size:9px">RISE</button>
+        <button class="btn btn-put" onclick="placeManualRF('FALL')" style="flex:1;padding:6px;font-size:9px">FALL</button>
       </div>
-      <div style="margin-bottom:6px">
-        <div id="modeTargetMarket" style="font-size:9px;font-weight:600;margin-bottom:2px"></div>
-        <select id="marketSelect" class="inp" onchange="selectMarketFromDropdown(this.value)" style="font-size:9px;width:100%"></select>
-      </div>
-      <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center">
-        <span style="font-size:8px;color:var(--muted);white-space:nowrap">TRADE LENGTH</span>
-        <button id="durFixedBtn" class="btn btn-ghost" onclick="setDurationMode('fixed')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">10s</button>
-        <button id="durAutoBtn" class="btn btn-ghost" onclick="setDurationMode('auto_ticks')" style="flex:1;padding:4px;font-size:8px">AUTO 1-10t</button>
-      </div>
-      <div class="trade-btn-row">
-        <button id="rfStartBtn" class="btn btn-call" onclick="startRF()" style="flex:1">START</button>
-        <button id="rfStopBtn" class="btn btn-put" onclick="stopRF()" style="flex:1;display:none">STOP</button>
-        <button class="btn btn-ghost" onclick="downloadTradeLog()" style="padding:4px 8px;font-size:8px">EXPORT</button>
-      </div>
-      <div style="display:flex;gap:4px;margin-top:4px;border-top:1px solid var(--line);padding-top:4px">
-        <button class="btn btn-call" onclick="placeManualRF('RISE')" style="flex:1;padding:6px">RISE</button>
-        <button class="btn btn-put" onclick="placeManualRF('FALL')" style="flex:1;padding:6px">FALL</button>
-      </div>
-
-      <!-- Config (popup) -->
-      <details style="margin-top:6px">
-        <summary style="font-family:var(--font-serif);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-size:9px;cursor:pointer">Settings</summary>
-        <div style="margin-top:6px">
-          <div class="field" style="margin-bottom:6px">
-            <label>Trading Strategy</label>
-            <select id="strategySelect" class="inp" onchange="selectStrategy(this.value)" style="font-size:10px;width:100%">
-              <option value="AROON" selected>Aroon (25)</option>
-              <option value="FRACTAL_BRK">Williams Fractal Reversal</option>
-              <option value="AO">Awesome Oscillator</option>
-            </select>
-            <div id="stratList" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px"></div>
-          </div>
-          <div class="stake-row" style="margin-bottom:6px">
-            <div class="field"><label>Stake</label><input class="inp" id="rfStake" type="number" value="1" min="0.35" step="0.5"></div>
-            <div class="field"><label>Duration</label>
-              <span style="font-size:11px;font-weight:700;padding:4px 0;display:block">10s <span style="font-size:7px;color:var(--muted);font-weight:400">(locked)</span></span>
-              <input type="hidden" id="rfDuration" value="10">
-            </div>
-          </div>
-          <div style="display:flex;gap:6px;align-items:center;margin-top:5px">
-            <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
-              <input type="checkbox" id="rfMartToggle" onchange="toggleRFMartingale()" style="width:13px;height:13px;accent-color:var(--accent)">
-              Martingale
-            </label>
-            <div style="display:none;gap:3px;align-items:center" id="rfMartOpts">
-              <span style="font-size:8px;color:var(--muted)">x</span>
-              <input class="inp inp-sm" id="rfMartMult" type="number" value="2" min="2" max="10" step="1" style="width:56px">
-            </div>
-            <span id="rfStatus"><span class="status-dot gray"></span></span>
-            <span id="rfCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
-            <span id="rfSysBadge" style="font-size:7px;color:var(--warn)"></span>
-          </div>
-        </div>
-      </details>
     </div>
 
     <!-- Analysis Panel -->
@@ -1002,6 +958,59 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
   <!-- TAB 4: SETTINGS -->
   <div class="tab-view" id="tab-settings">
     <div class="section">
+      <div class="section-title">Trading Config</div>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+        <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="marketModeToggle" onchange="toggleMarketMode()" checked style="width:13px;height:13px;accent-color:var(--accent)">
+          <span>MULTI-MARKET</span>
+        </label>
+        <span id="marketModeLabel" style="font-size:8px;color:var(--accent);font-weight:600">ON</span>
+      </div>
+      <div style="margin-bottom:8px">
+        <div id="modeTargetMarket" style="font-size:9px;font-weight:600;margin-bottom:2px"></div>
+        <select id="marketSelect" class="inp" onchange="selectMarketFromDropdown(this.value)" style="font-size:9px;width:100%"></select>
+      </div>
+      <div style="display:flex;gap:4px;margin-bottom:8px;align-items:center">
+        <span style="font-size:8px;color:var(--muted);white-space:nowrap">TRADE LENGTH</span>
+        <button id="durFixedBtn" class="btn btn-ghost" onclick="setDurationMode('fixed')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">10s</button>
+        <button id="durAutoBtn" class="btn btn-ghost" onclick="setDurationMode('auto_ticks')" style="flex:1;padding:4px;font-size:8px">AUTO 1-10t</button>
+      </div>
+      <div class="field" style="margin-bottom:8px">
+        <label>Trading Strategy</label>
+        <select id="strategySelect" class="inp" onchange="selectStrategy(this.value)" style="font-size:10px;width:100%">
+          <option value="AROON" selected>Aroon (25)</option>
+          <option value="FRACTAL_BRK">Williams Fractal Reversal</option>
+          <option value="AO">Awesome Oscillator</option>
+        </select>
+        <div id="stratList" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px"></div>
+      </div>
+      <div class="stake-row" style="margin-bottom:8px;display:flex;gap:8px">
+        <div class="field" style="flex:1"><label>Stake</label><input class="inp" id="rfStake" type="number" value="1" min="0.35" step="0.5"></div>
+        <div class="field" style="flex:1"><label>Duration</label>
+          <span style="font-size:11px;font-weight:700;padding:4px 0;display:block">10s <span style="font-size:7px;color:var(--muted);font-weight:400">(locked)</span></span>
+          <input type="hidden" id="rfDuration" value="10">
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:5px">
+        <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="rfMartToggle" onchange="toggleRFMartingale()" style="width:13px;height:13px;accent-color:var(--accent)">
+          Martingale
+        </label>
+        <div style="display:none;gap:3px;align-items:center" id="rfMartOpts">
+          <span style="font-size:8px;color:var(--muted)">x</span>
+          <input class="inp inp-sm" id="rfMartMult" type="number" value="2" min="2" max="10" step="1" style="width:56px">
+        </div>
+        <span id="rfStatus"><span class="status-dot gray"></span></span>
+        <span id="rfCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
+        <span id="rfSysBadge" style="font-size:7px;color:var(--warn)"></span>
+      </div>
+      <div style="display:flex;gap:4px;margin-top:10px;border-top:1px solid var(--line);padding-top:8px">
+        <button class="btn btn-ghost" onclick="resetDemo()" style="flex:1;padding:6px;font-size:8px">RESET DEMO</button>
+        <button class="btn btn-ghost" onclick="resetSession()" style="flex:1;padding:6px;font-size:8px">RESET SESSION</button>
+      </div>
+    </div>
+
+    <div class="section">
       <div class="section-title">Account</div>
       <div id="dashTarget" style="font-size:12px;font-weight:600">$0.00</div>
       <div style="font-size:8px;color:var(--muted);margin-top:2px">Daily Stop</div>
@@ -1045,7 +1054,12 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
 
 </div><!-- /views -->
 
-<!-- ============ BOTTOM NAV ============ -->
+  <!-- Floating start/stop action button -->
+  <button id="fabStart" class="fab" onclick="toggleFab()">
+    <span class="fab-lab"><span id="fabState">START</span><span id="fabMode" style="font-size:6px;opacity:.8;font-weight:600"></span></span>
+  </button>
+
+  <!-- ============ BOTTOM NAV ============ -->
 <div class="bottomnav">
     <button class="nav-btn active" data-tab="home" onclick="switchTab('home')">
       <span class="nav-lbl">HOME</span>
@@ -1800,8 +1814,10 @@ function haltThisSession(status, reason){
   G.ACTIVE_CONTRACTS.clear();
   const sb = document.getElementById('rfStartBtn');
   const dg = document.getElementById('dgEngineBtn');
+  const fab = document.getElementById('fabStart');
   if(sb){ sb.disabled = true; sb.style.opacity = '0.4'; sb.style.cursor = 'not-allowed'; }
   if(dg){ dg.disabled = true; dg.style.opacity = '0.4'; dg.style.cursor = 'not-allowed'; }
+  if(fab){ fab.disabled = true; fab.style.opacity = '0.4'; fab.style.cursor = 'not-allowed'; }
   log(`[HALT] All trading halted — this account is ${status}`,'e');
 }
 function clearThisSessionBlock(){
@@ -1811,8 +1827,10 @@ function clearThisSessionBlock(){
   G.ACCOUNT_BLOCKED_ACTION = null;
   const sb = document.getElementById('rfStartBtn');
   const dg = document.getElementById('dgEngineBtn');
+  const fab = document.getElementById('fabStart');
   if(sb){ sb.disabled = false; sb.style.opacity = ''; sb.style.cursor = ''; }
   if(dg){ dg.disabled = false; dg.style.opacity = ''; dg.style.cursor = ''; }
+  if(fab){ fab.disabled = false; fab.style.opacity = ''; fab.style.cursor = ''; syncFab(); }
   const el = document.getElementById('blockPopup');
   if(el) el.remove();
   log('[RESUME] Account block lifted — trading re-enabled','s');
@@ -3580,8 +3598,7 @@ function startBot(){
   Martingale.currentStake = Martingale.baseStake;
   if(!Martingale.enabled){ Martingale.sessionDeficit = 0; Martingale.cyclePnL = 0; }
   updateMartingaleUI();
-  document.getElementById('rfStartBtn').style.display='none';
-  document.getElementById('rfStopBtn').style.display='block';
+  syncFab();
   const s = document.getElementById('rfStatus');
   if(s) s.innerHTML = '<span class="blink-dot green"></span>RUNNING';
   log('[SYSTEM] Bot started','s');
@@ -3590,8 +3607,7 @@ function startBot(){
 function stopBot(){
   G.RUNNING=false;
   G.ACTIVE_CONTRACTS.clear();
-  document.getElementById('rfStartBtn').style.display='block';
-  document.getElementById('rfStopBtn').style.display='none';
+  syncFab();
   const s = document.getElementById('rfStatus');
   if(s) s.innerHTML = '<span class="blink-dot gray"></span>STOP';
   G.ACTIVE_CONTRACTS.clear();
@@ -3604,6 +3620,19 @@ function startRF(){
   startBot();
 }
 function stopRF(){ stopBot(); }
+function toggleFab(){
+  if(G.RUNNING) stopBot(); else startRF();
+}
+function syncFab(){
+  const fab = document.getElementById('fabStart');
+  if(!fab) return;
+  const run = G.RUNNING;
+  fab.classList.toggle('running', run);
+  const st = document.getElementById('fabState');
+  const md = document.getElementById('fabMode');
+  if(st) st.textContent = run ? 'STOP' : 'START';
+  if(md) md.textContent = run ? (G.DURATION_MODE==='fixed' ? '10s' : 'AUTO') : '';
+}
 async function resetDemo(){
   if(!G.AUTH || !G.ACCOUNT_ID){ log('[RESET] Authorize first','e'); return; }
   // Use the official Deriv REST API to reset demo balance to $10,000
@@ -5846,8 +5875,7 @@ function connectOTP(url){
     G.ACTIVE_CONTRACTS.clear();
     document.getElementById('connDot').className='conn g';
     document.getElementById('engineStatus').textContent='ONLINE';
-    document.getElementById('rfStartBtn').style.display = G.RUNNING?'none':'block';
-    document.getElementById('rfStopBtn').style.display = G.RUNNING?'block':'none';
+    syncFab();
     log(`[AUTH] ${G.ACCOUNT_ID} $${G.BALANCE.toFixed(2)}`,'s');
     saveState(); showApp();
     startHeartbeat();
