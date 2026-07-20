@@ -2490,37 +2490,45 @@ function evaluateDigitStrategy(sym){
   const live = hist.slice(-30);
   const confirm = hist.slice(-90);
 
-  // Confirmed-edge gate — trade only when a real, statistically significant bias
-  // exists on the 90-tick confirm window (χ²≥3.84 @ 95%), and the 30-tick live
-  // window AGREES in DIRECTION (same over/under side). Auto-pick the strongest barrier.
-  // If there's no confirmed edge, stay silent.
-  const CONF_SIG = 3.84;   // 95% significance on the confirm window
-  const LIVE_DIR = 2.0;    // live window needs directional agreement, not full significance
+  // Edge-based gate — trade on a CONSISTENT directional lean, not strict significance.
+  // For each candidate we measure the observed win-rate vs the theoretical rate and
+  // require a real edge (MIN_EDGE) that BOTH windows agree on. This fires frequently
+  // whenever the market shows any steady bias, while still rejecting pure noise.
+  const MIN_EDGE = 0.05;   // observed win-rate must beat theoretical by ≥5 pts on confirm
+  const LIVE_EDGE = 0.02;  // live window needs a smaller agreeing lean
   const cands = [
     { dir:'DIGITOVER',  barrier:3 },
     { dir:'DIGITOVER',  barrier:4 },
     { dir:'DIGITUNDER', barrier:6 },
     { dir:'DIGITUNDER', barrier:7 }
   ];
+  // helper: returns observed win-rate for a dir/barrier over a window
+  const rate = (w,dir,bar) => {
+    const isOver = dir==='DIGITOVER';
+    const win = w.filter(d => isOver ? d>bar : d<bar).length;
+    return w.length ? win / w.length : 0;
+  };
+  const expRate = (dir,bar) => dir==='DIGITOVER' ? (9-bar)/10 : bar/10;
   let best = null;
   for(const c of cands){
-    const lc = digChi(live, c.dir, c.barrier);
-    const cc = digChi(confirm, c.dir, c.barrier);
-    // confirm window must be significant; live window must agree in direction
-    if(cc.chi >= CONF_SIG && lc.chi >= LIVE_DIR && lc.over === cc.over){
-      if(!best || cc.chi > best.cchi) best = { ...c, chi: lc.chi, cchi: cc.chi };
+    const er = expRate(c.dir, c.barrier);
+    const cr = rate(confirm, c.dir, c.barrier) - er;  // confirm edge
+    const lr = rate(live, c.dir, c.barrier) - er;     // live edge
+    // both windows must lean the SAME way (positive edge) and confirm clears MIN_EDGE
+    if(cr >= MIN_EDGE && lr >= LIVE_EDGE && Math.sign(cr)===Math.sign(lr)){
+      if(!best || cr > best.edge) best = { ...c, edge: cr, ledge: lr };
     }
   }
 
-  log(`[DIG·ANAL] ${sym}: O3=${digChi(confirm,'DIGITOVER',3).chi.toFixed(1)} O4=${digChi(confirm,'DIGITOVER',4).chi.toFixed(1)} U6=${digChi(confirm,'DIGITUNDER',6).chi.toFixed(1)} U7=${digChi(confirm,'DIGITUNDER',7).chi.toFixed(1)}`,'i');
+  log(`[DIG·ANAL] ${sym}: O3=${(rate(confirm,'DIGITOVER',3)*100).toFixed(0)}% O4=${(rate(confirm,'DIGITOVER',4)*100).toFixed(0)}% U6=${(rate(confirm,'DIGITUNDER',6)*100).toFixed(0)}% U7=${(rate(confirm,'DIGITUNDER',7)*100).toFixed(0)}%`,'i');
 
   if(!best){
-    // No confirmed edge — never trade on noise.
+    // No consistent edge — stay silent.
     return;
   }
 
   const dirLabel = best.dir === 'DIGITOVER' ? 'OVER' : 'UNDER';
-  const label = `Sig OU ${sym}: ${dirLabel} ${best.barrier} (χ²=${best.chi.toFixed(1)}/${best.cchi.toFixed(1)})`;
+  const label = `Sig OU ${sym}: ${dirLabel} ${best.barrier} (edge=${(best.edge*100).toFixed(1)}%)`;
   const orderPayload = {
     contract_type: best.dir,
     barrier: String(best.barrier),
