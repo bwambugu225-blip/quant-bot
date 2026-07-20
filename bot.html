@@ -2490,12 +2490,12 @@ function evaluateDigitStrategy(sym){
   const live = hist.slice(-30);
   const confirm = hist.slice(-90);
 
-  // "PERFECT" gate — trade only a statistically significant, confirmed edge,
-  // but keep it frequent: 95% significance (χ²≥3.84) on BOTH the live and confirm
-  // windows, with the SAME direction. Auto-switch to the strongest barrier.
-  // If either window is weak or they disagree, we do NOT trade (bad analysis).
-  const LIVE_SIG = 3.84;   // 95% significance, live window
-  const CONF_SIG = 3.84;   // 95% significance, confirm window
+  // Confirmed-edge gate — trade only when a real, statistically significant bias
+  // exists on the 90-tick confirm window (χ²≥3.84 @ 95%), and the 30-tick live
+  // window AGREES in DIRECTION (same over/under side). Auto-pick the strongest barrier.
+  // If there's no confirmed edge, stay silent.
+  const CONF_SIG = 3.84;   // 95% significance on the confirm window
+  const LIVE_DIR = 2.0;    // live window needs directional agreement, not full significance
   const cands = [
     { dir:'DIGITOVER',  barrier:3 },
     { dir:'DIGITOVER',  barrier:4 },
@@ -2506,13 +2506,16 @@ function evaluateDigitStrategy(sym){
   for(const c of cands){
     const lc = digChi(live, c.dir, c.barrier);
     const cc = digChi(confirm, c.dir, c.barrier);
-    if(lc.chi >= LIVE_SIG && cc.chi >= CONF_SIG && lc.over === cc.over){
-      if(!best || lc.chi > best.chi) best = { ...c, chi: lc.chi, cchi: cc.chi };
+    // confirm window must be significant; live window must agree in direction
+    if(cc.chi >= CONF_SIG && lc.chi >= LIVE_DIR && lc.over === cc.over){
+      if(!best || cc.chi > best.cchi) best = { ...c, chi: lc.chi, cchi: cc.chi };
     }
   }
 
+  log(`[DIG·ANAL] ${sym}: O3=${digChi(confirm,'DIGITOVER',3).chi.toFixed(1)} O4=${digChi(confirm,'DIGITOVER',4).chi.toFixed(1)} U6=${digChi(confirm,'DIGITUNDER',6).chi.toFixed(1)} U7=${digChi(confirm,'DIGITUNDER',7).chi.toFixed(1)}`,'i');
+
   if(!best){
-    // Never trade on a bad/marginal analysis. Stay silent.
+    // No confirmed edge — never trade on noise.
     return;
   }
 
