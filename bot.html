@@ -2445,6 +2445,8 @@ function toggleDigitEngine(){
   BotState.isTrading = !BotState.isTrading;
   if(btn) btn.textContent = BotState.isTrading ? 'STOP' : 'AUTO';
   if(BotState.isTrading){
+    // Engine requires DIGITS trade mode — switch automatically so handleTick runs it.
+    if(G.TRADE_MODE !== 'DIGITS'){ G.TRADE_MODE = 'DIGITS'; const mb=document.getElementById('btnModeDigits'); if(mb) mb.classList.add('active'); const rf=document.getElementById('btnModeRF'); if(rf) rf.classList.remove('active'); log('[DIGIT] Switched trade mode → DIGITS','i'); }
     BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
     BotState.lossStreak = 0;
     G.ACTIVE_CONTRACTS.clear();
