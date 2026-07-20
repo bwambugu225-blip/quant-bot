@@ -2475,7 +2475,7 @@ function evaluateDigitStrategy(sym){
   if(!BotState.isTrading) return;
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
   const hist = (G.MARKET.digHist && G.MARKET.digHist[sym]) || [];
-  if(hist.length < 90) return;   // fast warm-up: 30 live + 90 confirm
+  if(hist.length < 100) return;   // warm-up: need a full constant 100-tick buffer
 
   // Base stake and martingale calculations
   BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
@@ -2487,17 +2487,13 @@ function evaluateDigitStrategy(sym){
   const stake = +(BotState.baseStake * factor).toFixed(2);
   BotState.currentStake = stake;
 
-  // Two windows: a live 30-tick window (current bias) and a 90-tick confirm window.
-  // Short windows = fast reaction across many markets.
-  const live = hist.slice(-30);
-  const confirm = hist.slice(-90);
+  // Analysis over a CONSTANT 100-tick rolling buffer (last 100 digits).
+  const buf = hist.slice(-100);
 
-  // Edge-based gate — trade on a CONSISTENT directional lean, not strict significance.
-  // For each candidate we measure the observed win-rate vs the theoretical rate and
-  // require a real edge (MIN_EDGE) that BOTH windows agree on. This fires frequently
-  // whenever the market shows any steady bias, while still rejecting pure noise.
-  const MIN_EDGE = 0.05;   // observed win-rate must beat theoretical by ≥5 pts on confirm
-  const LIVE_EDGE = 0.02;  // live window needs a smaller agreeing lean
+  // Edge-based gate — trade on a CONSISTENT directional lean vs theoretical rate.
+  // The observed win-rate must beat the theoretical rate by MIN_EDGE over the
+  // full 100-tick buffer. Fires frequently whenever the market shows a steady bias.
+  const MIN_EDGE = 0.05;   // observed win-rate must beat theoretical by ≥5 pts
   const cands = [
     { dir:'DIGITOVER',  barrier:3 },
     { dir:'DIGITOVER',  barrier:4 },
@@ -2514,15 +2510,13 @@ function evaluateDigitStrategy(sym){
   let best = null;
   for(const c of cands){
     const er = expRate(c.dir, c.barrier);
-    const cr = rate(confirm, c.dir, c.barrier) - er;  // confirm edge
-    const lr = rate(live, c.dir, c.barrier) - er;     // live edge
-    // both windows must lean the SAME way (positive edge) and confirm clears MIN_EDGE
-    if(cr >= MIN_EDGE && lr >= LIVE_EDGE && Math.sign(cr)===Math.sign(lr)){
-      if(!best || cr > best.edge) best = { ...c, edge: cr, ledge: lr };
+    const edge = rate(buf, c.dir, c.barrier) - er;  // edge over constant 100-tick buffer
+    if(edge >= MIN_EDGE){
+      if(!best || edge > best.edge) best = { ...c, edge };
     }
   }
 
-  log(`[DIG·ANAL] ${sym}: O3=${(rate(confirm,'DIGITOVER',3)*100).toFixed(0)}% O4=${(rate(confirm,'DIGITOVER',4)*100).toFixed(0)}% U6=${(rate(confirm,'DIGITUNDER',6)*100).toFixed(0)}% U7=${(rate(confirm,'DIGITUNDER',7)*100).toFixed(0)}%`,'i');
+  log(`[DIG·ANAL] ${sym}: O3=${(rate(buf,'DIGITOVER',3)*100).toFixed(0)}% O4=${(rate(buf,'DIGITOVER',4)*100).toFixed(0)}% U6=${(rate(buf,'DIGITUNDER',6)*100).toFixed(0)}% U7=${(rate(buf,'DIGITUNDER',7)*100).toFixed(0)}%`,'i');
 
   if(!best){
     // No consistent edge — stay silent.
@@ -4488,20 +4482,19 @@ function updateDigitsUI(){
     const rows = [];
     for(const sym of Object.keys(G.MARKET.digHist)){
       const h = G.MARKET.digHist[sym];
-      if(h.length < 30) continue;
-      const liveW = h.slice(-30), confW = h.slice(-90);
+      if(h.length < 100) continue;
+      const buf = h.slice(-100);
+      const r8 = (w,dir,bar) => { const isOver = dir==='DIGITOVER'; const win = w.filter(d => isOver ? d>bar : d<bar).length; return w.length ? win/w.length : 0; };
+      const e8 = (dir,bar) => dir==='DIGITOVER' ? (9-bar)/10 : bar/10;
       let best=null;
       for(const c of cands){
         const dir = c.dir==='OVER'?'DIGITOVER':'DIGITUNDER';
-        const lc = digChi(liveW, dir, c.barrier);
-        const cc = digChi(confW, dir, c.barrier);
-        if(lc.chi>=3.84 && cc.chi>=3.84 && lc.over===cc.over){
-          if(!best || lc.chi>best.chi) best = { ...c, chi:lc.chi };
-        }
+        const edge = r8(buf, dir, c.barrier) - e8(dir, c.barrier);
+        if(edge >= 0.05){ if(!best || edge>best.edge) best = { ...c, edge }; }
       }
       const sel = sym===G.CURRENT_MARKET;
       if(best){
-        rows.push(`<div onclick="selectMarket('${sym}')" style="display:flex;justify-content:space-between;align-items:center;font-size:8px;padding:2px 4px;border:1px solid var(--line);background:var(--acc-dim);cursor:pointer${sel?';outline:1px solid var(--accent)':''}"><span style="color:var(--text);font-weight:600">${sym}</span><span style="color:var(--positive);font-weight:700">${best.dir} ${best.barrier} · χ²${best.chi.toFixed(1)}</span></div>`);
+        rows.push(`<div onclick="selectMarket('${sym}')" style="display:flex;justify-content:space-between;align-items:center;font-size:8px;padding:2px 4px;border:1px solid var(--line);background:var(--acc-dim);cursor:pointer${sel?';outline:1px solid var(--accent)':''}"><span style="color:var(--text);font-weight:600">${sym}</span><span style="color:var(--positive);font-weight:700">${best.dir} ${best.barrier} · +${(best.edge*100).toFixed(0)}%</span></div>`);
       } else {
         rows.push(`<div onclick="selectMarket('${sym}')" style="display:flex;justify-content:space-between;align-items:center;font-size:8px;padding:2px 4px;border:1px solid var(--line);opacity:0.6;cursor:pointer${sel?';outline:1px solid var(--accent)':''}"><span style="color:var(--muted)">${sym}</span><span style="color:var(--muted)">—</span></div>`);
       }
