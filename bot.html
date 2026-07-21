@@ -753,7 +753,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
   <div class="tab-view" id="tab-chart">
     <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center">
       <span style="font-size:8px;color:var(--muted);white-space:nowrap">CHART</span>
-      <button id="chartCandleBtn" class="btn btn-ghost" onclick="setChartMode('candle')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">10s CANDLES</button>
+      <button id="chartCandleBtn" class="btn btn-ghost" onclick="setChartMode('candle')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">1m CANDLES</button>
       <button id="chartLineBtn" class="btn btn-ghost" onclick="setChartMode('line')" style="flex:1;padding:4px;font-size:8px">LINE</button>
     </div>
     <div style="display:flex;gap:4px;margin-bottom:6px">
@@ -943,7 +943,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
             <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Ticks</div><div id="dgATicks" style="font-size:11px;font-weight:700">0</div>
           </div>
           <div style="background:var(--bg);padding:2px;text-align:center;border:1px solid var(--line)">
-            <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Chi-Sq</div><div id="dgChiSq" style="font-size:11px;font-weight:700">--</div>
+            <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Entropy H</div><div id="dgChiSq" style="font-size:11px;font-weight:700;color:var(--accent)">--</div>
           </div>
           <div style="background:var(--bg);padding:2px;text-align:center;border:1px solid var(--line)">
             <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Streak</div>
@@ -1136,10 +1136,10 @@ const G = {
   SG_TAB:0,
   LAST_SIGNAL:null, LAST_MARKET_MSG_AT:0, LAST_TRADE_MSG_AT:0,
   BOOT_AT:0, PENDING_SIGNAL:null, PENDING_SIGNAL_AT:0,
-  CANDLE_INTERVAL_MS:15000,   // 15-second candles
-  CHART_MODE:'candle',        // 'candle' (10s) or 'line'
+  CANDLE_INTERVAL_MS:60000,   // 1-minute candles
+  CHART_MODE:'candle',        // 'candle' or 'line'
   CANDLE_BUFFER_MS:3000,     // 3s buffer for settlement between trades
-  TRADE_DURATION_SECONDS:10,  // 10s — matches candle interval for back-to-back trades
+  TRADE_DURATION_SECONDS:60,  // 60s — matches candle interval for back-to-back trades
   DURATION_MODE:'fixed',       // 'fixed' = 10s locked; 'auto_ticks' = per-trade 1-10 tick auto pick
   // Market-specific parameters derived from 15s OHLC analysis (see analyze.py)
   // vol: high/mid/low classification, minConf: minimum confidence floor,
@@ -2380,7 +2380,7 @@ function processDigit(sym, price){
   if(!G.MARKET.digHist) G.MARKET.digHist = {};
   const h = G.MARKET.digHist[sym] || (G.MARKET.digHist[sym] = []);
   h.push(digit);
-  if(h.length > 1000) h.splice(0, 500);
+  if(h.length > 1000) h.shift();
   const pq = BotState.priceQueue;
   pq.push(price);
   if(pq.length>10) pq.splice(0,5);
@@ -2418,9 +2418,11 @@ function placeDigitManual(contractType){
   const isOver = contractType==='DIGITOVER';
   const allowed = isOver ? [3,4] : [6,7];
   if(!allowed.includes(barrier)) barrier = allowed[0];
-  // Note the chi bias for the manual pick (informational only).
-  const chi = digChi(hist.slice(-60), contractType, barrier).chi;
-  const analysis = `barrier=${barrier} χ²=${chi.toFixed(1)}`;
+  // Note the probability for the manual pick (informational only).
+  const rollingHist = hist.slice(-1000);
+  const winCount = rollingHist.filter(d => contractType==='DIGITOVER' ? d > barrier : d < barrier).length;
+  const rate = winCount / Math.max(1, rollingHist.length);
+  const analysis = `barrier=${barrier} p_emp=${(rate*100).toFixed(1)}%`;
   log(`[DIGIT] ${label} $${stake.toFixed(2)} ${sym} · ${analysis}`,'t');
   G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
   const payload = {
@@ -2456,26 +2458,26 @@ function toggleDigitEngine(){
   }
 }
 
-// Chi-square for one focus barrier's OVER/UNDER split vs uniform expectation,
-// over a given window. Returns { chi, over } where `over` = bias is OVER.
-function digChi(window, direction, barrier){
-  const isOver = direction === 'DIGITOVER';
-  const wins = d => isOver ? d > barrier : d < barrier;
-  if(window.length < 20) return { chi:0, over:isOver };
-  const obsWin = window.filter(wins).length;
-  const obsLose = window.length - obsWin;
-  const expWin = window.length * (isOver ? (9 - barrier) / 10 : barrier / 10);
-  const expLose = window.length - expWin;
-  const cw = (obsWin - expWin) ** 2 / expWin;
-  const cl = (obsLose - expLose) ** 2 / expLose;
-  return { chi: cw + cl, over:isOver };
+// Shannon Entropy for digit distribution over a given window.
+// H = -sum(p_i * log2(p_i)) where p_i is the frequency probability of digit i.
+// Maximum possible entropy for 10 digits is log2(10) ≈ 3.3219.
+function shannonEntropy(hist){
+  const l = hist.length; if(l < 20) return 0;
+  const freq = Array(10).fill(0);
+  for(let i=0; i<l; i++) freq[hist[i]]++;
+  let entropy = 0;
+  for(let i=0; i<10; i++){
+    const p = freq[i] / l;
+    if(p > 0) entropy -= p * Math.log2(p);
+  }
+  return entropy;
 }
 
 function evaluateDigitStrategy(sym){
   if(!BotState.isTrading) return;
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
   const hist = (G.MARKET.digHist && G.MARKET.digHist[sym]) || [];
-  if(hist.length < 100) return;   // warm-up: need a full constant 100-tick buffer
+  if(hist.length < 150) return;   // warm-up: need at least 150 ticks to make Markov estimates stable
 
   // Base stake and martingale calculations
   BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
@@ -2487,44 +2489,78 @@ function evaluateDigitStrategy(sym){
   const stake = +(BotState.baseStake * factor).toFixed(2);
   BotState.currentStake = stake;
 
-  // Analysis over a CONSTANT 100-tick rolling buffer (last 100 digits).
-  const buf = hist.slice(-100);
+  // Analysis over the rolling buffer (last 1000 digits).
+  const buf = hist.slice(-1000);
+  const len = buf.length;
+  if(len < 10) return;
 
-  // Edge-based gate — trade on a CONSISTENT directional lean vs theoretical rate.
-  // The observed win-rate must beat the theoretical rate by MIN_EDGE over the
-  // full 100-tick buffer. Fires frequently whenever the market shows a steady bias.
-  const MIN_EDGE = 0.05;   // observed win-rate must beat theoretical by ≥5 pts
-  const cands = [
-    { dir:'DIGITOVER',  barrier:3 },
-    { dir:'DIGITOVER',  barrier:4 },
-    { dir:'DIGITUNDER', barrier:6 },
-    { dir:'DIGITUNDER', barrier:7 }
-  ];
-  // helper: returns observed win-rate for a dir/barrier over a window
-  const rate = (w,dir,bar) => {
-    const isOver = dir==='DIGITOVER';
-    const win = w.filter(d => isOver ? d>bar : d<bar).length;
-    return w.length ? win / w.length : 0;
-  };
-  const expRate = (dir,bar) => dir==='DIGITOVER' ? (9-bar)/10 : bar/10;
-  let best = null;
-  for(const c of cands){
-    const er = expRate(c.dir, c.barrier);
-    const edge = rate(buf, c.dir, c.barrier) - er;  // edge over constant 100-tick buffer
-    if(edge >= MIN_EDGE){
-      if(!best || edge > best.edge) best = { ...c, edge };
+  // Build the 10x10 Markov Transition Matrix with Laplace smoothing (0.1)
+  const M = Array.from({ length: 10 }, () => Array(10).fill(0.1));
+  for (let i = 0; i < len - 1; i++) {
+    M[buf[i]][buf[i+1]]++;
+  }
+  // Normalize row probabilities
+  for (let i = 0; i < 10; i++) {
+    const rowSum = M[i].reduce((a, b) => a + b, 0);
+    for (let j = 0; j < 10; j++) {
+      M[i][j] /= rowSum;
     }
   }
 
-  log(`[DIG·ANAL] ${sym}: O3=${(rate(buf,'DIGITOVER',3)*100).toFixed(0)}% O4=${(rate(buf,'DIGITOVER',4)*100).toFixed(0)}% U6=${(rate(buf,'DIGITUNDER',6)*100).toFixed(0)}% U7=${(rate(buf,'DIGITUNDER',7)*100).toFixed(0)}%`,'i');
+  // Current last digit
+  const nowDigit = buf[len - 1];
+
+  // Candidates for Over/Under trading with elite statistical expectations
+  const cands = [
+    { dir:'DIGITOVER',  barrier:1, baseline: 0.80, minComposite: 0.835 }, // 80% baseline
+    { dir:'DIGITOVER',  barrier:2, baseline: 0.70, minComposite: 0.745 }, // 70% baseline
+    { dir:'DIGITOVER',  barrier:3, baseline: 0.60, minComposite: 0.645 }, // 60% baseline
+    { dir:'DIGITUNDER', barrier:6, baseline: 0.60, minComposite: 0.645 }, // 60% baseline
+    { dir:'DIGITUNDER', barrier:7, baseline: 0.70, minComposite: 0.745 }, // 70% baseline
+    { dir:'DIGITUNDER', barrier:8, baseline: 0.80, minComposite: 0.835 }  // 80% baseline
+  ];
+
+  let best = null;
+  for(const c of cands){
+    // Calculate Markov row-transition probability of winning
+    let p_transition = 0;
+    const isOver = c.dir === 'DIGITOVER';
+    for(let d=0; d<10; d++){
+      if(isOver ? d > c.barrier : d < c.barrier){
+        p_transition += M[nowDigit][d];
+      }
+    }
+
+    // Calculate empirical frequency of winning in the rolling window
+    const winCount = buf.filter(d => isOver ? d > c.barrier : d < c.barrier).length;
+    const p_empirical = winCount / len;
+
+    // Combined mathematical composite probability
+    const p_composite = 0.5 * p_transition + 0.5 * p_empirical;
+    const edge = p_composite - c.baseline;
+
+    if(p_composite >= c.minComposite && edge > 0.035){
+      if(!best || edge > best.edge){
+        best = { ...c, p_transition, p_empirical, p_composite, edge };
+      }
+    }
+  }
+
+  // Log rolling analytics to the console
+  const o2 = buf.filter(d => d > 2).length / len;
+  const o3 = buf.filter(d => d > 3).length / len;
+  const u6 = buf.filter(d => d < 6).length / len;
+  const u7 = buf.filter(d => d < 7).length / len;
+  log(`[DIG·ANAL] ${sym}: O2=${(o2*100).toFixed(0)}% O3=${(o3*100).toFixed(0)}% U6=${(u6*100).toFixed(0)}% U7=${(u7*100).toFixed(0)}% H=${shannonEntropy(buf).toFixed(3)}` ,'i');
 
   if(!best){
-    // No consistent edge — stay silent.
+    // No elite mathematical edge found - stay silent to preserve capital
     return;
   }
 
   const dirLabel = best.dir === 'DIGITOVER' ? 'OVER' : 'UNDER';
-  const label = `Sig OU ${sym}: ${dirLabel} ${best.barrier} (edge=${(best.edge*100).toFixed(1)}%)`;
+  const label = `Markov ${sym}: ${dirLabel} ${best.barrier} (P_comp = ${(best.p_composite*100).toFixed(1)}%, Edge = +${(best.edge*100).toFixed(1)}%)`;
+
   const orderPayload = {
     contract_type: best.dir,
     barrier: String(best.barrier),
@@ -2536,29 +2572,20 @@ function evaluateDigitStrategy(sym){
     duration_unit: 't'
   };
 
-  if(orderPayload) {
-    log(`[DIGIT·AUTO] ${label} stake=$${stake.toFixed(2)}`,'t');
-    G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
-    BotState.contractActive = true;
-    orderPayload.proposal = 1;
-    orderPayload.subscribe = 1;
-    orderPayload.req_id = genId();
-    G.WS.send(JSON.stringify(orderPayload));
+  log(`[DIGIT·AUTO] ${label} stake=$${stake.toFixed(2)}` ,'t');
+  G.ACTIVE_CONTRACTS.set('sending',{id:null,price:null,time:Date.now()});
+  BotState.contractActive = true;
+  orderPayload.proposal = 1;
+  orderPayload.subscribe = 1;
+  orderPayload.req_id = genId();
+  G.WS.send(JSON.stringify(orderPayload));
 
-    if(G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
-    G.SENDING_TIMEOUT = setTimeout(()=>{
-      G.ACTIVE_CONTRACTS.delete('sending');
-      BotState.contractActive = false;
-      log('[DIGIT] Auto trade timed out','w');
-    }, 15000);
-  }
-}
-function digitChiSq(hist){
-  const l=hist.length; if(l<40) return 0;
-  const freq=Array(10).fill(0); for(let i=0;i<l;i++) freq[hist[i]]++;
-  const exp=l/10; let cs=0;
-  for(let i=0;i<10;i++){const d=freq[i]-exp; cs+=d*d/exp;}
-  return cs;
+  if(G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
+  G.SENDING_TIMEOUT = setTimeout(()=>{
+    G.ACTIVE_CONTRACTS.delete('sending');
+    BotState.contractActive = false;
+    log('[DIGIT] Auto trade timed out','w');
+  }, 15000);
 }
 
 function placeDigitContract(sym, contractType, barrier){
@@ -2798,12 +2825,18 @@ function connectMarketWS(){
     G.BOOT_AT = Date.now();
     log('[MARKET] Connected','s');
     SYMBOLS.forEach(s=>{
+      // 1. Request 250 historical 1-minute candles instantly
       mws.send(JSON.stringify({
-        ticks_history:s.sym, end:'latest', count:3000, style:'ticks',
+        ticks_history:s.sym, end:'latest', count:250, style:'candles',
+        granularity:60, req_id:genId()
+      }));
+      // 2. Subscribe to live ticks with 1100 ticks lookback for 1000 rolling digits
+      mws.send(JSON.stringify({
+        ticks_history:s.sym, end:'latest', count:1100, style:'ticks',
         subscribe:1, req_id:genId()
       }));
     });
-    log(`[SUB] ${SYMBOLS.length} markets · live ticks → 15s candles`,'i');
+    log(`[SUB] ${SYMBOLS.length} markets · 250m candle history & 1100 live ticks requested`,'i');
     startHeartbeat();
   };
   mws.onmessage = (e)=>{
@@ -3024,8 +3057,8 @@ function handleTick(data){
   }
   if((epoch*1000)-openAt >= G.CANDLE_INTERVAL_MS){
     const info=SYMBOLS.find(x=>x.sym===sym);
-    const expT=info&&(info.cat==='VOL1S'||info.cat==='STEP')?15:7;
-    const minT=Math.max(3,Math.round(expT*0.6));
+    const expT=info&&(info.cat==='VOL1S'||info.cat==='STEP')?60:30;
+    const minT=Math.max(5,Math.round(expT*0.4));
     const candle={epoch,open:buf[0]||price,high:max(buf),low:min(buf),close:price,ticks:buf.length};
     candles.push(candle);
     if(candles.length>250) candles.shift();
@@ -3062,8 +3095,22 @@ function handleTick(data){
 }
 
 function handleCandles(data){
-  // Chart uses ticks_history via buildCandlesFromTicks — bulk candle data ignored.
-  return;
+  if (data.error) return;
+  const sym = data.echo_req?.ticks_history;
+  if (!sym || !data.candles) return;
+  const arr = data.candles.map(c => ({
+    epoch: +c.epoch,
+    open: +c.open,
+    high: +c.high,
+    low: +c.low,
+    close: +c.close,
+    ticks: 30 // representative count
+  }));
+  G.MARKET.candles[sym] = arr.slice(-250);
+  G.MARKET.prices[sym] = G.MARKET.candles[sym].map(x => x.close);
+  G.MARKET.lastCloseAt[sym] = Date.now();
+  log(`[HIST] ${sym}: Imported ${arr.length} 1-minute historical candles instantly`, 's');
+  drawChart();
 }
 
 function handleOhlc(data){
@@ -3396,7 +3443,18 @@ function execTrade(signal, asset){
   }
   asset = asset || G.CURRENT_MARKET;
   let stake = signal.copyStake || (Martingale.enabled ? Martingale.currentStake : parseFloat(document.getElementById('rfStake')?.value||1));
-  const dur = 10, durUnit = 't';
+
+  // Autopick trade duration from 1-3 minutes
+  let dur = 2;
+  if (signal.conf && signal.conf >= 90) {
+    dur = 1; // highly confident, short-duration capture
+  } else if (signal.conf && signal.conf <= 83) {
+    dur = 3; // lower confidence / mean reversion breathing room
+  } else {
+    dur = 2; // balanced default
+  }
+  const durUnit = 'm'; // minutes
+
   const ct = signal.action==='RISE'?'CALL':'PUT';
 
   // ── Kelly Criterion sizing (non-martingale, non-copy) ──
@@ -3706,14 +3764,14 @@ function drawChart(){
   const clr = k=>s.getPropertyValue('--'+k).trim();
   const MUTED=clr('muted'), LINE=clr('line'), POS=clr('positive'), NEG=clr('negative'), ACC=clr('accent');
   const sym = G.CURRENT_MARKET;
-  // 10s candle source for the chart (strategy still uses 15s candles internally)
-  const raw = G.MARKET.candles10[sym] || [];
+  // 1m candle source for the chart
+  const raw = G.MARKET.candles[sym] || [];
 
   const w = canvas.parentNode.clientWidth || canvas.clientWidth || 800;
   const numCandles = Math.max(30, Math.min(160, Math.floor(w / 6)));
   const c = raw.slice(-numCandles);
 
-  const liveBuf = G.MARKET.tickBuf10?.[sym] || [];
+  const liveBuf = G.MARKET.tickBuf?.[sym] || [];
   const hasLive = liveBuf.length > 0;
   const liveCandle = hasLive ? {
     open: c.length ? c[c.length-1].close : liveBuf[0],
@@ -3727,13 +3785,13 @@ function drawChart(){
   const aroonPanel = ChartSettings.aroon;
   const panelH = aroonPanel ? Math.round(h * 0.20) : 0;
   const cdlH = h - panelH;
-  if(all.length<2 || raw.length<180){
+  if(all.length<2 || raw.length<15){
     canvas.style.width = '100%'; canvas.style.minWidth = '';
     canvas.width = w*dpr; canvas.height = h*dpr;
     ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
     ctx.fillStyle=MUTED; ctx.font='11px monospace';
-    if(raw.length<200){
-      ctx.fillText('Importing 10s OHLC… '+raw.length+'/180',12,h/2);
+    if(raw.length<25){
+      ctx.fillText('Importing 1m OHLC… '+raw.length+'/15',12,h/2);
     } else {
       ctx.fillText('Waiting for data...',12,h/2);
     }
@@ -4270,7 +4328,7 @@ function setDurationMode(mode){
   const f=document.getElementById('durFixedBtn'), a=document.getElementById('durAutoBtn');
   if(f){ const on=mode==='fixed'; f.style.background=on?'var(--accent)':'none'; f.style.color=on?'#fff':'var(--muted)'; f.style.borderColor=on?'var(--accent)':'var(--line)'; }
   if(a){ const on=mode==='auto_ticks'; a.style.background=on?'var(--accent)':'none'; a.style.color=on?'#fff':'var(--muted)'; a.style.borderColor=on?'var(--accent)':'var(--line)'; }
-  log(`[DURATION] Mode: ${mode==='auto_ticks'?'AUTO 1-10 ticks':'15s fixed'}`,'i');
+  log(`[DURATION] Mode: ${mode==='auto_ticks'?'AUTO 1-10 ticks':'1-3m fixed'}`,'i');
   saveState();
 }
 function updateDurModeUI(){
@@ -4390,7 +4448,7 @@ function updateDigitsUI(){
   const get = (id) => document.getElementById(id);
   const hist = (G.MARKET.digHist && G.MARKET.digHist[G.CURRENT_MARKET]) || []; // full per-market buffer
   const histLen = hist.length;
-  const live = hist.slice(-60);
+  const live = hist.slice(-1000);
   const liveLen = live.length;
   // Throttle full SVG rebuild to every 5th tick (cursor stays smooth)
   const throttleKey = '_dgThrottle';
@@ -4441,11 +4499,10 @@ function updateDigitsUI(){
     setText('dgColdest', minD>=0 ? `${minD} (${(minF/hTotal*100).toFixed(1)}%)` : '—');
   }
   setText('dgDistRange', 'Live '+liveLen+' ticks');
-  const cs = digitChiSq(live);
+  const ent = shannonEntropy(live);
   const chiEl = get('dgChiSq');
   if(chiEl){
-    chiEl.textContent = cs ? cs.toFixed(1) : '--';
-    chiEl.style.color = cs > 16.9 ? 'var(--negative)' : cs > 11.1 ? 'var(--warn)' : 'var(--muted)';
+    chiEl.textContent = ent ? ent.toFixed(3) : '--';
   }
   const dgMarket = get('dgMarketName');
   if(dgMarket){ const s = G.CURRENT_MARKET; const info = SYMBOLS.find(x=>x.sym===s); dgMarket.textContent = info?info.name+' ('+s+')':s; }
@@ -4472,37 +4529,58 @@ function updateDigitsUI(){
   // === MARKET BIAS WATCH (all subscribed markets) ===
   const watch = get('dgBiasWatch');
   if(watch && G.MARKET.digHist){
-    const SIG = 3.84;
     const cands = [
-      { dir:'OVER',  barrier:3 },
-      { dir:'OVER',  barrier:4 },
-      { dir:'UNDER', barrier:6 },
-      { dir:'UNDER', barrier:7 }
+      { dir:'OVER',  barrier:1, baseline: 0.80, minComposite: 0.835 },
+      { dir:'OVER',  barrier:2, baseline: 0.70, minComposite: 0.745 },
+      { dir:'OVER',  barrier:3, baseline: 0.60, minComposite: 0.645 },
+      { dir:'UNDER', barrier:6, baseline: 0.60, minComposite: 0.645 },
+      { dir:'UNDER', barrier:7, baseline: 0.70, minComposite: 0.745 },
+      { dir:'UNDER', barrier:8, baseline: 0.80, minComposite: 0.835 }
     ];
     const rows = [];
     for(const sym of Object.keys(G.MARKET.digHist)){
       const h = G.MARKET.digHist[sym];
-      if(h.length < 100) continue;
-      const buf = h.slice(-100);
-      const r8 = (w,dir,bar) => { const isOver = dir==='DIGITOVER'; const win = w.filter(d => isOver ? d>bar : d<bar).length; return w.length ? win/w.length : 0; };
-      const e8 = (dir,bar) => dir==='DIGITOVER' ? (9-bar)/10 : bar/10;
+      if(h.length < 150) continue;
+      const buf = h.slice(-1000);
+      const len = buf.length;
+
+      // Calculate Markovrow-transition row
+      const M = Array.from({ length: 10 }, () => Array(10).fill(0.1));
+      for (let i = 0; i < len - 1; i++) {
+        M[buf[i]][buf[i+1]]++;
+      }
+      for (let i = 0; i < 10; i++) {
+        const rowSum = M[i].reduce((a, b) => a + b, 0);
+        for (let j = 0; j < 10; j++) M[i][j] /= rowSum;
+      }
+      const nowDigit = buf[len - 1];
+
       let best=null;
       for(const c of cands){
-        const dir = c.dir==='OVER'?'DIGITOVER':'DIGITUNDER';
-        const edge = r8(buf, dir, c.barrier) - e8(dir, c.barrier);
-        if(edge >= 0.05){ if(!best || edge>best.edge) best = { ...c, edge }; }
+        let p_trans = 0;
+        const isOver = c.dir === 'OVER';
+        for(let d=0; d<10; d++){
+          if(isOver ? d > c.barrier : d < c.barrier) p_trans += M[nowDigit][d];
+        }
+        const winCount = buf.filter(d => isOver ? d > c.barrier : d < c.barrier).length;
+        const p_empirical = winCount / len;
+        const p_composite = 0.5 * p_trans + 0.5 * p_empirical;
+        const edge = p_composite - c.baseline;
+        if(p_composite >= c.minComposite && edge > 0.035){
+          if(!best || edge > best.edge) best = { ...c, edge };
+        }
       }
       const sel = sym===G.CURRENT_MARKET;
       if(best){
-        rows.push(`<div onclick="selectMarket('${sym}')" style="display:flex;justify-content:space-between;align-items:center;font-size:8px;padding:2px 4px;border:1px solid var(--line);background:var(--acc-dim);cursor:pointer${sel?';outline:1px solid var(--accent)':''}"><span style="color:var(--text);font-weight:600">${sym}</span><span style="color:var(--positive);font-weight:700">${best.dir} ${best.barrier} · +${(best.edge*100).toFixed(0)}%</span></div>`);
+        rows.push(`<div onclick="selectMarket('${sym}')" style="display:flex;justify-content:space-between;align-items:center;font-size:8px;padding:2px 4px;border:1px solid var(--line);background:var(--acc-dim);cursor:pointer${sel?';outline:1px solid var(--accent)':''}"><span style="color:var(--text);font-weight:600">${sym}</span><span style="color:var(--positive);font-weight:700">${best.dir} ${best.barrier} · +${(best.edge*100).toFixed(1)}%</span></div>`);
       } else {
         rows.push(`<div onclick="selectMarket('${sym}')" style="display:flex;justify-content:space-between;align-items:center;font-size:8px;padding:2px 4px;border:1px solid var(--line);opacity:0.6;cursor:pointer${sel?';outline:1px solid var(--accent)':''}"><span style="color:var(--muted)">${sym}</span><span style="color:var(--muted)">—</span></div>`);
       }
     }
     watch.innerHTML = rows.join('');
   }
-  // Live-window chi-square already computed above (cs); show a short note.
-  setText('dgDistRange', 'Live '+liveLen+' ticks · χ²='+cs.toFixed(1));
+  // Live-window Entropy already computed above (ent); show a short note.
+  setText('dgDistRange', 'Live '+liveLen+' ticks · Entropy H='+ent.toFixed(3));
   // Risk mode display
   setText('dgWinStreak', 'W:'+BotState.winStreak);
   setText('dgLossStreak', 'L:'+BotState.lossStreak);
