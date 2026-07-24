@@ -82,6 +82,8 @@ section{padding:100px 0}
 .plan ul{list-style:none;text-align:left;margin-bottom:32px}
 .plan ul li{padding:8px 0;font-size:13px;border-bottom:1px solid var(--line);color:var(--muted)}
 .plan ul li::before{content:'✓ ';color:var(--positive);font-weight:700}
+.plan ul li.na{color:rgba(255,255,255,0.15);text-decoration:line-through}
+.plan ul li.na::before{content:'✗ ';color:var(--negative);font-weight:700}
 .plan .btn-plan{display:inline-block;padding:12px 36px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;transition:all .2s;width:100%}
 .plan .btn-plan.primary{background:var(--accent);color:var(--bg)}
 .plan .btn-plan.primary:hover{opacity:.9}
@@ -122,8 +124,9 @@ footer .footer-links a:hover{color:var(--accent)}
     <ul class="nav-links">
       <li><a href="#features">Features</a></li>
       <li><a href="#how">How It Works</a></li>
+      <li><a href="#community">Community</a></li>
       <li><a href="#pricing">Pricing</a></li>
-      <li><a href="bot.html" class="nav-cta">Launch App</a></li>
+      <li><a href="bot.html?tier=free" class="nav-cta">Launch App</a></li>
     </ul>
   </div>
 </nav>
@@ -132,16 +135,17 @@ footer .footer-links a:hover{color:var(--accent)}
   <div class="container hero-content">
     <div class="hero-badge">v2.0 — Now Live</div>
     <h1>Algorithmic Trading<br><span>on Deriv.com</span></h1>
-    <p>Automated Rise/Fall and Digits Over/Under strategies powered by Aroon, Price Action, and Markov Chain analysis. Trade multiple markets simultaneously with 15s precision.</p>
+    <p>Automated Rise/Fall and Digits Over/Under strategies powered by Aroon, Fractal reversals, and statistical bias detection. Trade across 13 Deriv markets with 15s candle precision.</p>
     <div class="hero-actions">
-      <a href="bot.html" class="btn-primary">Launch Trading Bot</a>
+      <a href="bot.html?tier=free" class="btn-primary">Launch Trading Bot</a>
       <a href="#features" class="btn-secondary">Learn More</a>
     </div>
     <div class="hero-stats">
-      <div><div class="num">10+</div><div class="label">Markets</div></div>
+      <div><div class="num">13</div><div class="label">Markets</div></div>
       <div><div class="num">15s</div><div class="label">Candle Precision</div></div>
-      <div><div class="num">4</div><div class="label">Strategies</div></div>
+      <div><div class="num">3</div><div class="label">Strategies</div></div>
       <div><div class="num">24/7</div><div class="label">Automated</div></div>
+      <div><div class="num">&gt;900</div><div class="label">Community</div></div>
     </div>
   </div>
 </section>
@@ -154,33 +158,38 @@ footer .footer-links a:hover{color:var(--accent)}
     <div class="features-grid">
       <div class="feature-card">
         <span class="icon">📊</span>
-        <h3>Aroon Traffic Light</h3>
+        <h3>Aroon Traffic Light <span style="font-size:8px;background:var(--accent);color:var(--bg);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;vertical-align:middle">FREE</span></h3>
         <p>Trend-strength analysis with strict 100/≤30 entry gates, first-touch-only logic, and noise filtering for high-probability setups.</p>
       </div>
       <div class="feature-card">
         <span class="icon">🎯</span>
-        <h3>Digits Over/Under</h3>
+        <h3>Digits Over/Under <span style="font-size:8px;background:var(--accent);color:var(--bg);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;vertical-align:middle">PRO</span></h3>
         <p>Statistical edge detection on tick-digit distributions using a constant 100-tick buffer. Trades only on confirmed, consistent bias.</p>
       </div>
       <div class="feature-card">
         <span class="icon">🔄</span>
-        <h3>Multi-Market</h3>
-        <p>Trade 10+ Volatility indices, Boom/Crash, and Step indices simultaneously with per-market analysis and signal isolation.</p>
+        <h3>Multi-Market <span style="font-size:8px;background:var(--accent);color:var(--bg);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;vertical-align:middle">PRO</span></h3>
+        <p>Trade all 13 Volatility indices (R_10 through R_100, 1s variants, Step Index, Bull/Bear) simultaneously with per-market analysis and isolated signals.</p>
       </div>
       <div class="feature-card">
         <span class="icon">📈</span>
-        <h3>Live Charting</h3>
+        <h3>Live Charting <span style="font-size:8px;background:var(--accent);color:var(--bg);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;vertical-align:middle">PRO</span></h3>
         <p>Real-time 15s candlestick charts with Aroon overlay, EMA bands, Bollinger Bands, and fractal markers.</p>
       </div>
       <div class="feature-card">
         <span class="icon">⚡</span>
-        <h3>Martingale & Kelly</h3>
+        <h3>Martingale & Kelly <span style="font-size:8px;background:var(--accent);color:var(--bg);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;vertical-align:middle">PRO</span></h3>
         <p>Adaptive stake sizing with configurable Martingale recovery and Kelly Criterion optimization for bankroll management.</p>
       </div>
       <div class="feature-card">
         <span class="icon">🔒</span>
-        <h3>Risk Controls</h3>
+        <h3>Risk Controls <span style="font-size:8px;background:var(--accent);color:var(--bg);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;vertical-align:middle">FREE</span></h3>
         <p>Per-session take-profit and stop-loss limits, consecutive-loss cooldowns, and volatility-based stake adjustment.</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">📡</span>
+        <h3>Copy Trading <span style="font-size:8px;background:var(--accent);color:var(--bg);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;vertical-align:middle">ENTERPRISE</span></h3>
+        <p>Mirror trades from other traders in real time. Manage multiple accounts, set multiplier ratios, and track P&amp;L per client.</p>
       </div>
     </div>
   </div>
@@ -195,7 +204,7 @@ footer .footer-links a:hover{color:var(--accent)}
       <div class="step">
         <div class="step-num">1</div>
         <h3>Connect Deriv API</h3>
-        <p>Paste your Deriv API token (read + trade) from the Deriv app settings. OAuth login also supported.</p>
+        <p>Log in via OAuth with Deriv or paste your API token with Read + Trade scopes. Instant connection, zero setup.</p>
       </div>
       <div class="step">
         <div class="step-num">2</div>
@@ -211,51 +220,95 @@ footer .footer-links a:hover{color:var(--accent)}
   </div>
 </section>
 
+<section id="community" style="background:var(--surface)">
+  <div class="container" style="text-align:center">
+    <div class="section-label">Community</div>
+    <h2 class="section-title">Join <span>900+</span> Traders</h2>
+    <p class="section-sub" style="margin:0 auto 32px">Get real-time trade signals, market analysis, and connect with fellow BTraders users in our Telegram community.</p>
+    <div style="display:flex;gap:20px;justify-content:center;flex-wrap:wrap;margin-bottom:40px">
+      <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:28px 36px;flex:1;min-width:240px;max-width:340px">
+        <div style="font-size:40px;margin-bottom:12px">📡</div>
+        <h3 style="font-size:15px;font-weight:700;margin-bottom:6px">Live Trade Feed</h3>
+        <p style="font-size:12px;color:var(--muted);line-height:1.6">Every trade the bot executes is broadcast in real time to Telegram — entry price, direction, stake, and outcome.</p>
+      </div>
+      <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:28px 36px;flex:1;min-width:240px;max-width:340px">
+        <div style="font-size:40px;margin-bottom:12px">🤖</div>
+        <h3 style="font-size:15px;font-weight:700;margin-bottom:6px">Bot Commands</h3>
+        <p style="font-size:12px;color:var(--muted);line-height:1.6">Start, stop, and monitor your bot directly from Telegram. Place Rise/Fall and Digits trades with simple button taps.</p>
+      </div>
+      <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:28px 36px;flex:1;min-width:240px;max-width:340px">
+        <div style="font-size:40px;margin-bottom:12px">💬</div>
+        <h3 style="font-size:15px;font-weight:700;margin-bottom:6px">Community Chat</h3>
+        <p style="font-size:12px;color:var(--muted);line-height:1.6">Discuss strategies, share setups, and get help from experienced traders and the development team.</p>
+      </div>
+    </div>
+    <a href="https://t.me/btraderrsbot" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:10px;background:#1a89d4;color:#fff;padding:16px 40px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;transition:opacity .2s" onmouseover="this.style.opacity=0.9" onmouseout="this.style.opacity=1">
+      <span style="font-size:22px">✈</span> Join Telegram Community
+    </a>
+    <p style="font-size:11px;color:var(--dim);margin-top:16px">Free for all tiers · Trade alerts require Pro plan</p>
+  </div>
+</section>
+
 <section id="pricing">
   <div class="container">
     <div class="section-label">Pricing</div>
     <h2 class="section-title">Choose Your <span>Plan</span></h2>
-    <p class="section-sub">Free to start. Upgrade for advanced features and priority support.</p>
+    <p class="section-sub">Free tier to start. Upgrade to unlock advanced trading engines and risk tools.</p>
     <div class="pricing-grid">
       <div class="plan">
         <div class="name">Free</div>
         <div class="price">$0<span>/mo</span></div>
-        <div class="desc">For getting started</div>
+        <div class="desc">Core Rise/Fall engine</div>
         <ul>
-          <li>3 Markets</li>
-          <li>Aroon Strategy</li>
-          <li>Basic Charting</li>
-          <li>Manual Trading</li>
+          <li>3 Markets (R_10, R_25, R_50)</li>
+          <li>Aroon Traffic Light Strategy</li>
+          <li>Manual + Auto Trading</li>
+          <li>Basic Console Logs</li>
+          <li>Session P&amp;L Tracking</li>
+          <li class="na">Digits Over/Under Engine</li>
+          <li class="na">Full Charting Suite</li>
+          <li class="na">Martingale &amp; Kelly Sizing</li>
+          <li class="na">Copy Trading</li>
+          <li class="na">Telegram Bot Alerts</li>
+          <li>Community Access</li>
         </ul>
-        <a href="bot.html" class="btn-plan secondary">Get Started</a>
+        <a href="bot.html?tier=free" class="btn-plan secondary">Get Started Free</a>
       </div>
       <div class="plan featured">
         <div class="name">Pro</div>
         <div class="price">$15<span>/mo</span></div>
-        <div class="desc">For serious traders</div>
+        <div class="desc">Full algorithmic arsenal</div>
         <ul>
-          <li>All Markets</li>
-          <li>Aroon + Digits Strategies</li>
-          <li>Full Charting Suite</li>
-          <li>Auto Trading</li>
-          <li>Martingale &amp; Kelly Sizing</li>
+          <li>All 13 Markets</li>
+          <li>Aroon + Fractal + AO Strategies</li>
+          <li>Digits Over/Under Engine</li>
+          <li>Live 15s Candlestick Charts</li>
+          <li>Martingale &amp; Kelly Criterion</li>
+          <li>Telegram Trade Alerts</li>
+          <li>Loss Cluster Protection</li>
+          <li>Session Reports</li>
           <li>Priority Support</li>
+          <li class="na">Copy Trading</li>
+          <li class="na">White-Label API</li>
         </ul>
-        <a href="bot.html" class="btn-plan primary">Launch Pro</a>
+        <a href="bot.html?tier=pro" class="btn-plan primary">Go Pro</a>
       </div>
       <div class="plan">
         <div class="name">Enterprise</div>
         <div class="price">$49<span>/mo</span></div>
-        <div class="desc">For power users</div>
+        <div class="desc">Institutional automation</div>
         <ul>
           <li>Everything in Pro</li>
-          <li>Copy Trading</li>
-          <li>Custom Strategies</li>
+          <li>Copy Trading (unlimited clients)</li>
+          <li>Multi-account Management</li>
+          <li>All 3 Strategies</li>
           <li>White-Label Ready</li>
-          <li>24/7 Support</li>
-          <li>API Access</li>
+          <li>Dedicated API Endpoints</li>
+          <li>Custom Risk Parameters</li>
+          <li>24/7 Priority Support</li>
+          <li>SLA Guarantee</li>
         </ul>
-        <a href="bot.html" class="btn-plan secondary">Contact Sales</a>
+        <a href="bot.html?tier=enterprise" class="btn-plan secondary">Contact Sales</a>
       </div>
     </div>
   </div>
@@ -265,7 +318,7 @@ footer .footer-links a:hover{color:var(--accent)}
   <div class="container">
     <h2>Ready to Trade <span style="color:var(--accent)">Smarter?</span></h2>
     <p>Launch the app, connect your Deriv account, and start trading with institutional-grade algorithms.</p>
-    <a href="bot.html" class="btn-primary">Launch BTraders</a>
+    <a href="bot.html?tier=free" class="btn-primary">Launch BTraders</a>
   </div>
 </section>
 
@@ -278,10 +331,11 @@ footer .footer-links a:hover{color:var(--accent)}
 <footer>
   <div class="container">
     <div class="footer-links">
-      <a href="bot.html">Launch App</a>
+      <a href="bot.html?tier=free">Launch App</a>
       <a href="#features">Features</a>
+      <a href="#community">Telegram</a>
       <a href="#pricing">Pricing</a>
-      <a href="#how">Documentation</a>
+      <a href="https://t.me/btraderrsbot" target="_blank" rel="noopener">Bot Support</a>
     </div>
     <p>&copy; 2026 BTraders. Not affiliated with Deriv (Deriv Investments Ltd). All trademarks belong to their respective owners.</p>
   </div>
