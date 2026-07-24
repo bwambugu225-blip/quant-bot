@@ -1099,6 +1099,8 @@ const G = {
   MARKET_SELECTION_MODE:'auto',
   SELECTED_MARKET:'R_50',
   DAILY:{ pnl:0, trades:0, hourTrades:[], date:'' },
+  DAILY_TAKEPROFIT:10,
+  DAILY_STOPLOSS:5,
   CONS_LOSS_COOLDOWN:0,
   LEARN:{ patterns:{}, suppressed: new Set() },
   SG_TAB:0,
@@ -4724,6 +4726,22 @@ function updateDash(){
   set('dashLoss', fmt$(G.DAILY.pnl<0?-G.DAILY.pnl:0));
   set('dashConsLoss', String(G.CONS_LOSS || 0));
   updateAnalysisPanel();
+  // Sync state for Telegram Mini App
+  try {
+    const tierFeat = G.TIER_FEATURES[getTier()];
+    const lastHax = _haxTape && _haxTape.length ? _haxTape[_haxTape.length-1] : '';
+    const logText = lastHax ? lastHax.replace(/<[^>]+>/g,'').trim() : '';
+    const state = {
+      balance: G.BALANCE, accountType: G.ACCOUNT_TYPE, tier: tierFeat?.label||'FREE',
+      market: G.CURRENT_MARKET, strategy: G.SELECTED_STRATEGY, mode: G.TRADE_MODE,
+      stake: parseFloat(document.getElementById('rfStake')?.value||1),
+      activeContracts: G.ACTIVE_CONTRACTS.size,
+      pnl: G.PNL, wins: G.WINS, losses: G.LOSSES, trades: G.TRADES,
+      streak: G.CONS_LOSS, wr: total?Math.round(G.WINS/total*100):0, running: G.RUNNING,
+      lastLog: logText
+    };
+    localStorage.setItem('btr_miniapp_state', JSON.stringify(state));
+  } catch(e){}
 }
 let _haxTape=[];
 function haxPush(msg, cls){
@@ -4913,19 +4931,32 @@ function sendTradingReadyAlert() {
   if (G.SESSION_START_SENT) return;
   G.SESSION_START_SENT = true;
   const symName = SYMBOLS.find(s => s.sym === G.CURRENT_MARKET)?.name || G.CURRENT_MARKET;
-  sendTelegramAlert(`🚀 *Session Started*\n📊 Market: ${symName}\n🕐 15s Reversal Engine\n💰 Balance: $${G.BALANCE.toFixed(2)}`);
+  const tierFeat = G.TIER_FEATURES[getTier()];
+  const tierName = tierFeat?.label || 'FREE';
+  sendTelegramAlert(
+    `🚀 *Bot Started*\n━━━━━━━━━━━━━━━\n`+
+    `📊 Market: ${symName} (${G.CURRENT_MARKET})\n`+
+    `🕐 Engine: Rise/Fall ${G.SELECTED_STRATEGY}\n`+
+    `💰 Balance: $${G.BALANCE.toFixed(2)}\n`+
+    `🎯 Target: $${(G.DAILY_TAKEPROFIT||0).toFixed(2)}\n`+
+    `🛑 Stop: $${(G.DAILY_STOPLOSS||0).toFixed(2)}\n`+
+    `📋 Plan: ${tierName}\n`+
+    `━━━━━━━━━━━━━━━\n`+
+    `🟢 Monitoring live ticks...`
+  );
 }
 
 function sendTradeResult(r) {
-  const icon = r.won ? '✅' : '❌';
-  const dir = r.action === 'RISE' ? 'CALL' : 'PUT';
-  const pf = +r.profit || 0;
-  const msg =
-    `${icon} *${r.won ? 'WIN' : 'LOSS'}*  \\|  ${dir} @ $${(+r.stake||0).toFixed(2)}\n` +
-    `📈 PnL: ${pf >= 0 ? '+' : ''}$${pf.toFixed(2)}\n` +
-    `💡 ${r.strategy} \\| 💰 Balance: $${(+r.balance||0).toFixed(2)}`;
-  sendTelegramAlert(msg);
-  if(G._tgTradeChat){ tgSend(G._tgTradeChat, msg, tgMainKeyboard()); G._tgTradeChat = null; }
+  // Only send trade result to the Telegram chat that initiated the trade (manual CALL/PUT from Telegram)
+  // No broadcast of every trade to all users
+  if(G._tgTradeChat){
+    const icon = r.won ? '✅' : '❌';
+    const dir = r.action === 'RISE' ? 'CALL' : 'PUT';
+    const pf = +r.profit || 0;
+    const msg = `${icon} *${r.won ? 'WIN' : 'LOSS'}*  \\|  ${dir} @ $${(+r.stake||0).toFixed(2)}\n📈 PnL: ${pf >= 0 ? '+' : ''}$${pf.toFixed(2)}`;
+    tgSend(G._tgTradeChat, msg, tgMainKeyboard());
+    G._tgTradeChat = null;
+  }
 }
 
 function sendSessionSummary(final) {
@@ -4934,16 +4965,13 @@ function sendSessionSummary(final) {
   const losses = hist.length - wins;
   const pnl = hist.reduce((s, t) => s + (+t.profit || 0), 0);
   const wr = hist.length ? (wins / hist.length * 100).toFixed(1) : '0.0';
+  const maxDraw = hist.reduce((m, t) => Math.min(m, +t.profit||0), 0);
+  const totalStake = hist.reduce((s, t) => s + (+t.stake||0), 0);
   if (!hist.length) { sendTelegramAlert(`📭 No trades this session`); return; }
-  let header = final
-    ? `🏁 *Session Over*\n━━━━━━━━━━━━━━━\n📊 ${hist.length} trades \\| ✅ ${wins} \\| ❌ ${losses} \\| 📈 ${wr}%\n💰 PnL: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}\n━━━━━━━━━━━━━━━\n`
-    : `📊 *Session Update* \\| ${hist.length} trades \\| ✅ ${wins} \\| ❌ ${losses} \\| 📈 ${wr}% \\| ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}\n━━━━━━━━━━━━━━━\n`;
-  const lines = hist.slice(-20).map((t, i) => {
-    const num = hist.length - 20 + i + 1;
-    const pf = +t.profit || 0;
-    return `\`#${num}\` ${t.won ? '✅' : '❌'} ${t.action} $${(+t.stake||0).toFixed(2)} → ${pf >= 0 ? '+' : ''}$${pf.toFixed(2)}`;
-  });
-  sendTelegramAlert(header + lines.join('\n'));
+  const header = final
+    ? `🏁 *Session Over*\n━━━━━━━━━━━━━━━\n📊 ${hist.length} trades \\| ✅ ${wins} \\| ❌ ${losses} \\| 📈 ${wr}%\n💰 PnL: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}\n📉 Max Draw: $${Math.abs(maxDraw).toFixed(2)}\n💵 Volume: $${totalStake.toFixed(2)}\n━━━━━━━━━━━━━━━\n`
+    : `📊 *Hourly Update* \\| ${hist.length} trades \\| ✅ ${wins} \\| ❌ ${losses} \\| 📈 ${wr}% \\| PnL: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}\n━━━━━━━━━━━━━━━\n`;
+  sendTelegramAlert(header);
 }
 
 // ── Telegram Button Trading Engine ──
@@ -4955,8 +4983,10 @@ function tgMainKeyboard(){
       [{text:'🟢 CALL',callback_data:'call'},{text:'🔴 PUT',callback_data:'put'}],
       [{text:'🚀 Auto Start',callback_data:'start'},{text:'⏹ Auto Stop',callback_data:'stop'}],
       [{text:'📊 Status',callback_data:'status'},{text:'💰 Balance',callback_data:'balance'}],
-      [{text:'📈 Switch Market',callback_data:'market'},{text:'⚙️ Stake',callback_data:'stake'}],
-      [{text:'🔄 Reset Demo',callback_data:'reset'},{text:'❓ Help',callback_data:'help'}]
+      [{text:'📈 PnL',callback_data:'pnl'},{text:'📋 Stats',callback_data:'stats'}],
+      [{text:'📈 Market',callback_data:'market'},{text:'⚙️ Stake',callback_data:'stake'}],
+      [{text:'🔄 Reset Demo',callback_data:'reset'},{text:'📱 Mini App',callback_data:'miniapp'}],
+      [{text:'❓ Help',callback_data:'help'}]
     ]
   };
 }
@@ -5110,14 +5140,72 @@ function processTgAction(action, chatId, msgId){
       resetDemo();
       setTimeout(() => tgEdit(chatId, msgId, `✅ Demo reset to $${G.BALANCE.toFixed(2)}`, tgMainKeyboard()), 1500);
       break;
+    case 'pnl':{
+      const pnl = G.PNL||0;
+      const maxWin = G.TRADE_HISTORY.length ? Math.max(...G.TRADE_HISTORY.map(t=>+t.profit||0)) : 0;
+      const maxLoss = G.TRADE_HISTORY.length ? Math.min(...G.TRADE_HISTORY.map(t=>+t.profit||0)) : 0;
+      tgEdit(chatId, msgId,
+        `📈 *PnL Report*\n━━━━━━━━━━━━━━━\n`+
+        `Total PnL: ${pnl>=0?'+':''}$${pnl.toFixed(2)}\n`+
+        `Best Win: +$${maxWin.toFixed(2)}\n`+
+        `Worst Loss: $${maxLoss.toFixed(2)}\n`+
+        `Current Balance: $${G.BALANCE.toFixed(2)}`,
+        tgMainKeyboard());
+      break;
+    }
+    case 'stats':{
+      const total = G.WINS+G.LOSSES;
+      const wr = total ? Math.round(G.WINS/total*100) : 0;
+      const pnl = G.PNL||0;
+      const hist = G.TRADE_HISTORY;
+      const wins = hist.filter(t=>t.won).length;
+      const losses = hist.length-wins;
+      const avgWin = wins ? hist.filter(t=>t.won).reduce((s,t)=>s+(+t.profit||0),0)/wins : 0;
+      const avgLoss = losses ? hist.filter(t=>!t.won).reduce((s,t)=>s+(+t.profit||0),0)/losses : 0;
+      const bestStrat = G.SELECTED_STRATEGY||'—';
+      tgEdit(chatId, msgId,
+        `📋 *Session Stats*\n━━━━━━━━━━━━━━━\n`+
+        `📊 Trades: ${total}\n`+
+        `✅ Wins: ${G.WINS} \\| ❌ Losses: ${G.LOSSES}\n`+
+        `📈 Win Rate: ${wr}%\n`+
+        `💰 PnL: ${pnl>=0?'+':''}$${pnl.toFixed(2)}\n`+
+        `📈 Avg Win: +$${avgWin.toFixed(2)}\n`+
+        `📉 Avg Loss: -$${Math.abs(avgLoss).toFixed(2)}\n`+
+        `🔥 Streak: ${G.CONS_LOSS||0}L\n`+
+        `💡 Strategy: ${bestStrat}\n`+
+        `${G.RUNNING?'🟢 Engine Running':'⏸ Engine Stopped'}`,
+        tgMainKeyboard());
+      break;
+    }
+    case 'miniapp':
+      tgEdit(chatId, msgId,
+        `📱 *BTraders Mini App*\n\n`+
+        `Open the mini app to monitor your bot in real time, view charts, and manage settings — all inside Telegram.\n\n`+
+        `[Open Mini App](https://t.me/btraderrsbot/app)`,
+        tgMainKeyboard());
+      break;
     case 'help':
       tgEdit(chatId, msgId,
         `🤖 *BTraders Bot*\n\n`+
-        `🟢 *CALL* — Place a RISE trade\n🔴 *PUT* — Place a FALL trade\n`+
-        `🚀 *Auto Start* — Start engine\n⏹ *Auto Stop* — Stop engine\n`+
-        `📊 *Status* — Session stats\n💰 *Balance* — Account balance\n`+
-        `📈 *Market* — Switch symbol\n⚙️ *Stake* — View/change stake\n`+
-        `🔄 *Reset* — Reset demo account`,
+        `*Commands:*\n`+
+        `/start — Welcome message\n`+
+        `/help — Show this help\n`+
+        `/status — Session status\n`+
+        `/balance — Account balance\n`+
+        `/pnl — Profit & loss report\n`+
+        `/stats — Detailed session stats\n`+
+        `/market R_100 — Switch market\n`+
+        `/stake 2.0 — Change stake\n`+
+        `/reset — Reset demo account\n`+
+        `/settings — View bot config\n`+
+        `/daily — Daily performance\n`+
+        `/tier — Current plan info\n`+
+        `/miniapp — Open Mini App\n\n`+
+        `*Buttons:*\n`+
+        `🟢 CALL / 🔴 PUT — Manual trades\n`+
+        `🚀 Start / ⏹ Stop — Auto engine\n`+
+        `📊 Status — Quick stats\n`+
+        `📱 Mini App — Open in Telegram`,
         tgMainKeyboard());
       break;
   }
@@ -5131,8 +5219,108 @@ function handleTgCommand(text, chatId){
   const marketName = (SYMBOLS.find(s=>s.sym===symName)||{}).name || symName;
   const stakeEl = document.getElementById('rfStake');
   const curStake = stakeEl ? parseFloat(stakeEl.value)||1 : 1;
-  if(cmd==='/help'){ tgReply(chatId, `🤖 *BTraders Bot*\n\nTap any button below to trade.`, tgMainKeyboard()); return; }
-  if(cmd==='/start'){ tgReply(chatId, `🚀 Tap *Auto Start* to begin\nOr use *CALL* / *PUT* for manual trades`, tgMainKeyboard()); return; }
+  const total = G.WINS+G.LOSSES;
+  const wr = total ? Math.round(G.WINS/total*100) : 0;
+  const pnl = G.PNL||0;
+  const hist = G.TRADE_HISTORY;
+  const wins = hist.filter(t=>t.won).length;
+  const losses = hist.length-wins;
+  const tierFeat = G.TIER_FEATURES[getTier()];
+  const tierName = tierFeat?.label || 'FREE';
+  if(cmd==='/start'){ tgReply(chatId, `🚀 *BTraders Bot Ready*\n\nTap *Auto Start* to begin trading.\nUse *CALL* / *PUT* for manual trades.\n\nOpen the [Mini App](${window.location.origin}/miniapp.html) for full control.`, tgMainKeyboard()); return; }
+  if(cmd==='/help'){ tgReply(chatId,
+    `🤖 *BTraders Commands*\n\n`+
+    `/start — Welcome & start\n/status — Session status\n/balance — Account balance\n`+
+    `/pnl — PnL report\n/stats — Detailed stats\n/daily — Daily perf\n`+
+    `/market R_100 — Switch market\n/stake 2.0 — Change stake\n`+
+    `/settings — Bot config\n/tier — Plan info\n/reset — Reset demo\n`+
+    `/miniapp — Open Mini App\n/help — This message`,
+    tgMainKeyboard()); return; }
+  if(cmd==='/status'){
+    const cc = G.ACTIVE_CONTRACTS.size;
+    tgReply(chatId,
+      `📊 *Status*\n📈 ${marketName}\n💰 Balance: $${G.BALANCE.toFixed(2)}\n`+
+      `📊 PnL: ${pnl>=0?'+':''}$${pnl.toFixed(2)}\n`+
+      `🎯 ${total} trades \\| ✅ ${G.WINS} \\| ❌ ${G.LOSSES} \\| ${wr}%\n`+
+      `🔥 Streak: ${G.CONS_LOSS||0}L\n${G.RUNNING?'🟢 Running':'⏸ Stopped'} \\| ${cc} active`,
+      tgMainKeyboard()); return;
+  }
+  if(cmd==='/balance'){ tgReply(chatId, `💰 *Balance*\n$${G.BALANCE.toFixed(2)} (${G.ACCOUNT_TYPE||'demo'})\n📈 PnL: ${pnl>=0?'+':''}$${pnl.toFixed(2)}`, tgMainKeyboard()); return; }
+  if(cmd==='/pnl'){
+    const maxWin = hist.length ? Math.max(...hist.map(t=>+t.profit||0)) : 0;
+    const maxLoss = hist.length ? Math.min(...hist.map(t=>+t.profit||0)) : 0;
+    tgReply(chatId,
+      `📈 *PnL Report*\nTotal: ${pnl>=0?'+':''}$${pnl.toFixed(2)}\n`+
+      `Best: +$${maxWin.toFixed(2)}\nWorst: $${maxLoss.toFixed(2)}\n`+
+      `Balance: $${G.BALANCE.toFixed(2)}`,
+      tgMainKeyboard()); return;
+  }
+  if(cmd==='/stats'){
+    const avgWin = wins ? hist.filter(t=>t.won).reduce((s,t)=>s+(+t.profit||0),0)/wins : 0;
+    const avgLoss = losses ? hist.filter(t=>!t.won).reduce((s,t)=>s+(+t.profit||0),0)/losses : 0;
+    tgReply(chatId,
+      `📋 *Session Stats*\nTrades: ${total}\n✅ ${G.WINS} ❌ ${G.LOSSES}\n`+
+      `📈 WR: ${wr}%\n💰 PnL: ${pnl>=0?'+':''}$${pnl.toFixed(2)}\n`+
+      `📈 Avg Win: +$${avgWin.toFixed(2)}\n📉 Avg Loss: -$${Math.abs(avgLoss).toFixed(2)}\n`+
+      `🔥 Streak: ${G.CONS_LOSS||0}L\n💡 ${G.SELECTED_STRATEGY||'—'}\n${G.RUNNING?'🟢 Running':'⏸ Stopped'}`,
+      tgMainKeyboard()); return;
+  }
+  if(cmd==='/daily'){
+    const today = new Date().toDateString();
+    const dayHist = hist.filter(t => new Date(t.time).toDateString() === today);
+    const dWins = dayHist.filter(t=>t.won).length;
+    const dLoss = dayHist.length-dWins;
+    const dPnl = dayHist.reduce((s,t)=>s+(+t.profit||0),0);
+    const dWr = dayHist.length ? Math.round(dWins/dayHist.length*100) : 0;
+    tgReply(chatId,
+      `📅 *Daily Report*\n${today}\n━━━━━━━━━━\n`+
+      `Trades: ${dayHist.length}\n✅ ${dWins} ❌ ${dLoss}\n`+
+      `📈 WR: ${dWr}%\n💰 PnL: ${dPnl>=0?'+':''}$${dPnl.toFixed(2)}`,
+      tgMainKeyboard()); return;
+  }
+  if(cmd==='/tier'){
+    const mktCount = G.TIER_MARKETS ? G.TIER_MARKETS.length : 3;
+    tgReply(chatId,
+      `📋 *Your Plan: ${tierName}*\n`+
+      `📊 Markets: ${mktCount}/13\n`+
+      `💡 Strategies: ${tierFeat.strategies.join(', ')}\n`+
+      `🎯 Digits: ${tierFeat.digits?'✅':'❌'}\n`+
+      `⚡ Martingale: ${tierFeat.martingale?'✅':'❌'}\n`+
+      `📈 Charts: ${tierFeat.charting?'✅':'❌'}\n`+
+      `📡 Copy Trading: ${tierFeat.copyTrading?'✅':'❌'}\n\n`+
+      `Upgrade at btraders.app/pricing`,
+      tgMainKeyboard()); return;
+  }
+  if(cmd==='/settings'){
+    const tradeMode = G.TRADE_MODE||'RISEFALL';
+    const strat = G.SELECTED_STRATEGY||'AROON';
+    const multi = G.MARKET_SELECTION_MODE==='auto'?'ON':'OFF';
+    const mart = Martingale?.enabled?'ON':'OFF';
+    const copy = G.COPYTRADING_ENABLED?'ON':'OFF';
+    const dTarget = G.DAILY_TAKEPROFIT||0;
+    const dStop = G.DAILY_STOPLOSS||0;
+    tgReply(chatId,
+      `⚙️ *Bot Settings*\n`+
+      `📊 Market: ${symName}\n💡 Strategy: ${strat}\n`+
+      `🎯 Mode: ${tradeMode}\n💰 Stake: $${curStake.toFixed(2)}\n`+
+      `🔄 Multi-Market: ${multi}\n⚡ Martingale: ${mart}\n`+
+      `📡 Copy Trading: ${copy}\n`+
+      `🎯 Daily Target: $${dTarget.toFixed(2)}\n🛑 Daily Stop: $${dStop.toFixed(2)}`,
+      tgMainKeyboard()); return;
+  }
+  if(cmd==='/miniapp'){
+    tgReply(chatId,
+      `📱 *BTraders Mini App*\n\n`+
+      `Monitor, control, and analyze your bot inside Telegram.\n\n`+
+      `[Open Mini App](${window.location.origin}/miniapp.html)`,
+      tgMainKeyboard()); return;
+  }
+  if(cmd==='/reset'){
+    if(G.ACCOUNT_TYPE!=='demo'){ tgReply(chatId, `❌ Reset only works on demo accounts`, tgMainKeyboard()); return; }
+    resetDemo();
+    setTimeout(() => tgReply(chatId, `✅ Demo reset to $${G.BALANCE.toFixed(2)}`, tgMainKeyboard()), 1500);
+    return;
+  }
   if(cmd==='/market' && args.length){
     const q = args.join(' ').toUpperCase();
     const found = SYMBOLS.find(s=>s.sym===q || s.name?.toUpperCase().includes(q));
@@ -5149,6 +5337,22 @@ function handleTgCommand(text, chatId){
     return;
   }
   tgReply(chatId, `🤖 *BTraders*\nTap a button below to trade`, tgMainKeyboard());
+}
+
+function checkMiniappAction(){
+  try {
+    const raw = localStorage.getItem('btr_miniapp_action');
+    if(!raw) return;
+    const data = JSON.parse(raw);
+    localStorage.removeItem('btr_miniapp_action');
+    if(!data || !data.action) return;
+    const action = data.action;
+    if(action === 'start'){ if(G.TRADE_MODE!=='RISEFALL') switchMode('RISEFALL'); startBot(); return; }
+    if(action === 'stop'){ stopBot(); return; }
+    if(action === 'reset'){ resetDemo(); return; }
+    if(action === 'call'){ execTrade({ action:'RISE', conf:100, src:'MINIAPP', sym:G.CURRENT_MARKET, lastPrice:0 }); return; }
+    if(action === 'put'){ execTrade({ action:'FALL', conf:100, src:'MINIAPP', sym:G.CURRENT_MARKET, lastPrice:0 }); return; }
+  } catch(e){}
 }
 
 function toggleStrat(idx){ G.STRATEGY_ACTIVE[idx]=!G.STRATEGY_ACTIVE[idx]; renderStratList(); saveState(); }
@@ -6232,6 +6436,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   updateWatchlist();
   setInterval(updateDash, 2000);
+  setInterval(checkMiniappAction, 1000);
   setInterval(updateAnalysisPanel, 1000);
   updateAnalysisPanel();
   setInterval(updateWatchlist, 3000);

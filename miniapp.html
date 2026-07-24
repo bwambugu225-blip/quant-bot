@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BTraders Mini App</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+:root{--bg:#0d0c0a;--surface:#141210;--surface-2:#1c1915;--line:#2a251f;--text:#f0e8da;--muted:#8a7e6a;--accent:#d4a84b;--positive:#5a8f64;--negative:#c45a5a}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(--text);padding:16px;min-height:100vh;overflow-x:hidden}
+h1{font-family:'Cinzel',serif;font-size:18px;color:var(--accent);margin-bottom:4px;letter-spacing:1px}
+.sub{font-size:11px;color:var(--muted);margin-bottom:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:10px}
+.card-title{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:8px}
+.row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:12px}
+.row:last-child{border-bottom:none}
+.lbl{color:var(--muted)}
+.val{font-weight:600;font-family:'JetBrains Mono',monospace;font-size:12px}
+.val.g{color:var(--positive)}.val.r{color:var(--negative)}.val.a{color:var(--accent)}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.badge.g{background:rgba(90,143,100,0.2);color:var(--positive);border-color:var(--positive)}
+.badge.r{background:rgba(196,90,90,0.2);color:var(--negative);border-color:var(--negative)}
+.badge.a{background:rgba(212,168,75,0.2);color:var(--accent);border-color:var(--accent)}
+.btn-row{display:flex;gap:6px;margin-bottom:10px}
+.btn{flex:1;padding:10px;border-radius:8px;border:none;font-weight:700;font-size:12px;cursor:pointer;text-align:center;transition:opacity .2s}
+.btn:active{opacity:.7}
+.btn-p{background:var(--positive);color:#fff}
+.btn-r{background:var(--negative);color:#fff}
+.btn-a{background:var(--accent);color:var(--bg)}
+.btn-g{background:var(--surface-2);color:var(--text);border:1px solid var(--line)}
+.conn-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px}
+.conn-dot.g{background:var(--positive);box-shadow:0 0 8px var(--positive)}
+.conn-dot.r{background:var(--negative);box-shadow:0 0 8px var(--negative)}
+.conn-dot.gray{background:var(--dim)}
+.empty{text-align:center;padding:24px;color:var(--muted);font-size:12px}
+#tgInit{position:fixed;inset:0;z-index:999;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
+#tgInit.hidden{display:none}
+.spinner{width:24px;height:24px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="tgInit"><div class="spinner"></div><div style="font-size:12px;color:var(--muted)">Connecting...</div></div>
+
+<h1>BT<span style="color:var(--text)">raders</span></h1>
+<div class="sub">Mini App <span id="statusBadge" class="badge gray">OFFLINE</span></div>
+
+<div class="card">
+  <div class="card-title">Account</div>
+  <div class="row"><span class="lbl">Balance</span><span class="val a" id="maBalance">--</span></div>
+  <div class="row"><span class="lbl">Account</span><span class="val" id="maAccount">--</span></div>
+  <div class="row"><span class="lbl">Plan</span><span class="val" id="maTier">--</span></div>
+  <div class="row"><span class="lbl">Bot</span><span class="val" id="maBotStatus">OFFLINE</span></div>
+</div>
+
+<div class="card">
+  <div class="card-title">Trading</div>
+  <div class="row"><span class="lbl">Market</span><span class="val" id="maMarket">--</span></div>
+  <div class="row"><span class="lbl">Strategy</span><span class="val" id="maStrategy">--</span></div>
+  <div class="row"><span class="lbl">Mode</span><span class="val" id="maMode">--</span></div>
+  <div class="row"><span class="lbl">Stake</span><span class="val a" id="maStake">--</span></div>
+  <div class="row"><span class="lbl">Active Contracts</span><span class="val" id="maContracts">0</span></div>
+</div>
+
+<div class="card">
+  <div class="card-title">Performance</div>
+  <div class="row"><span class="lbl">PnL</span><span class="val" id="maPnl">--</span></div>
+  <div class="row"><span class="lbl">Win Rate</span><span class="val" id="maWr">--</span></div>
+  <div class="row"><span class="lbl">Wins / Losses</span><span class="val" id="maWL">0 / 0</span></div>
+  <div class="row"><span class="lbl">Trades</span><span class="val" id="maTrades">0</span></div>
+  <div class="row"><span class="lbl">Loss Streak</span><span class="val" id="maStreak">0</span></div>
+</div>
+
+<div class="btn-row">
+  <button class="btn btn-p" onclick="tgAction('start')">▶ START</button>
+  <button class="btn btn-r" onclick="tgAction('stop')">⏹ STOP</button>
+  <button class="btn btn-a" onclick="refreshData()">⟳ REFRESH</button>
+</div>
+
+<div class="btn-row">
+  <button class="btn btn-g" onclick="tgAction('call')">🟢 CALL</button>
+  <button class="btn btn-g" onclick="tgAction('put')">🔴 PUT</button>
+  <button class="btn btn-g" onclick="tgAction('reset')">🔄 RESET</button>
+</div>
+
+<div id="logBox" class="card" style="max-height:150px;overflow-y:auto;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--muted);padding:8px">
+  <div class="card-title">Live Log</div>
+  <div id="maLog">Waiting for data...</div>
+</div>
+
+<script>
+// Telegram WebApp integration
+let tg = null;
+try {
+  if(window.Telegram && window.Telegram.WebApp) {
+    tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+  }
+} catch(e) {}
+
+document.getElementById('tgInit').classList.add('hidden');
+
+function $(id){ return document.getElementById(id); }
+
+function setVal(id, val, cls){
+  const el = $(id);
+  if(el){ el.textContent = val; if(cls) el.className = 'val '+cls; }
+}
+
+function refreshData(){
+  const data = localStorage.getItem('btr_miniapp_state');
+  if(data){
+    try {
+      const s = JSON.parse(data);
+      setVal('maBalance', s.balance!=null ? '$'+parseFloat(s.balance).toFixed(2) : '--', 'a');
+      setVal('maAccount', s.accountType || '--');
+      setVal('maTier', s.tier || '--');
+      setVal('maMarket', s.market || '--');
+      setVal('maStrategy', s.strategy || '--');
+      setVal('maMode', s.mode || '--');
+      setVal('maStake', s.stake!=null ? '$'+parseFloat(s.stake).toFixed(2) : '--', 'a');
+      setVal('maContracts', String(s.activeContracts || 0));
+      setVal('maPnl', s.pnl!=null ? (s.pnl>=0?'+':'')+'$'+parseFloat(s.pnl).toFixed(2) : '--', s.pnl>=0?'g':'r');
+      setVal('maWr', s.wr!=null ? s.wr+'%' : '--');
+      setVal('maWL', (s.wins||0)+' / '+(s.losses||0));
+      setVal('maTrades', String(s.trades||0));
+      setVal('maStreak', String(s.streak||0));
+      const running = s.running;
+      const badge = $('statusBadge');
+      if(badge){ badge.textContent = running ? 'RUNNING' : 'STOPPED'; badge.className = 'badge '+(running?'g':'gray'); }
+      setVal('maBotStatus', running ? 'RUNNING' : 'STOPPED', running?'g':'');
+      const log = $('maLog');
+      if(s.lastLog && log) log.textContent = s.lastLog;
+    } catch(e){}
+  }
+  // Also write state from main bot page
+  if(tg && tg.sendData) {
+    tg.sendData(JSON.stringify({action:'sync'}));
+  }
+}
+
+function tgAction(action){
+  localStorage.setItem('btr_miniapp_action', JSON.stringify({action, at:Date.now()}));
+  const log = $('maLog');
+  if(log){
+    const acts = {start:'▶ Starting bot...',stop:'⏹ Stopping bot...',call:'🟢 Placing CALL...',put:'🔴 Placing PUT...',reset:'🔄 Resetting demo...'};
+    log.textContent = acts[action] || 'Executing '+action+'...';
+  }
+  if(tg && tg.sendData){
+    tg.sendData(JSON.stringify({action}));
+  }
+  refreshData();
+}
+
+// Poll for state updates
+let pollTimer = null;
+function startPoll(){
+  refreshData();
+  pollTimer = setInterval(refreshData, 2000);
+}
+function stopPoll(){ if(pollTimer){ clearInterval(pollTimer); pollTimer=null; } }
+
+// Listen for storage changes (cross-tab)
+window.addEventListener('storage', e => {
+  if(e.key === 'btr_miniapp_state') refreshData();
+});
+
+startPoll();
+window.addEventListener('beforeunload', stopPoll);
+</script>
+</body>
+</html>

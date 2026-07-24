@@ -4,6 +4,9 @@
     { "source": "/bot", "destination": "/bot.html" },
     { "source": "/bot.html", "destination": "/bot.html" },
     { "source": "/landing.html", "destination": "/landing.html" },
+    { "source": "/app", "destination": "/miniapp.html" },
+    { "source": "/miniapp", "destination": "/miniapp.html" },
+    { "source": "/miniapp.html", "destination": "/miniapp.html" },
     { "source": "/(.*)", "destination": "/landing.html" }
   ]
 }
