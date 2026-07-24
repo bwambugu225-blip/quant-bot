@@ -2903,9 +2903,26 @@ function subscribeAll(){
   // Balance stream goes on the trading WS
   if(G.WS && G.WS.readyState===WebSocket.OPEN){
     G.WS.send(JSON.stringify({ balance:1, subscribe:1, req_id:genId() }));
+    // Market data goes through the authenticated WS (the public endpoint is unreliable)
+    subscribeMarketDataOnAuthWS();
   }
-  // Market data via public Options WebSocket
+  // Fallback: also try the public WS in case auth WS isn't ready
   connectMarketWS();
+}
+
+function subscribeMarketDataOnAuthWS(){
+  if(!G.WS || G.WS.readyState !== WebSocket.OPEN) return;
+  SYMBOLS.forEach(s=>{
+    G.WS.send(JSON.stringify({
+      ticks_history:s.sym, end:'latest', count:250, style:'candles',
+      granularity:60, req_id:genId()
+    }));
+    G.WS.send(JSON.stringify({
+      ticks_history:s.sym, end:'latest', count:1100, style:'ticks',
+      subscribe:1, req_id:genId()
+    }));
+  });
+  log(`[SUB-AUTH] ${SYMBOLS.length} markets via trading WS`,'i');
 }
 
 function connectMarketWS(){
@@ -2998,11 +3015,18 @@ function startHeartbeat(){
     if(G.MWS && G.MWS.readyState===WebSocket.OPEN){
       try { G.MWS.send(JSON.stringify({ ping:1, req_id:genId() })); } catch(e){}
     }
-    // Watchdog only on market WS (trading WS may be quiet)
-    const silent = Date.now() - (G.LAST_MARKET_MSG_AT||0);
-    if(silent > 60000 && G.MWS){
-      log('[WS] Market silent 60s — reconnecting','w');
+    // Watchdog: market data may come from G.MWS or G.WS
+    const lastAnyMsg = Math.max(G.LAST_MARKET_MSG_AT||0, G.LAST_TRADE_MSG_AT||0);
+    const silent = Date.now() - lastAnyMsg;
+    if(silent > 60000 && G.MWS && !(G.WS && G.WS.readyState===WebSocket.OPEN)){
+      log('[WS] No data 60s — reconnecting market WS','w');
       try{ G.MWS.close(); }catch(e){}
+    }
+    if(silent > 90000 && G.WS && G.WS.readyState===WebSocket.OPEN){
+      log('[WS] No data 90s — reconnecting trading WS','w');
+      const token = G.TOKEN;
+      try{ G.WS.close(); }catch(e){}
+      if(token) setTimeout(() => doRESTFlow(token), 1000);
     }
     // Re-check this account's status so unban/unsuspend is applied live
     if(G.ACCOUNT_ID && G.AUTH){ recheckAccountStatus(); }
@@ -3017,7 +3041,13 @@ function stopHeartbeat(){
 // MESSAGE HANDLER
 // ============================================================
 function handleMsg(data, source='trade'){
-  if(source==='market') G.LAST_MARKET_MSG_AT = Date.now(); else G.LAST_TRADE_MSG_AT = Date.now();
+  const now = Date.now();
+  if(source==='market') G.LAST_MARKET_MSG_AT = now; else G.LAST_TRADE_MSG_AT = now;
+  // Market data may arrive on either socket — keep both health timestamps current
+  if(['history','tick','candles','ohlc'].includes(data.msg_type)){
+    G.LAST_MARKET_MSG_AT = now;
+    G.LAST_TRADE_MSG_AT = now;
+  }
   if(data.msg_type==='ping' || data.msg_type==='pong'){ return; }
   switch(data.msg_type){
     case 'balance':    handleBal(data); break;
@@ -6045,6 +6075,9 @@ function connectDirectWS(token){
     updateDash();
     startHeartbeat();
     setTimeout(subscribeAll, 200);
+  };
+  ws.onmessage = (e) => {
+    try{ handleMsg(JSON.parse(e.data)); }catch(ex){ log(`[WS] Parse: ${ex.message}`,'e'); }
   };
   ws.onerror = () => {
     document.getElementById('loginError').textContent = 'WebSocket connection failed';
