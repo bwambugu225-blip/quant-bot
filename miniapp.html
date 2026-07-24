@@ -125,8 +125,10 @@ body{font-family:var(--font-head);background:var(--bg);color:var(--text);min-hei
   <div class="login-card">
     <h1>BTraders</h1>
     <p>Authorize with your Deriv account</p>
-    <input type="password" id="loginPat" placeholder="Paste API token" autocomplete="off">
-    <button class="btn-login" onclick="authorizePat()">Connect</button>
+    <button class="btn-login" onclick="oauthLogin()" id="oauthBtn" style="margin-bottom:8px">Login with Deriv</button>
+    <div style="font-size:9px;color:var(--dim);margin-bottom:10px">— or paste API token —</div>
+    <input type="password" id="loginPat" placeholder="Paste token from app.deriv.com/account/api-token" autocomplete="off">
+    <button class="btn-login" onclick="authorizePat()" style="font-size:10px;padding:8px">Connect Token</button>
     <div class="login-error" id="loginError"></div>
     <div class="tier-row">
       <button class="tier-btn active" onclick="selTier('free')" id="tierBtnFree">FREE</button>
@@ -575,6 +577,50 @@ async function authorizePat(){
 }
 
 // ============================================================
+// OAUTH LOGIN
+// ============================================================
+async function oauthLogin(){
+  const err = document.getElementById('loginError');
+  err.textContent='';
+  try {
+    const array = crypto.getRandomValues(new Uint8Array(64));
+    const codeVerifier = Array.from(array).map(v => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'[v % 66]).join('');
+    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier));
+    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    const state = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(v=>v.toString(16).padStart(2,'0')).join('');
+    const redirectUri = window.location.origin + '/app';
+    sessionStorage.setItem('oauth_code_verifier', codeVerifier);
+    sessionStorage.setItem('oauth_state', state);
+    sessionStorage.setItem('oauth_redirect_uri', redirectUri);
+    const authUrl = 'https://auth.deriv.com/oauth2/auth?'+new URLSearchParams({response_type:'code',client_id:G.APP_ID,redirect_uri:redirectUri,scope:'trade',state:state,code_challenge:codeChallenge,code_challenge_method:'S256'}).toString();
+    window.location.href = authUrl;
+  } catch(e){ err.textContent='OAuth error: '+e.message; }
+}
+
+async function exchangeOAuthCode(code){
+  const err = document.getElementById('loginError');
+  const codeVerifier = sessionStorage.getItem('oauth_code_verifier');
+  const redirectUri = sessionStorage.getItem('oauth_redirect_uri') || window.location.origin+'/app';
+  sessionStorage.removeItem('oauth_code_verifier');
+  sessionStorage.removeItem('oauth_state');
+  sessionStorage.removeItem('oauth_redirect_uri');
+  try {
+    const resp = await fetch('https://auth.deriv.com/oauth2/token', {
+      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body: new URLSearchParams({grant_type:'authorization_code',client_id:G.APP_ID,code:code,code_verifier:codeVerifier,redirect_uri:redirectUri})
+    });
+    const data = await resp.json();
+    if(data.access_token){
+      document.getElementById('loginPat').value = data.access_token;
+      err.textContent='';
+      await authorizePat();
+    } else {
+      err.textContent='Token exchange failed: '+(data.error_description||data.error||'unknown');
+    }
+  } catch(e){ err.textContent='Token exchange error: '+e.message; }
+}
+
+// ============================================================
 // MARKET DATA
 // ============================================================
 function subscribeAll(){
@@ -998,6 +1044,24 @@ document.addEventListener('DOMContentLoaded', () => {
   if(stSel) stSel.addEventListener('change', () => { G.SELECTED_STRATEGY=stSel.value; log(`[STRATEGY] ${stSel.value}`,'i'); });
   document.getElementById('loginPat')?.addEventListener('keydown', e => { if(e.key==='Enter'&&!e.target.disabled) authorizePat(); });
   document.getElementById('stakeInput')?.addEventListener('change', function(){ const v=parseFloat(this.value)||1; this.value=Math.max(0.35,v).toFixed(2); });
+  // Handle OAuth redirect back
+  const params = new URLSearchParams(window.location.search);
+  const urlCode = params.get('code');
+  const urlState = params.get('state');
+  const urlToken = params.get('token1');
+  if(urlCode && urlState === sessionStorage.getItem('oauth_state')){
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    sessionStorage.removeItem('oauth_state');
+    exchangeOAuthCode(urlCode);
+  } else if(urlToken){
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    document.getElementById('loginPat').value = urlToken;
+    setTimeout(() => authorizePat(), 100);
+  } else if(params.get('error')){
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    const desc = params.get('error_description') || params.get('error');
+    document.getElementById('loginError').textContent = 'OAuth error: '+desc;
+  }
   updateUI();
   setInterval(updateUI, 2000);
   setInterval(drawChart, 3000);
