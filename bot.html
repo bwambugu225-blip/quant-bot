@@ -644,6 +644,9 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       <button class="btn btn-accent" onclick="authorizePat()" style="width:100%;padding:6px;border-radius:8px;border:none;font-size:11px;font-weight:600;cursor:pointer">Connect</button>
     </div>
     <div class="login-footer">Requires <strong>Read</strong> + <strong>Trade</strong> scopes</div>
+    <div style="font-size:8px;color:var(--dim);margin-top:14px;line-height:1.4;border-top:1px dashed var(--line);padding-top:10px;text-align:left">
+      ⚠️ <strong>Risk Warning:</strong> Trading binary options and synthetic indices involves high financial risk. Your capital is at risk and you may lose some or all of your initial deposit. The BTraders platform is an execution tool, not a financial advisor. Use responsibly.
+    </div>
   </div>
 </div>
 <div id="app" style="display:none;min-height:100vh;padding-bottom:64px">
@@ -1034,6 +1037,23 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       <div id="dashLoss" style="font-size:12px;font-weight:600;color:var(--negative)">$0.00</div>
     </div>
 
+    <!-- Platform Settings -->
+    <div class="section">
+      <details>
+        <summary style="font-family:var(--font-serif);font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-size:9px;cursor:pointer">Platform Settings</summary>
+        <div style="margin-top:8px">
+          <div class="field" style="margin-bottom:8px">
+            <label style="font-size:8px;color:var(--muted);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.8px;font-weight:700;">Deriv App ID</label>
+            <div style="display:flex;gap:4px">
+              <input class="inp" id="customAppIdInput" type="text" placeholder="33JFxN3sbe2usdFigbMb8" style="font-size:9px;flex:1">
+              <button class="btn btn-accent" onclick="saveCustomAppId()" style="padding:4px 10px;font-size:9px">Save</button>
+            </div>
+            <span style="font-size:7px;color:var(--muted);margin-top:2px;display:block">Changes require page refresh to take effect. Default is 33JFxN3sbe2usdFigbMb8.</span>
+          </div>
+        </div>
+      </details>
+    </div>
+
     <!-- Copy Trading -->
     <div class="section">
       <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
@@ -1066,6 +1086,79 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       <div id="copyClientsList" style="max-height:200px; overflow-y:auto; display:flex; flex-direction:column; gap:4px;">
         <div style="font-size:7px;color:var(--muted);padding:4px;text-align:center;">No clients configured</div>
       </div>
+    </div>
+
+    <!-- User Guide & Documentation -->
+    <div class="section">
+      <details>
+        <summary style="font-family:var(--font-serif);font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:1px;font-size:9px;cursor:pointer">User Guide & FAQ</summary>
+        <div style="margin-top:10px;display:flex;flex-direction:column;gap:8px;font-size:10px;line-height:1.5;color:var(--muted)">
+
+          <details style="border-bottom:1px solid var(--line);padding-bottom:6px">
+            <summary style="font-weight:600;color:var(--text);cursor:pointer;font-size:9px">🔑 1. Authorization & App ID</summary>
+            <div style="margin-top:6px;padding-left:8px">
+              <p style="margin-bottom:4px">BTraders connects to your Deriv.com options trading account securely using either <strong>OAuth 2.0 (Login with Deriv)</strong> or a <strong>Personal API Token (PAT)</strong>.</p>
+              <p style="margin-bottom:4px"><strong>Required Token Scopes:</strong> To trade, your API Token must have both <strong>Read</strong> and <strong>Trade</strong> checkboxes enabled on the Deriv platform.</p>
+              <p><strong>Custom App ID:</strong> For white-label deployment or utilizing custom API limits, input your developer Deriv App ID in the <em>Platform Settings</em> section and click Save. The system will refresh and run under your private brand configuration.</p>
+            </div>
+          </details>
+
+          <details style="border-bottom:1px solid var(--line);padding-bottom:6px">
+            <summary style="font-weight:600;color:var(--text);cursor:pointer;font-size:9px">📈 2. Rise/Fall (R/F) Strategy Suite</summary>
+            <div style="margin-top:6px;padding-left:8px">
+              <p style="margin-bottom:6px">The R/F engine utilizes high-probability mathematical indicators and price action patterns on live candlesticks:</p>
+              <ul style="margin-left:14px;margin-bottom:6px;list-style-type:square">
+                <li><strong>Aroon Traffic Light:</strong> Detects immediate trend shifts and momentum direction. It triggers buy orders on a perfect 100% / &le;30% Aroon crossover, with noise filtering that automatically ignores choppy, whipsawing markets.</li>
+                <li><strong>Williams Fractal Reversal:</strong> Locates 5-bar fractal tops/bottoms, combined with candlestick pinbars, S/R bounce tolerances, and Awesome Oscillator crossovers to execute clean mean-reversion trades.</li>
+                <li><strong>Awesome Oscillator (AO):</strong> Trades Bill Williams' classic Saucer patterns and Twin-Peaks Divergences, validated by Acceleration/Deceleration (AC) filters and an ATR volatility threshold to bypass dead trading periods.</li>
+              </ul>
+              <p><strong>Execution Timing:</strong> The automated engine analyzes incoming ticks in real-time, executing contracts instantly when confirmation criteria are met.</p>
+            </div>
+          </details>
+
+          <details style="border-bottom:1px solid var(--line);padding-bottom:6px">
+            <summary style="font-weight:600;color:var(--text);cursor:pointer;font-size:9px">🔢 3. Digit Auto Trading (Markov Matrix)</summary>
+            <div style="margin-top:6px;padding-left:8px">
+              <p style="margin-bottom:6px">The Digit Engine tracks a rolling 1,000-tick buffer to construct highly advanced state transition models:</p>
+              <ul style="margin-left:14px;margin-bottom:6px;list-style-type:square">
+                <li><strong>Markov Transition Matrix:</strong> A Laplace-smoothed (0.1) 10x10 digit-to-digit and 2x2 parity-to-parity transition matrix that predicts the exact probability of the next tick's ending digit.</li>
+                <li><strong>Statistical Edge:</strong> A trade is only triggered when the transition probability provides a <strong>+3.5% edge</strong> over empirical frequencies and baseline probabilities.</li>
+                <li><strong>Shannon Entropy (H):</strong> Measures chaos and digit randomness. High entropy represents complete randomness, while low entropy exposes predictable patterns and statistical biases.</li>
+                <li><strong>Auto Barrier Optimization:</strong> Scan-optimizes and switches to the safest barrier in Over/Under and Even/Odd modes to maximize contract survival rates.</li>
+              </ul>
+            </div>
+          </details>
+
+          <details style="border-bottom:1px solid var(--line);padding-bottom:6px">
+            <summary style="font-weight:600;color:var(--text);cursor:pointer;font-size:9px">👥 4. Direct Zero-Lag Copytrading</summary>
+            <div style="margin-top:6px;padding-left:8px">
+              <p style="margin-bottom:4px">Replicate master trades instantly to an unlimited number of client accounts using our zero-lag copy engine.</p>
+              <p style="margin-bottom:4px"><strong>How to Add Clients:</strong> Enter the client's name, their Personal API Token (PAT), and a stake multiplier (e.g. 1.5x) or account type (Demo/Real). Click "+ Add" to initialize a WebSocket connection for that client.</p>
+              <p style="margin-bottom:4px"><strong>Replication Execution:</strong> Master contract proposals are intercepted instantly. The engine packages contract parameters and transmits a concurrent bulk-purchase API request directly to Deriv's high-speed options servers on behalf of all enabled clients.</p>
+              <p><strong>Security:</strong> All copy client tokens and parameters are securely saved to the database in your private user profile session, enabling seamless cross-device persistence.</p>
+            </div>
+          </details>
+
+          <details style="border-bottom:1px solid var(--line);padding-bottom:6px">
+            <summary style="font-weight:600;color:var(--text);cursor:pointer;font-size:9px">🛡 5. Risk &amp; Account Protection</summary>
+            <div style="margin-top:6px;padding-left:8px">
+              <p style="margin-bottom:4px">Protect your capital with built-in institutional risk parameters:</p>
+              <ul style="margin-left:14px;margin-bottom:4px;list-style-type:square">
+                <li><strong>Daily Stop Loss &amp; Take Profit:</strong> Set strict ceilings and floors. The engine halts immediately if either target is hit.</li>
+                <li><strong>Loss-Cluster Cooldown:</strong> If the bot encounters 2 losses within 2 minutes, it triggers a 60-second to 120-second cooling pause to prevent trading through trend spikes.</li>
+                <li><strong>Anti-Martingale Scaling:</strong> Gradually adjusts and scales down exposure after multiple consecutive wins to secure profits.</li>
+                <li><strong>Safety Halts:</strong> If the bot encounters 5 consecutive losses, the engine is automatically stopped and an alert is broadcast to your linked Telegram chat.</li>
+              </ul>
+            </div>
+          </details>
+
+        </div>
+      </details>
+    </div>
+
+    <!-- Compliance Footer Disclaimer -->
+    <div style="font-size:8px;color:var(--dim);text-align:center;padding:16px 14px;line-height:1.4;border-top:1px solid var(--line);margin-top:12px">
+      ⚠️ <strong>RISK DISCLAIMER:</strong> Financial derivative trading has high inherent risks. Past performance of any algorithm, ensemble strategy, or transition model is never indicative of future results. Algorithms are tools, not guarantees. Trade only with capital you are prepared to lose completely.
     </div>
   </div>
 
@@ -1118,7 +1211,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
 const G = {
   SELECTED_STRATEGY: 'AROON',
   WS:null, CONNECTED:false, AUTH:false, RID:0, TOKEN:'', CLOSING_TRADE_WS:false,
-  APP_ID:'33JFxN3sbe2usdFigbMb8',
+  APP_ID:localStorage.getItem('deriv_app_id') || '33JFxN3sbe2usdFigbMb8',
   ACCOUNT_ID:null, ACCOUNT_TYPE:'demo', BALANCE:0,
   RUNNING:false,
   ACTIVE_CONTRACTS:new Map(),
@@ -1561,7 +1654,7 @@ function applySettings(s){
       const ear=document.getElementById('settingAroon'); if(ear) ear.checked=ChartSettings.aroon;
       const e4=document.getElementById('settingBodyRatio'); if(e4) e4.value=ChartSettings.bodyRatio;
     }
-    if(s.token){ G.TOKEN = s.token; const e=document.getElementById('apiToken'); if(e) e.value=s.token; }
+    if(s.token){ G.TOKEN = s.token; const e=document.getElementById('loginPat') || document.getElementById('apiToken'); if(e) e.value=s.token; }
     return true;
   } catch(e){ console.warn('[APPLY SETTINGS]', e.message); return false; }
 }
@@ -3692,7 +3785,7 @@ async function resetDemo(){
   } catch(e){ log('[RESET] Error: '+e.message,'e'); }
 }
 function authorizeToken(){
-  const token = document.getElementById('apiToken')?.value || G.TOKEN;
+  const token = (document.getElementById('loginPat') || document.getElementById('apiToken'))?.value || G.TOKEN;
   if(!token){ log('[AUTH] Enter token','e'); return; }
   doRESTFlow(token);
 }
@@ -5229,7 +5322,10 @@ function restoreState(){
       } catch(ex){ console.log('[RESTORE CHART SETTINGS]', ex.message); }
     }
     const t = localStorage.getItem('deriv_token');
-    if(t){ G.TOKEN = t; const elT=document.getElementById('apiToken'); if(elT) elT.value = t; }
+    if(t){ G.TOKEN = t; const elT=document.getElementById('loginPat') || document.getElementById('apiToken'); if(elT) elT.value = t; }
+    const savedAppId = localStorage.getItem('deriv_app_id');
+    const appIdInp = document.getElementById('customAppIdInput');
+    if(appIdInp && savedAppId) appIdInp.value = savedAppId;
     const sk = localStorage.getItem('deriv_stake');
     if(sk){
       const elR = document.getElementById('rfStake'); if(elR) elR.value = sk;
@@ -5319,6 +5415,20 @@ function toggleCopyTrading() {
   saveState();
   updateCopyTradingToggleUI();
   log(`[COPY] Copy trading has been ${G.COPYTRADING_ENABLED ? 'ENABLED' : 'DISABLED'}`, G.COPYTRADING_ENABLED ? 's' : 'w');
+}
+
+function saveCustomAppId() {
+  const inp = document.getElementById('customAppIdInput');
+  const val = inp ? inp.value.trim() : '';
+  if (val) {
+    localStorage.setItem('deriv_app_id', val);
+    log(`[SYSTEM] Deriv App ID set to ${val}. Refreshing page...`, 's');
+    setTimeout(() => window.location.reload(), 1500);
+  } else {
+    localStorage.removeItem('deriv_app_id');
+    log('[SYSTEM] Reset to default Deriv App ID. Refreshing page...', 'w');
+    setTimeout(() => window.location.reload(), 1500);
+  }
 }
 
 function initCopytrading() {
