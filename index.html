@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BTraders — Algorithmic Trading Bot</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0d0c0a;--surface:#141210;--surface-2:#1c1915;--line:#2a251f;
+  --text:#f0e8da;--muted:#8a7e6a;--accent:#d4a84b;--positive:#5a8f64;
+  --negative:#c45a5a;
+}
+html{scroll-behavior:smooth}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--bg);color:var(--text);line-height:1.6;overflow-x:hidden}
+.container{max-width:1100px;margin:0 auto;padding:0 24px}
+
+/* ── Nav ── */
+nav{position:fixed;top:0;width:100%;z-index:100;background:rgba(13,12,10,0.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+nav .container{display:flex;align-items:center;justify-content:space-between;height:64px}
+.logo{font-family:'Cinzel',serif;font-size:22px;font-weight:800;color:var(--accent);letter-spacing:2px;text-transform:uppercase}
+.logo span{color:var(--text);font-weight:500}
+.nav-links{display:flex;gap:32px;align-items:center;list-style:none}
+.nav-links a{color:var(--muted);text-decoration:none;font-size:14px;font-weight:500;transition:color .2s}
+.nav-links a:hover{color:var(--accent)}
+.nav-cta{background:var(--accent);color:var(--bg)!important;padding:10px 24px;border-radius:6px;font-weight:700!important;font-size:13px!important;transition:opacity .2s}
+.nav-cta:hover{opacity:.9}
+
+/* ── Hero ── */
+.hero{min-height:100vh;display:flex;align-items:center;padding-top:64px;position:relative;overflow:hidden}
+.hero::before{content:'';position:absolute;top:-50%;right:-20%;width:600px;height:600px;background:radial-gradient(circle,rgba(212,168,75,0.06),transparent 70%);pointer-events:none}
+.hero-content{position:relative;z-index:1}
+.hero-badge{display:inline-block;background:rgba(212,168,75,0.12);color:var(--accent);padding:6px 16px;border-radius:20px;font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:24px;border:1px solid rgba(212,168,75,0.2)}
+.hero h1{font-family:'Cinzel',serif;font-size:52px;font-weight:800;line-height:1.15;margin-bottom:20px;letter-spacing:-1px}
+.hero h1 span{color:var(--accent)}
+.hero p{font-size:18px;color:var(--muted);max-width:560px;margin-bottom:36px}
+.hero-actions{display:flex;gap:16px;flex-wrap:wrap}
+.btn-primary{background:var(--accent);color:var(--bg);padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;transition:opacity .2s}
+.btn-primary:hover{opacity:.9}
+.btn-secondary{background:var(--surface-2);color:var(--text);padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;border:1px solid var(--line);transition:all .2s}
+.btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
+.hero-stats{display:flex;gap:48px;margin-top:60px;padding-top:40px;border-top:1px solid var(--line)}
+.hero-stats div{text-align:center}
+.hero-stats .num{font-family:'JetBrains Mono',monospace;font-size:28px;font-weight:700;color:var(--accent)}
+.hero-stats .label{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-top:4px}
+
+/* ── Sections ── */
+section{padding:100px 0}
+.section-label{display:inline-block;color:var(--accent);font-size:12px;font-weight:600;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px}
+.section-title{font-family:'Cinzel',serif;font-size:36px;font-weight:700;margin-bottom:16px}
+.section-sub{color:var(--muted);font-size:16px;max-width:600px;margin-bottom:48px}
+.section-title span{color:var(--accent)}
+
+/* ── Features ── */
+#features{background:var(--surface)}
+.features-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}
+.feature-card{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:32px;transition:all .2s}
+.feature-card:hover{border-color:var(--accent);transform:translateY(-2px)}
+.feature-card .icon{font-size:32px;margin-bottom:16px;display:block}
+.feature-card h3{font-size:17px;font-weight:700;margin-bottom:8px}
+.feature-card p{font-size:14px;color:var(--muted);line-height:1.7}
+
+/* ── How It Works ── */
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:32px;counter-reset:step}
+.step{text-align:center;padding:32px;position:relative}
+.step-num{width:48px;height:48px;border-radius:50%;background:var(--accent);color:var(--bg);font-weight:800;font-size:18px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-family:'JetBrains Mono',monospace}
+.step h3{font-size:16px;font-weight:700;margin-bottom:8px}
+.step p{font-size:13px;color:var(--muted)}
+
+/* ── Pricing ── */
+#pricing{background:var(--surface)}
+.pricing-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}
+.plan{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:36px;text-align:center;transition:all .2s}
+.plan.featured{border-color:var(--accent);position:relative}
+.plan.featured::before{content:'POPULAR';position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--accent);color:var(--bg);padding:4px 16px;border-radius:12px;font-size:10px;font-weight:800;letter-spacing:1px}
+.plan:hover{border-color:var(--accent)}
+.plan .name{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:12px}
+.plan .price{font-family:'JetBrains Mono',monospace;font-size:42px;font-weight:700;color:var(--accent);margin-bottom:8px}
+.plan .price span{font-size:16px;color:var(--muted)}
+.plan .desc{font-size:13px;color:var(--muted);margin-bottom:24px}
+.plan ul{list-style:none;text-align:left;margin-bottom:32px}
+.plan ul li{padding:8px 0;font-size:13px;border-bottom:1px solid var(--line);color:var(--muted)}
+.plan ul li::before{content:'✓ ';color:var(--positive);font-weight:700}
+.plan ul li.na{color:rgba(255,255,255,0.15);text-decoration:line-through}
+.plan ul li.na::before{content:'✗ ';color:var(--negative);font-weight:700}
+.plan .btn-plan{display:inline-block;padding:12px 36px;border-radius:8px;text-decoration:none;font-weight:700;font-size:14px;transition:all .2s;width:100%}
+.plan .btn-plan.primary{background:var(--accent);color:var(--bg)}
+.plan .btn-plan.primary:hover{opacity:.9}
+.plan .btn-plan.secondary{background:var(--surface-2);color:var(--text);border:1px solid var(--line)}
+.plan .btn-plan.secondary:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ── CTA ── */
+.cta{text-align:center;padding:80px 0}
+.cta h2{font-family:'Cinzel',serif;font-size:40px;font-weight:700;margin-bottom:16px}
+.cta p{color:var(--muted);font-size:16px;max-width:500px;margin:0 auto 32px}
+.cta .btn-primary{font-size:16px;padding:16px 48px}
+
+/* ── Risk Warning ── */
+.risk-warning{background:var(--surface);padding:40px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.risk-warning p{font-size:11px;color:var(--dim);text-align:center;max-width:700px;margin:0 auto;line-height:1.8}
+
+/* ── Footer ── */
+footer{padding:48px 0;text-align:center}
+footer p{font-size:12px;color:var(--dim)}
+footer .footer-links{display:flex;justify-content:center;gap:24px;margin-bottom:16px;flex-wrap:wrap}
+footer .footer-links a{color:var(--muted);text-decoration:none;font-size:13px;transition:color .2s}
+footer .footer-links a:hover{color:var(--accent)}
+
+/* ── Responsive ── */
+@media(max-width:768px){
+  .hero h1{font-size:32px}
+  .hero-stats{gap:24px;flex-wrap:wrap}
+  .nav-links{display:none}
+  .section-title{font-size:26px}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="container">
+    <div class="logo">BT<span>raders</span></div>
+    <ul class="nav-links">
+      <li><a href="#features">Features</a></li>
+      <li><a href="#how">How It Works</a></li>
+      <li><a href="#community">Community</a></li>
+      <li><a href="#pricing">Pricing</a></li>
+      <li><a href="bot.html?tier=free" class="nav-cta">Launch App</a></li>
+    </ul>
+  </div>
+</nav>
+
+<section class="hero">
+  <div class="container hero-content">
+    <div class="hero-badge">v2.0 — Now Live</div>
+    <h1>Algorithmic Trading<br><span>on Deriv.com</span></h1>
+    <p>Automated Rise/Fall and Digits Over/Under strategies powered by Aroon, Fractal reversals, and statistical bias detection. Trade across 13 Deriv markets with 15s candle precision.</p>
+    <div class="hero-actions">
+      <a href="bot.html?tier=free" class="btn-primary">Launch Trading Bot</a>
+      <a href="#features" class="btn-secondary">Learn More</a>
+    </div>
+    <div class="hero-stats">
+      <div><div class="num">13</div><div class="label">Markets</div></div>
+      <div><div class="num">15s</div><div class="label">Candle Precision</div></div>
+      <div><div class="num">3</div><div class="label">Strategies</div></div>
+      <div><div class="num">24/7</div><div class="label">Automated</div></div>
+      <div><div class="num">&gt;900</div><div class="label">Community</div></div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="container">
+    <div class="section-label">Features</div>
+    <h2 class="section-title">Built for <span>Performance</span></h2>
+    <p class="section-sub">Professional-grade tools designed for Deriv's Volatility and Crash/Boom indices.</p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <span class="icon">📊</span>
+        <h3>Aroon Traffic Light <span style="font-size:8px;background:var(--accent);color:var(--bg);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;vertical-align:middle">FREE</span></h3>
+        <p>Trend-strength analysis with strict 100/≤30 entry gates, first-touch-only logic, and noise filtering for high-probability setups.</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">🎯</span>
+        <h3>Digits Over/Under <span style="font-size:8px;background:var(--accent);color:var(--bg);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;vertical-align:middle">PRO</span></h3>
+        <p>Statistical edge detection on tick-digit distributions using a constant 100-tick buffer. Trades only on confirmed, consistent bias.</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">🔄</span>
+        <h3>Multi-Market <span style="font-size:8px;background:var(--accent);color:var(--bg);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;vertical-align:middle">PRO</span></h3>
+        <p>Trade all 13 Volatility indices (R_10 through R_100, 1s variants, Step Index, Bull/Bear) simultaneously with per-market analysis and isolated signals.</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">📈</span>
+        <h3>Live Charting <span style="font-size:8px;background:var(--accent);color:var(--bg);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;vertical-align:middle">PRO</span></h3>
+        <p>Real-time 15s candlestick charts with Aroon overlay, EMA bands, Bollinger Bands, and fractal markers.</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">⚡</span>
+        <h3>Martingale & Kelly <span style="font-size:8px;background:var(--accent);color:var(--bg);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;vertical-align:middle">PRO</span></h3>
+        <p>Adaptive stake sizing with configurable Martingale recovery and Kelly Criterion optimization for bankroll management.</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">🔒</span>
+        <h3>Risk Controls <span style="font-size:8px;background:var(--accent);color:var(--bg);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;vertical-align:middle">FREE</span></h3>
+        <p>Per-session take-profit and stop-loss limits, consecutive-loss cooldowns, and volatility-based stake adjustment.</p>
+      </div>
+      <div class="feature-card">
+        <span class="icon">📡</span>
+        <h3>Copy Trading <span style="font-size:8px;background:var(--accent);color:var(--bg);padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;vertical-align:middle">ENTERPRISE</span></h3>
+        <p>Mirror trades from other traders in real time. Manage multiple accounts, set multiplier ratios, and track P&amp;L per client.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="container">
+    <div class="section-label">How It Works</div>
+    <h2 class="section-title">Start Trading in <span>3 Steps</span></h2>
+    <p class="section-sub">Connect your Deriv account, configure your strategy, and let the bot execute.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Connect Deriv API</h3>
+        <p>Log in via OAuth with Deriv or paste your API token with Read + Trade scopes. Instant connection, zero setup.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Select Strategy</h3>
+        <p>Choose Aroon for Rise/Fall or the Digits Over/Under engine. Configure stake, duration, and risk limits.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Start & Monitor</h3>
+        <p>Hit start and watch the bot trade across multiple markets with real-time P&amp;L, trade history, and live charting.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="community" style="background:var(--surface)">
+  <div class="container" style="text-align:center">
+    <div class="section-label">Community</div>
+    <h2 class="section-title">Join <span>900+</span> Traders</h2>
+    <p class="section-sub" style="margin:0 auto 32px">Get real-time trade signals, market analysis, and connect with fellow BTraders users in our Telegram community.</p>
+    <div style="display:flex;gap:20px;justify-content:center;flex-wrap:wrap;margin-bottom:40px">
+      <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:28px 36px;flex:1;min-width:240px;max-width:340px">
+        <div style="font-size:40px;margin-bottom:12px">📡</div>
+        <h3 style="font-size:15px;font-weight:700;margin-bottom:6px">Live Trade Feed</h3>
+        <p style="font-size:12px;color:var(--muted);line-height:1.6">Every trade the bot executes is broadcast in real time to Telegram — entry price, direction, stake, and outcome.</p>
+      </div>
+      <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:28px 36px;flex:1;min-width:240px;max-width:340px">
+        <div style="font-size:40px;margin-bottom:12px">🤖</div>
+        <h3 style="font-size:15px;font-weight:700;margin-bottom:6px">Bot Commands</h3>
+        <p style="font-size:12px;color:var(--muted);line-height:1.6">Start, stop, and monitor your bot directly from Telegram. Place Rise/Fall and Digits trades with simple button taps.</p>
+      </div>
+      <div style="background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:28px 36px;flex:1;min-width:240px;max-width:340px">
+        <div style="font-size:40px;margin-bottom:12px">💬</div>
+        <h3 style="font-size:15px;font-weight:700;margin-bottom:6px">Community Chat</h3>
+        <p style="font-size:12px;color:var(--muted);line-height:1.6">Discuss strategies, share setups, and get help from experienced traders and the development team.</p>
+      </div>
+    </div>
+    <a href="https://t.me/btraderrsbot" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:10px;background:#1a89d4;color:#fff;padding:16px 40px;border-radius:8px;text-decoration:none;font-weight:700;font-size:16px;transition:opacity .2s" onmouseover="this.style.opacity=0.9" onmouseout="this.style.opacity=1">
+      <span style="font-size:22px">✈</span> Join Telegram Community
+    </a>
+    <p style="font-size:11px;color:var(--dim);margin-top:16px">Free for all tiers · Trade alerts require Pro plan</p>
+  </div>
+</section>
+
+<section id="pricing">
+  <div class="container">
+    <div class="section-label">Pricing</div>
+    <h2 class="section-title">Choose Your <span>Plan</span></h2>
+    <p class="section-sub">Free tier to start. Upgrade to unlock advanced trading engines and risk tools.</p>
+    <div class="pricing-grid">
+      <div class="plan">
+        <div class="name">Free</div>
+        <div class="price">$0<span>/mo</span></div>
+        <div class="desc">Core Rise/Fall engine</div>
+        <ul>
+          <li>3 Markets (R_10, R_25, R_50)</li>
+          <li>Aroon Traffic Light Strategy</li>
+          <li>Manual + Auto Trading</li>
+          <li>Basic Console Logs</li>
+          <li>Session P&amp;L Tracking</li>
+          <li class="na">Digits Over/Under Engine</li>
+          <li class="na">Full Charting Suite</li>
+          <li class="na">Martingale &amp; Kelly Sizing</li>
+          <li class="na">Copy Trading</li>
+          <li class="na">Telegram Bot Alerts</li>
+          <li>Community Access</li>
+        </ul>
+        <a href="bot.html?tier=free" class="btn-plan secondary">Get Started Free</a>
+      </div>
+      <div class="plan featured">
+        <div class="name">Pro</div>
+        <div class="price">$15<span>/mo</span></div>
+        <div class="desc">Full algorithmic arsenal</div>
+        <ul>
+          <li>All 13 Markets</li>
+          <li>Aroon + Fractal + AO Strategies</li>
+          <li>Digits Over/Under Engine</li>
+          <li>Live 15s Candlestick Charts</li>
+          <li>Martingale &amp; Kelly Criterion</li>
+          <li>Telegram Trade Alerts</li>
+          <li>Loss Cluster Protection</li>
+          <li>Session Reports</li>
+          <li>Priority Support</li>
+          <li class="na">Copy Trading</li>
+          <li class="na">White-Label API</li>
+        </ul>
+        <a href="bot.html?tier=pro" class="btn-plan primary">Go Pro</a>
+      </div>
+      <div class="plan">
+        <div class="name">Enterprise</div>
+        <div class="price">$49<span>/mo</span></div>
+        <div class="desc">Institutional automation</div>
+        <ul>
+          <li>Everything in Pro</li>
+          <li>Copy Trading (unlimited clients)</li>
+          <li>Multi-account Management</li>
+          <li>All 3 Strategies</li>
+          <li>White-Label Ready</li>
+          <li>Dedicated API Endpoints</li>
+          <li>Custom Risk Parameters</li>
+          <li>24/7 Priority Support</li>
+          <li>SLA Guarantee</li>
+        </ul>
+        <a href="bot.html?tier=enterprise" class="btn-plan secondary">Contact Sales</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="cta">
+  <div class="container">
+    <h2>Ready to Trade <span style="color:var(--accent)">Smarter?</span></h2>
+    <p>Launch the app, connect your Deriv account, and start trading with institutional-grade algorithms.</p>
+    <a href="bot.html?tier=free" class="btn-primary">Launch BTraders</a>
+  </div>
+</section>
+
+<div class="risk-warning">
+  <div class="container">
+    <p><strong>Risk Warning:</strong> Trading derivatives such as those offered by Deriv involves substantial risk of loss. Past performance is not indicative of future results. This software is provided as a tool for educational and informational purposes only. You should never trade money you cannot afford to lose. The developers of BTraders are not financial advisors and accept no liability for trading losses incurred through use of this software.</p>
+  </div>
+</div>
+
+<footer>
+  <div class="container">
+    <div class="footer-links">
+      <a href="bot.html?tier=free">Launch App</a>
+      <a href="#features">Features</a>
+      <a href="#community">Telegram</a>
+      <a href="#pricing">Pricing</a>
+      <a href="https://t.me/btraderrsbot" target="_blank" rel="noopener">Bot Support</a>
+    </div>
+    <p>&copy; 2026 BTraders. Not affiliated with Deriv (Deriv Investments Ltd). All trademarks belong to their respective owners.</p>
+  </div>
+</footer>
+
+</body>
+</html>
