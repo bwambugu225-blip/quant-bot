@@ -579,22 +579,13 @@ async function authorizePat(){
 // ============================================================
 // OAUTH LOGIN
 // ============================================================
-async function oauthLogin(){
+function oauthLogin(){
   const err = document.getElementById('loginError');
   err.textContent='';
-  try {
-    const array = crypto.getRandomValues(new Uint8Array(64));
-    const codeVerifier = Array.from(array).map(v => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'[v % 66]).join('');
-    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier));
-    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(hash))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
-    const state = Array.from(crypto.getRandomValues(new Uint8Array(16))).map(v=>v.toString(16).padStart(2,'0')).join('');
-    const redirectUri = window.location.origin + '/app';
-    sessionStorage.setItem('oauth_code_verifier', codeVerifier);
-    sessionStorage.setItem('oauth_state', state);
-    sessionStorage.setItem('oauth_redirect_uri', redirectUri);
-    const authUrl = 'https://auth.deriv.com/oauth2/auth?'+new URLSearchParams({response_type:'code',client_id:G.APP_ID,redirect_uri:redirectUri,scope:'trade',state:state,code_challenge:codeChallenge,code_challenge_method:'S256'}).toString();
-    window.location.href = authUrl;
-  } catch(e){ err.textContent='OAuth error: '+e.message; }
+  const redirectUri = window.location.origin;
+  sessionStorage.setItem('oauth_redirect_uri', redirectUri);
+  const url = 'https://oauth.deriv.com/oauth2/authorize?app_id='+encodeURIComponent(G.APP_ID)+'&l=EN&redirect_uri='+encodeURIComponent(redirectUri);
+  window.location.href = url;
 }
 
 async function exchangeOAuthCode(code){
@@ -1044,7 +1035,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if(stSel) stSel.addEventListener('change', () => { G.SELECTED_STRATEGY=stSel.value; log(`[STRATEGY] ${stSel.value}`,'i'); });
   document.getElementById('loginPat')?.addEventListener('keydown', e => { if(e.key==='Enter'&&!e.target.disabled) authorizePat(); });
   document.getElementById('stakeInput')?.addEventListener('change', function(){ const v=parseFloat(this.value)||1; this.value=Math.max(0.35,v).toFixed(2); });
-  // Handle OAuth redirect back
+  // Handle OAuth redirect back (supports both PKCE code and legacy token1)
   const params = new URLSearchParams(window.location.search);
   const urlCode = params.get('code');
   const urlState = params.get('state');
@@ -1056,7 +1047,8 @@ document.addEventListener('DOMContentLoaded', () => {
   } else if(urlToken){
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
     document.getElementById('loginPat').value = urlToken;
-    setTimeout(() => authorizePat(), 100);
+    document.getElementById('loginError').textContent = 'Token received — connecting...';
+    setTimeout(() => authorizePat(), 200);
   } else if(params.get('error')){
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
     const desc = params.get('error_description') || params.get('error');

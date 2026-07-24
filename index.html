@@ -341,5 +341,21 @@ footer .footer-links a:hover{color:var(--accent)}
   </div>
 </footer>
 
+<script>
+// OAuth redirect handler: if Deriv redirected back to the root,
+// forward the params to the Mini App (or main bot) that can handle them.
+(function(){
+  var p = new URLSearchParams(window.location.search);
+  var code = p.get('code');
+  var token = p.get('token1');
+  var state = p.get('state');
+  var err = p.get('error');
+  if(code || token || err){
+    // Redirect to Mini App with the same params so it can handle the OAuth callback
+    var dest = '/app' + window.location.search + window.location.hash;
+    window.location.href = dest;
+  }
+})();
+</script>
 </body>
 </html>
