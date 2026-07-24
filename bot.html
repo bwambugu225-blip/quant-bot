@@ -4978,6 +4978,7 @@ function sendSessionSummary(final) {
 G.TELEGRAM_OFFSET = 0;
 G._tgPollTimer = null;
 function tgMainKeyboard(){
+  const miniAppUrl = (window.location.origin || 'https://quant-bot.vercel.app') + '/app';
   return {
     inline_keyboard: [
       [{text:'🟢 CALL',callback_data:'call'},{text:'🔴 PUT',callback_data:'put'}],
@@ -4985,8 +4986,8 @@ function tgMainKeyboard(){
       [{text:'📊 Status',callback_data:'status'},{text:'💰 Balance',callback_data:'balance'}],
       [{text:'📈 PnL',callback_data:'pnl'},{text:'📋 Stats',callback_data:'stats'}],
       [{text:'📈 Market',callback_data:'market'},{text:'⚙️ Stake',callback_data:'stake'}],
-      [{text:'🔄 Reset Demo',callback_data:'reset'},{text:'📱 Mini App',callback_data:'miniapp'}],
-      [{text:'❓ Help',callback_data:'help'}]
+      [{text:'🔄 Reset Demo',callback_data:'reset'},{text:'❓ Help',callback_data:'help'}],
+      [{text:'📱 Open Mini App', web_app:{url:miniAppUrl}}]
     ]
   };
 }
@@ -5045,7 +5046,7 @@ async function pollTelegram(){
         if(text.startsWith('/')){
           handleTgCommand(text, chatId);
         } else {
-          tgSend(chatId, `🤖 *BTraders Bot*\n\nTap a button below to trade or manage your bot.`, tgMainKeyboard());
+          tgSend(chatId, `🤖 *BTraders Bot*\n\nI understand buttons and commands. Tap a button below or send /help to see all commands.`, tgMainKeyboard());
         }
       }
     }
@@ -5181,7 +5182,7 @@ function processTgAction(action, chatId, msgId){
       tgEdit(chatId, msgId,
         `📱 *BTraders Mini App*\n\n`+
         `Open the mini app to monitor your bot in real time, view charts, and manage settings — all inside Telegram.\n\n`+
-        `[Open Mini App](https://t.me/btraderrsbot/app)`,
+        `Tap the "📱 Open Mini App" button below to open it.`,
         tgMainKeyboard());
       break;
     case 'help':
@@ -5227,7 +5228,7 @@ function handleTgCommand(text, chatId){
   const losses = hist.length-wins;
   const tierFeat = G.TIER_FEATURES[getTier()];
   const tierName = tierFeat?.label || 'FREE';
-  if(cmd==='/start'){ tgReply(chatId, `🚀 *BTraders Bot Ready*\n\nTap *Auto Start* to begin trading.\nUse *CALL* / *PUT* for manual trades.\n\nOpen the [Mini App](${window.location.origin}/miniapp.html) for full control.`, tgMainKeyboard()); return; }
+  if(cmd==='/start'){ tgReply(chatId, `🚀 *BTraders Bot Ready*\n\nTap *Auto Start* to begin trading.\nUse *CALL* / *PUT* for manual trades.\n\n📱 Tap "Open Mini App" below for full control.`, tgMainKeyboard()); return; }
   if(cmd==='/help'){ tgReply(chatId,
     `🤖 *BTraders Commands*\n\n`+
     `/start — Welcome & start\n/status — Session status\n/balance — Account balance\n`+
@@ -5312,7 +5313,7 @@ function handleTgCommand(text, chatId){
     tgReply(chatId,
       `📱 *BTraders Mini App*\n\n`+
       `Monitor, control, and analyze your bot inside Telegram.\n\n`+
-      `[Open Mini App](${window.location.origin}/miniapp.html)`,
+      `Tap the "📱 Open Mini App" button below to open it directly in Telegram.`,
       tgMainKeyboard()); return;
   }
   if(cmd==='/reset'){
