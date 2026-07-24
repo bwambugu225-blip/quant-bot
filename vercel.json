@@ -1,6 +1,9 @@
 {
   "version": 2,
   "rewrites": [
-    { "source": "/(.*)", "destination": "/bot.html" }
+    { "source": "/bot", "destination": "/bot.html" },
+    { "source": "/bot.html", "destination": "/bot.html" },
+    { "source": "/landing.html", "destination": "/landing.html" },
+    { "source": "/(.*)", "destination": "/landing.html" }
   ]
 }
