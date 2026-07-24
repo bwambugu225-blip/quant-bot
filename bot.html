@@ -643,7 +643,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
       <input type="password" id="loginPat" placeholder="Paste token from app.deriv.com/account/api-token" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#fff;font-size:11px;outline:none;margin-bottom:6px">
       <button class="btn btn-accent" onclick="authorizePat()" style="width:100%;padding:6px;border-radius:8px;border:none;font-size:11px;font-weight:600;cursor:pointer">Connect</button>
     </div>
-    <div class="login-footer">Requires <strong>Read</strong> + <strong>Trade</strong> scopes</div>
+    <div class="login-footer">Requires <strong>Read</strong> + <strong>Trade</strong> scopes · <a href="landing.html" style="color:var(--accent);text-decoration:none">About</a></div>
     <div style="font-size:8px;color:var(--dim);margin-top:14px;line-height:1.4;border-top:1px dashed var(--line);padding-top:10px;text-align:left">
       ⚠️ <strong>Risk Warning:</strong> Trading binary options and synthetic indices involves high financial risk. Your capital is at risk and you may lose some or all of your initial deposit. The BTraders platform is an execution tool, not a financial advisor. Use responsibly.
     </div>
@@ -656,6 +656,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
   <div class="mtop-l">
     <div class="logo">B<span>TRADERS</span><span onclick="showAdminLogin()" title="Admin" style="cursor:pointer;opacity:0.25;font-size:10px;letter-spacing:1px;margin-left:6px;transition:opacity .2s;user-select:none;vertical-align:middle" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.25">&gt;&gt;&gt;</span></div>
     <span id="connDot" class="conn r"></span>
+    <span id="mktDot" class="conn r" style="margin-left:-2px" title="Market data"></span>
     <span id="engineStatus" class="status-pill">OFFLINE</span>
     <span id="accBadge" class="tag tag-blue" style="font-size:7px;">DEMO</span>
     <label class="switch" title="Live / Demo">
@@ -664,6 +665,7 @@ body::after{background-image:linear-gradient(rgba(94,140,255,0.025) 1px,transpar
     </label>
   </div>
   <div class="mtop-r">
+    <button onclick="reconnectMarketWS()" title="Reconnect market data" style="background:none;border:1px solid var(--line);cursor:pointer;font-size:11px;line-height:1;padding:5px 8px;color:var(--muted);margin-right:4px" id="reconnMktBtn" hidden>⟳</button>
     <button onclick="toggleTheme()" title="Toggle theme" style="background:none;border:none;cursor:pointer;font-size:14px;line-height:1;padding:2px" id="themeBtn">🌙</button>
     <button onclick="logout()" title="Save &amp; logout" style="background:none;border:1px solid var(--line);cursor:pointer;font-size:11px;line-height:1;padding:5px 8px;color:var(--text)">⏻</button>
   </div>
@@ -2916,34 +2918,57 @@ function connectMarketWS(){
     G.MWS_CONNECTED = true;
     G.LAST_MARKET_MSG_AT = Date.now();
     G.BOOT_AT = Date.now();
+    const mDot = document.getElementById('mktDot');
+    if(mDot) mDot.className = 'conn g';
     log('[MARKET] Connected','s');
     SYMBOLS.forEach(s=>{
-      // 1. Request 250 historical 1-minute candles instantly
+      // Pre-fill with 250 historical 1m candles (fallback until tick data arrives)
       mws.send(JSON.stringify({
         ticks_history:s.sym, end:'latest', count:250, style:'candles',
         granularity:60, req_id:genId()
       }));
-      // 2. Subscribe to live ticks with 1100 ticks lookback for 1000 rolling digits
+      // Subscribe to live ticks with 1100 ticks lookback
       mws.send(JSON.stringify({
         ticks_history:s.sym, end:'latest', count:1100, style:'ticks',
         subscribe:1, req_id:genId()
       }));
     });
-    log(`[SUB] ${SYMBOLS.length} markets · 250m candle history & 1100 live ticks requested`,'i');
+    log(`[SUB] ${SYMBOLS.length} markets · 250m candles + 1100 live ticks requested`,'i');
     startHeartbeat();
   };
   mws.onmessage = (e)=>{
     G.LAST_MARKET_MSG_AT = Date.now();
     try { handleMsg(JSON.parse(e.data), 'market'); } catch(ex){ log(`[MARKET] Parse: ${ex.message}`,'e'); }
   };
-  mws.onerror = ()=>{ log('[MARKET] WS error','e'); };
+  mws.onerror = ()=>{ log('[MARKET] WS error — check network/firewall','e'); };
   mws.onclose = ()=>{
     G.MWS_CONNECTED = false;
     if(G.MWS === mws) G.MWS = null;
-    log('[MARKET] Disconnected — reconnecting in 2s','w');
+    const mDot = document.getElementById('mktDot');
+    if(mDot) mDot.className = 'conn r';
+    G.MWS_RECONN_ATT = (G.MWS_RECONN_ATT||0) + 1;
+    const delay = Math.min(500 * Math.pow(1.5, G.MWS_RECONN_ATT - 1), 10000);
+    log(`[MARKET] Disconnected — reconnecting in ${delay}ms`,'w');
     if(G.MWS_RECONN) clearTimeout(G.MWS_RECONN);
-    G.MWS_RECONN = setTimeout(connectMarketWS, 2000);
+    G.MWS_RECONN = setTimeout(connectMarketWS, delay);
   };
+  // Visible watchdog — show error + reveal reconnect button if no data within 20s
+  setTimeout(() => {
+    if(!G.MARKET?.candles?.[SYMBOLS[0]?.sym]?.length){
+      log('[MARKET] No data received — click ⟳ to retry or check network','e');
+      const reBtn = document.getElementById('reconnMktBtn');
+      if(reBtn) reBtn.hidden = false;
+    }
+  }, 20000);
+}
+
+function reconnectMarketWS(){
+  if(G.MWS_RECONN){ clearTimeout(G.MWS_RECONN); G.MWS_RECONN=null; }
+  if(G.MWS){ try{ G.MWS.close(); }catch(e){} G.MWS=null; }
+  G.MWS_CONNECTED = false;
+  G.MWS_RECONN_ATT = 0;
+  connectMarketWS();
+  log('[MARKET] Manual reconnect triggered','i');
 }
 
 function scheduleRecon(){
@@ -3072,7 +3097,10 @@ function buildCandlesFromTicks(sym, times, prices){
     G.MARKET.candles[sym] = arr;
     G.MARKET.prices[sym] = arr.map(c=>c.close);
     G.MARKET.lastCloseAt[sym] = Date.now();
+    const reBtn = document.getElementById('reconnMktBtn');
+    if(reBtn) reBtn.hidden = true;
     updateDigitsUI();
+    if(sym === G.CURRENT_MARKET) drawChart();
     log(`[HIST] ${sym}: ${arr.length} candles built — waiting for next fresh candle to trade`,'i');
   }
 }
@@ -3197,13 +3225,19 @@ function handleCandles(data){
     high: +c.high,
     low: +c.low,
     close: +c.close,
-    ticks: 30 // representative count
+    ticks: 30
   }));
-  G.MARKET.candles[sym] = arr.slice(-250);
-  G.MARKET.prices[sym] = G.MARKET.candles[sym].map(x => x.close);
-  G.MARKET.lastCloseAt[sym] = Date.now();
-  log(`[HIST] ${sym}: Imported ${arr.length} 1-minute historical candles instantly`, 's');
-  drawChart();
+  // Store as 1m fallback — does NOT overwrite 15s candles from tick data
+  G.MARKET.candles1m = G.MARKET.candles1m || {};
+  G.MARKET.candles1m[sym] = arr.slice(-250);
+  // Only set main candles if tick data hasn't arrived yet
+  if(!G.MARKET.candles[sym]?.length){
+    G.MARKET.candles[sym] = G.MARKET.candles1m[sym];
+    G.MARKET.prices[sym] = G.MARKET.candles[sym].map(x => x.close);
+    G.MARKET.lastCloseAt[sym] = Date.now();
+    drawChart();
+  }
+  log(`[HIST] ${sym}: ${arr.length} 1m candles cached`, 'i');
 }
 
 function handleOhlc(data){
@@ -4792,10 +4826,15 @@ function updateAnalysisPanel(){
     set('haxWL', `${G.WINS||0} / ${G.LOSSES||0}`);
     const focus=document.getElementById('haxFocus'); if(focus) focus.textContent=sym;
     drawHaxSpark(series);
-    // Status ring / sub
+    // Status ring / sub / data health
     const dot=document.getElementById('haxDot'), sub=document.getElementById('haxSub');
-    if(G.RUNNING||BotState.isTrading){ if(dot) dot.className=''; if(sub) sub.textContent='⟐ ENGINE ACTIVE · scanning all markets'; }
-    else if(G.AUTH){ if(dot) dot.className=''; if(sub) sub.textContent='◌ IDLE · live stream'; }
+    const mktAge = G.LAST_MARKET_MSG_AT ? Math.round((Date.now()-G.LAST_MARKET_MSG_AT)/1000) : null;
+    const hasData = G.MARKET?.candles?.[sym]?.length > 0;
+    const dataStr = hasData ? `· ${G.MARKET.candles[sym].length}c` : '· no data';
+    const ageStr = mktAge!=null ? `· ${mktAge}s ago` : '';
+    if(G.RUNNING||BotState.isTrading){ if(dot) dot.className=''; if(sub) sub.textContent=`⟐ ENGINE ACTIVE ${dataStr} ${ageStr}`; }
+    else if(G.AUTH && G.MWS_CONNECTED){ if(dot) dot.className=''; if(sub) sub.textContent=`◌ MONITORING ${dataStr} ${ageStr}`; }
+    else if(G.AUTH){ if(dot) dot.className='alert'; if(sub) sub.textContent=`◍ CONNECTING${ageStr}`; }
     else { if(dot) dot.className='alert'; if(sub) sub.textContent='✕ OFFLINE · awaiting auth'; }
     // Ambient scan line when idle so the panel always feels alive
     if(!G.RUNNING && !BotState.isTrading){
