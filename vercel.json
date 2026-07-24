@@ -1,12 +1,10 @@
 {
   "version": 2,
   "rewrites": [
+    { "source": "/", "destination": "/landing.html" },
+    { "source": "/landing", "destination": "/landing.html" },
     { "source": "/bot", "destination": "/bot.html" },
-    { "source": "/bot.html", "destination": "/bot.html" },
-    { "source": "/landing.html", "destination": "/landing.html" },
     { "source": "/app", "destination": "/miniapp.html" },
-    { "source": "/miniapp", "destination": "/miniapp.html" },
-    { "source": "/miniapp.html", "destination": "/miniapp.html" },
-    { "source": "/(.*)", "destination": "/landing.html" }
+    { "source": "/miniapp", "destination": "/miniapp.html" }
   ]
 }
