@@ -5093,9 +5093,19 @@ function tgTradeInfo(){
   return { symName, marketName, total, wr, pnl, hist, curStake, cc };
 }
 
+const GROQ_RL = { max:30, window:60000, timestamps:[] };
+function groqOk(){
+  const now = Date.now();
+  GROQ_RL.timestamps = GROQ_RL.timestamps.filter(t => now - t < GROQ_RL.window);
+  if(GROQ_RL.timestamps.length >= GROQ_RL.max) return false;
+  GROQ_RL.timestamps.push(now);
+  return true;
+}
+
 async function callGroq(messages, temperature=0.7, maxTokens=500){
   const key = G.GROQ_API_KEY;
   if(!key){ console.log('[GROQ] No API key'); return null; }
+  if(!groqOk()){ console.log('[GROQ] Rate limited (30/min)'); return null; }
   try {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method:'POST',
@@ -5131,6 +5141,7 @@ async function aiAnalyzeTrade(sym, signal, candles){
   try {
     const key = G.GROQ_API_KEY;
     if(!key) return;
+    if(!groqOk()) return;
     const lastCandle = candles[candles.length-1];
     const prevCandle = candles.length>=2 ? candles[candles.length-2] : null;
     const volume = G._tickerVolumes?.[sym] || 'N/A';
@@ -5172,6 +5183,7 @@ async function handleTgChat(chatId, text){
       tgSend(chatId, `🤖 I need a Groq API key to chat intelligently. Set it in the bot config.`);
       return;
     }
+    if(!groqOk()){ tgSend(chatId, `⏳ I'm rate-limited (30 req/min). Wait a moment or use /status, /pnl etc.`); return; }
     const info = tgTradeInfo();
     const today = new Date().toDateString();
     const dayHist = G.TRADE_HISTORY.filter(t => new Date(t.time).toDateString() === today);
