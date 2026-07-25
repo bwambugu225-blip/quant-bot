@@ -878,13 +878,21 @@ table tr{border-bottom:1px solid var(--line)}
         </div>
       </div>
       <div class="field" style="margin-bottom:8px">
-        <label>Trading Strategy</label>
-        <select id="strategySelect" class="inp" onchange="selectStrategy(this.value)" style="font-size:10px;width:100%">
-          <option value="AROON" selected>Aroon (25) — Traffic Light</option>
-          <option value="FRACTAL_BRK">Williams Fractal Reversal</option>
-          <option value="AO">Awesome Oscillator</option>
-        </select>
-        <div id="stratList" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px"></div>
+        <label>Elite Strategies</label>
+        <div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px">
+          <span style="font-size:8px;padding:2px 6px;border:1px solid var(--accent);border-radius:3px;color:var(--accent)">ICT_OB</span>
+          <span style="font-size:8px;padding:2px 6px;border:1px solid var(--accent);border-radius:3px;color:var(--accent)">FVG</span>
+          <span style="font-size:8px;padding:2px 6px;border:1px solid var(--accent);border-radius:3px;color:var(--accent)">WYCKOFF</span>
+          <span style="font-size:8px;padding:2px 6px;border:1px solid var(--accent);border-radius:3px;color:var(--accent)">MSB</span>
+          <span style="font-size:8px;padding:2px 6px;border:1px solid var(--accent);border-radius:3px;color:var(--accent)">SUPERTREND</span>
+          <span style="font-size:8px;padding:2px 6px;border:1px solid var(--accent);border-radius:3px;color:var(--accent)">S_D_FLIP</span>
+          <span style="font-size:8px;padding:2px 6px;border:1px solid var(--accent);border-radius:3px;color:var(--accent)">FIB_CONF</span>
+          <span style="font-size:8px;padding:2px 6px;border:1px solid var(--accent);border-radius:3px;color:var(--accent)">KELTNER_SQZ</span>
+          <span style="font-size:8px;padding:2px 6px;border:1px solid var(--accent);border-radius:3px;color:var(--accent)">MOMENTUM</span>
+          <span style="font-size:8px;padding:2px 6px;border:1px solid var(--accent);border-radius:3px;color:var(--accent)">VWAP_REV</span>
+        </div>
+        <div style="font-size:7px;color:var(--muted);margin-top:2px">Autorotate · best WR picks the trade</div>
+        <div id="stratList" style="display:none"></div>
       </div>
       <div class="stake-row" style="margin-bottom:8px;display:flex;gap:8px">
         <div class="field" style="flex:1"><label>Stake</label><input class="inp" id="rfStake" type="number" value="1" min="0.35" step="0.5"></div>
@@ -1097,7 +1105,7 @@ table tr{border-bottom:1px solid var(--line)}
 <script>
 // -- GLOBAL BOT STATE --
 const G = {
-  SELECTED_STRATEGY: 'AROON',
+  SELECTED_STRATEGY: 'AUTO',
   WS:null, CONNECTED:false, AUTH:false, RID:0, TOKEN:'', CLOSING_TRADE_WS:false,
   APP_ID:localStorage.getItem('deriv_app_id') || '33JFxN3sbe2usdFigbMb8',
   ACCOUNT_ID:null, ACCOUNT_TYPE:'demo', BALANCE:0,
@@ -1218,20 +1226,7 @@ function setTier(tier){
     if(!avail.find(s => s.sym === G.CURRENT_MARKET)) G.CURRENT_MARKET = avail[0]?.sym || 'R_10';
     sel.value = G.CURRENT_MARKET;
   }
-  // Update available strategies
-  if(!feat.strategies.includes(G.SELECTED_STRATEGY)){
-    G.SELECTED_STRATEGY = feat.strategies[0] || 'AROON';
-  }
-  // Update strategy dropdown options
-  const stSel = document.getElementById('strategySelect');
-  if(stSel){
-    const opts = {
-      AROON:'Aroon (25) — Traffic Light',
-      FRACTAL_BRK:'Williams Fractal Reversal',
-      AO:'Awesome Oscillator'
-    };
-    stSel.innerHTML = feat.strategies.map(s => `<option value="${s}" ${s===G.SELECTED_STRATEGY?'selected':''}>${opts[s]||s}</option>`).join('');
-  }
+  // Autorotation handles all 10 elite strategies
   // Update UI
   updateTierUI();
   log(`[TIER] ${tier.toUpperCase()} — ${feat.label} plan active`,'s');
@@ -2210,19 +2205,131 @@ function initStrategies(){
   G.DIGIT_AVG = {dou:{0:50,1:49,2:53,3:51,4:52,5:52,6:50,7:52,8:49,9:48},deo:{0:51,1:49,2:49,3:52,4:55,5:52,6:48,7:49,8:53,9:52},ou:{O:51,U:49},eo:{E:51,D:49},pou:{UU:51,UO:50,OO:51,OU:50},peo:{ED:49,DD:52,DE:54,EE:49}};
   G.STRATEGIES = [];
   const S = G.STRATEGIES;
-  G._aroonState = G._aroonState || {};
+  function stratWR(code){const p=G.STRATEGY_STATS?.[code];if(!p||p.total<3)return-1;return p.wins/p.total;}
 
-  S.push({
-    name: 'Aroon (25) — Traffic Light',
-    code: 'AROON',
-    analyze: (candles, sym, tf) => {
-      tf = tf || '5s';
-      const period = tf==='5s'?25:tf==='15s'?15:tf==='30s'?10:8;
-      const minLen = period + 5;
-      if (candles.length < minLen) return null;
-      const st = G._aroonState[sym] || (G._aroonState[sym] = { dirs: [], traded: null, touched: false });
-      const { up, down } = aroon(candles, period);
-      const dir = up > down ? 'U' : 'D';
+  // ── 1. ICT Order Block ──
+  S.push({name:'ICT Order Block',code:'ICT_OB',analyze:(c,sym,tf)=>{
+    tf=tf||'5s';const n=c.length;if(n<10)return null;
+    const last=c[n-1],lk=Math.min(n,30);
+    for(let i=lk-1;i>=5;i--){
+      const k=c[i];const bd=Math.abs(k.close-k.open),rg=k.high-k.low;
+      if(rg<0.0001||bd/rg<0.6)continue;
+      const d=k.close>k.open?1:-1,a=c[i-1],b=c[i-2];
+      if(!a||!b)continue;
+      if((a.close>a.open&&b.close>b.open&&d>0)||(a.close<a.open&&b.close<b.open&&d<0)){
+        const gap=k.high-k.low,tol=last.close*0.002;
+        const dist=d>0?Math.abs(last.close-k.low):Math.abs(last.close-k.high);
+        if(dist<gap*0.6&&dist<tol)return{action:d>0?'RISE':'FALL',conf:85,src:'ICT_OB'};
+      }
+    }
+    return null;
+  }});
+
+  // ── 2. Fair Value Gap ──
+  S.push({name:'Fair Value Gap',code:'FVG',analyze:(c,sym,tf)=>{
+    const n=c.length;if(n<6)return null;const last=c[n-1];
+    for(let i=Math.min(n-4,25);i>=2;i--){
+      const a=c[i],b=c[i+1],d=c[i+2];if(!a||!b||!d)continue;
+      if(a.high<d.low&&last.close>=a.high&&last.close<=d.low)return{action:'RISE',conf:84,src:'FVG'};
+      if(a.low>d.high&&last.close<=a.low&&last.close>=d.high)return{action:'FALL',conf:84,src:'FVG'};
+    }
+    return null;
+  }});
+
+  // ── 3. Wyckoff Spring/UTAD ──
+  S.push({name:'Wyckoff Spring/UTAD',code:'WYCKOFF',analyze:(c,sym,tf)=>{
+    const n=c.length;if(n<15)return null;const last=c[n-1],prev=c[n-2];
+    let lo=Infinity,hi=-Infinity;
+    for(let i=n-10;i<n-2;i++){if(c[i].low<lo)lo=c[i].low;if(c[i].high>hi)hi=c[i].high;}
+    const tol=last.close*0.001;
+    if(prev.low<lo-tol&&prev.close<lo-tol&&last.close>lo)return{action:'RISE',conf:88,src:'WYCKOFF'};
+    if(prev.high>hi+tol&&prev.close>hi+tol&&last.close<hi)return{action:'FALL',conf:88,src:'WYCKOFF'};
+    return null;
+  }});
+
+  // ── 4. Market Structure Break ──
+  S.push({name:'Market Structure Break',code:'MSB',analyze:(c,sym,tf)=>{
+    const n=c.length;if(n<12)return null;const last=c[n-1];let sh=null,sl=null;
+    for(let i=n-6;i<n-1;i++){const k=c[i],p=c[i-1],nx=c[i+1];if(!p||!nx)continue;if(k.high>p.high&&k.high>=nx.high)sh=k.high;if(k.low<p.low&&k.low<=nx.low)sl=k.low;}
+    const tol=last.close*0.0005;
+    if(sh!==null&&last.high>sh+tol&&Math.abs(last.close-sh)<tol)return{action:'RISE',conf:86,src:'MSB'};
+    if(sl!==null&&last.low<sl-tol&&Math.abs(last.close-sl)<tol)return{action:'FALL',conf:86,src:'MSB'};
+    return null;
+  }});
+
+  // ── 5. SuperTrend ──
+  S.push({name:'SuperTrend',code:'SUPERTREND',analyze:(c,sym,tf)=>{
+    const n=c.length;if(n<15)return null;const tr=[];
+    for(let i=1;i<n;i++){const p=c[i-1];tr.push(Math.max(c[i].high-c[i].low,Math.abs(c[i].high-p.close),Math.abs(c[i].low-p.close)));}
+    const atr=tr.slice(-10).reduce((s,v)=>s+v,0)/10;
+    const last=c[n-1],prev=c[n-2];
+    const hl=(h,l)=>(h+l)/2;
+    if(prev.close<=hl(prev.high,prev.low)+2*atr&&last.close>hl(last.high,last.low)+2*atr)return{action:'RISE',conf:83,src:'SUPERTREND'};
+    if(prev.close>=hl(prev.high,prev.low)-2*atr&&last.close<hl(last.high,last.low)-2*atr)return{action:'FALL',conf:83,src:'SUPERTREND'};
+    return null;
+  }});
+
+  // ── 6. Supply & Demand Flip ──
+  S.push({name:'Supply & Demand Flip',code:'S_D_FLIP',analyze:(c,sym,tf)=>{
+    const n=c.length;if(n<20)return null;const last=c[n-1];let dz=null,sz=null;
+    for(let i=n-15;i<n-1;i++){const k=c[i],p=i>0?c[i-1]:null;if(!p)continue;
+    if(k.close>k.open&&p.close<p.open&&k.close>p.high&&(!dz||Math.abs(last.close-k.low)<Math.abs(last.close-dz.low)))dz={h:k.high,l:k.low};
+    if(k.close<k.open&&p.close>p.open&&k.close<p.low&&(!sz||Math.abs(last.close-k.high)<Math.abs(last.close-sz.high)))sz={h:k.high,l:k.low};}
+    const tol=last.close*0.0008;
+    if(dz&&last.low<=dz.h+tol&&last.low>=dz.l-tol&&last.close>dz.h)return{action:'RISE',conf:85,src:'S_D_FLIP'};
+    if(sz&&last.high>=sz.l-tol&&last.high<=sz.h+tol&&last.close<sz.l)return{action:'FALL',conf:85,src:'S_D_FLIP'};
+    return null;
+  }});
+
+  // ── 7. Fibonacci Confluence ──
+  S.push({name:'Fibonacci Confluence',code:'FIB_CONF',analyze:(c,sym,tf)=>{
+    const n=c.length;if(n<15)return null;const last=c[n-1];let hi=-Infinity,hiI=-1,lo=Infinity,loI=-1;
+    for(let i=n-12;i<n;i++){if(c[i].high>hi){hi=c[i].high;hiI=i;}if(c[i].low<lo){lo=c[i].low;loI=i;}}
+    if(hiI<2||loI<2)return null;const rng=hi-lo;if(rng<0.0001)return null;
+    const fibs=[0.236,0.382,0.5,0.618,0.786],tol2=rng*0.1;let na=0,nb=0;
+    for(const f of fibs){const lvl=hi-rng*f;if(Math.abs(last.low-lvl)<tol2)na++;if(Math.abs(last.high-lvl)<tol2)nb++;}
+    if(loI>hiI&&na>=2&&last.close>last.open)return{action:'RISE',conf:82,src:'FIB_CONF'};
+    if(hiI>loI&&nb>=2&&last.close<last.open)return{action:'FALL',conf:82,src:'FIB_CONF'};
+    return null;
+  }});
+
+  // ── 8. Keltner Squeeze ──
+  S.push({name:'Keltner Squeeze',code:'KELTNER_SQZ',analyze:(c,sym,tf)=>{
+    const n=c.length;if(n<25)return null;const p=c.map(x=>x.close),per=20;
+    const sma=p.slice(-per).reduce((s,v)=>s+v,0)/per;
+    const std=Math.sqrt(p.slice(-per).reduce((s,v)=>s+(v-sma)**2,0)/per);
+    const bbU=sma+2*std,bbL=sma-2*std;const last=c[n-1],prev=c[n-2];
+    if((bbU-bbL)<std*2.5){
+      if(last.close>bbU&&prev.close<=bbU)return{action:'RISE',conf:87,src:'KELTNER_SQZ'};
+      if(last.close<bbL&&prev.close>=bbL)return{action:'FALL',conf:87,src:'KELTNER_SQZ'};
+    }
+    return null;
+  }});
+
+  // ── 9. Momentum Burst ──
+  S.push({name:'Momentum Burst',code:'MOMENTUM',analyze:(c,sym,tf)=>{
+    const n=c.length;if(n<5)return null;const l=c[n-1],a=c[n-2],b=c[n-3],d=c[n-4];
+    if(!a||!b||!d)return null;
+    const bd=Math.abs(d.close-d.open),bb=Math.abs(b.close-b.open),ba=Math.abs(a.close-a.open),bl=Math.abs(l.close-l.open);
+    if(l.close>l.open&&a.close>a.open&&b.close>b.open&&bl>ba&&ba>bb&&bb>bd*0.5)return{action:'RISE',conf:86,src:'MOMENTUM'};
+    if(l.close<l.open&&a.close<a.open&&b.close<b.open&&bl>ba&&ba>bb&&bb>bd*0.5)return{action:'FALL',conf:86,src:'MOMENTUM'};
+    return null;
+  }});
+
+  // ── 10. VWAP Mean Reversion ──
+  S.push({name:'VWAP Mean Reversion',code:'VWAP_REV',analyze:(c,sym,tf)=>{
+    const n=c.length;if(n<25)return null;const last=c[n-1];
+    const tp=c.slice(-20).map(x=>(x.high+x.low+x.close)/3);
+    const vwap=tp.reduce((s,v)=>s+v,0)/tp.length;
+    const pct=Math.abs(last.close-vwap)/vwap;
+    if(pct<0.001)return null;
+    if(last.close>vwap*(1+0.0012)&&last.close<last.open)return{action:'FALL',conf:82,src:'VWAP_REV'};
+    if(last.close<vwap*(1-0.0012)&&last.close>last.open)return{action:'RISE',conf:82,src:'VWAP_REV'};
+    return null;
+  }});
+
+  G.STRATEGY_ACTIVE = G.STRATEGIES.map(()=>true);
+  G._stratCodes = G.STRATEGIES.map(s=>s.code);
 
       // Noise guard: count flips in last 12 bars (>3 = choppy, skip)
       st.dirs.push(dir);
@@ -3344,50 +3451,51 @@ function runStrategyAnalysis(sym, candles, liveBuf, tf){
       const trendStrength = adx ? adx.strength : 0;
       const trendDir = adx ? adx.trend : null;
 
-      // ── TF-Adapted Strategy Call ──
-      const stratCode = G.SELECTED_STRATEGY || 'AROON';
-      const strategyObj = G.STRATEGIES.find(st => st.code === stratCode);
-      if (strategyObj && typeof strategyObj.analyze === 'function') {
-        const vote = strategyObj.analyze(candles, sym, tf);
-        if (vote) votes.push(vote);
-      }
-
-      // ── TF-Adapted Confirmation Layer ──
-      // Different timeframes require different confirmation strictness
-      const tfConfMult = tf==='5s' ? 1.0 : tf==='15s' ? 1.05 : tf==='30s' ? 1.10 : 1.15;
-      // TF-specific ADX filters: longer TF = stronger trend required
-      const minADX = tf==='5s' ? 18 : tf==='15s' ? 20 : tf==='30s' ? 22 : 25;
-      // How many candles back to check for trend continuity
-      const trendLookback = tf==='5s' ? 3 : tf==='15s' ? 4 : tf==='30s' ? 5 : 6;
-
-      // Volatility gate per TF
+      // ── Autorotation: evaluate ALL 10 strategies, rank by performance ──
       const now=Date.now(), tfKey=tf+'_'+sym;
       G._tfGate = G._tfGate || {};
       if(G.ACTIVE_CONTRACTS.size===0) G._tfGate[tfKey]=0;
       if(Date.now()-G._tfGate[tfKey] < (tf==='5s'?3000:tf==='15s'?6000:tf==='30s'?10000:15000) && G._tfGate[tfKey]>0) return null;
 
-      // Price Action confirmation (boost)
       const paRise = tf==='1m' ? false : checkPriceAction(sym, 'RISE');
       const paFall = tf==='1m' ? false : checkPriceAction(sym, 'FALL');
-      for (const v of votes) {
-        if (v.action === 'RISE' && paRise) v.conf = Math.min(96, Math.round(v.conf * 1.08));
-        if (v.action === 'FALL' && paFall) v.conf = Math.min(96, Math.round(v.conf * 1.08));
+
+      // Collect votes from ALL strategies
+      const allVotes = [];
+      for(const st of G.STRATEGIES){
+        try {
+          const v = st.analyze(candles, sym, tf);
+          if(v) allVotes.push(v);
+        } catch(e){ /* skip failing strategy */ }
       }
 
-      if(votes.length === 0) return null;
-      const v = votes[0];
-      let action = v.action;
-      let finalConf = Math.round(v.conf * tfConfMult);
-      let finalSrc = v.src;
-
-      let riseVotes = 0, fallVotes = 0;
-      for (const vt of votes) {
-        if (vt.action === 'RISE') riseVotes++;
-        else if (vt.action === 'FALL') fallVotes++;
+      // Boost confirmed votes with Price Action
+      for(const v of allVotes){
+        if(v.action==='RISE'&&paRise) v.conf=Math.min(96,Math.round(v.conf*1.08));
+        if(v.action==='FALL'&&paFall) v.conf=Math.min(96,Math.round(v.conf*1.08));
       }
 
-      // ── TF-Adapted Confidence Floor ──
-      const confFloor = tf==='5s' ? 78 : tf==='15s' ? 80 : tf==='30s' ? 82 : 84;
+      if(allVotes.length===0) return null;
+
+      // Rank strategies by recent win rate (tracked), break ties by confidence
+      const tfConfMult = tf==='5s'?1.0:tf==='15s'?1.05:tf==='30s'?1.10:1.15;
+      const confFloor = tf==='5s'?78:tf==='15s'?80:tf==='30s'?82:84;
+      const minADX = tf==='5s'?18:tf==='15s'?20:tf==='30s'?22:25;
+
+      // Score each vote: weight = strategy WR (or 0.5 if no data) * conf
+      let best=null, bestScore=-1;
+      for(const v of allVotes){
+        const wr = stratWR(v.src);
+        const perfScore = wr>=0 ? wr : 0.5;
+        const score = perfScore * v.conf;
+        if(score>bestScore){ bestScore=score; best=v; }
+      }
+      if(!best) return null;
+
+      let action = best.action;
+      let finalConf = Math.round(best.conf * tfConfMult);
+      let finalSrc = best.src;
+
       finalConf = Math.min(96, Math.max(confFloor, finalConf));
 
       // Market stats adjustment
@@ -3404,18 +3512,17 @@ function runStrategyAnalysis(sym, candles, liveBuf, tf){
       // Perfect streak boost
       if(G.WINS > 0 && G.LOSSES === 0) finalConf = Math.min(96, finalConf + (tf==='5s'?3:tf==='15s'?4:tf==='30s'?5:6));
 
-      // Trend confirmation gate: if ADX shows strong trend, only trade WITH it
+      // Trend confirmation gate
       if(trendStrength >= minADX && trendDir){
-        if((trendDir==='up' && action==='FALL') || (trendDir==='down' && action==='RISE')){
+        if((trendDir==='up'&&action==='FALL')||(trendDir==='down'&&action==='RISE')){
           finalConf = Math.max(confFloor, Math.round(finalConf * 0.85));
           finalSrc = finalSrc + '~CTR';
         }
       }
 
-      // ── TF-Gated Cooldown ──
       G._tfGate[tfKey] = now;
 
-      return { action, conf:finalConf, src:finalSrc, evidence:{votes:votes.length, riseVotes, fallVotes, trend:trendDir, adx:Math.round(trendStrength), tf} };
+      return { action, conf:finalConf, src:finalSrc, evidence:{votes:allVotes.length, riseVotes:allVotes.filter(v=>v.action==='RISE').length, fallVotes:allVotes.filter(v=>v.action==='FALL').length, trend:trendDir, adx:Math.round(trendStrength), tf} };
 
     } else {
       // ==========================================
@@ -4573,17 +4680,8 @@ function switchTab(tab){
 // No sidebar anymore — Escape does nothing special
 document.addEventListener('keydown', e => { if(e.key==='Escape'){} });
 function selectStrategy(val){
-  const feat = G.TIER_FEATURES[getTier()];
-  if(feat && !feat.strategies.includes(val)){
-    showToast(`Strategy ${val} requires Pro or higher`,'warn');
-    const sel = document.getElementById('strategySelect');
-    if(sel) sel.value = G.SELECTED_STRATEGY;
-    return;
-  }
-  G.SELECTED_STRATEGY = val;
+  // No-op: all 10 elite strategies autorotate per candle
   saveState();
-  updateWatchlist();
-  log(`[STRATEGY] Active strategy: ${val}`,'i');
 }
 function switchMode(mode){
   if(mode==='DIGITS' && !tierCheck('digits')){ log('[TIER] Digits requires Pro or higher','w'); G.TRADE_MODE='RISEFALL'; return; }
@@ -5479,17 +5577,10 @@ function checkMiniappAction(){
   } catch(e){}
 }
 
-function toggleStrat(idx){ G.STRATEGY_ACTIVE[idx]=!G.STRATEGY_ACTIVE[idx]; renderStratList(); saveState(); }
+function toggleStrat(idx){ /* no-op — autorotation active */ }
 
 function renderStratList(){
-  const wrap=document.getElementById('stratList'); if(!wrap) return;
-  if(!G.STRATEGIES || !G.STRATEGIES.length) return;
-  let html='';
-  G.STRATEGIES.forEach((st, i)=>{
-    const on = G.STRATEGY_ACTIVE[i];
-    html += `<button type="button" class="strat-chip${on?' on':''}" onclick="toggleStrat(${i})" title="${st.code}">${st.name}</button>`;
-  });
-  wrap.innerHTML=html;
+  /* autorotation: all 10 elite strategies, no toggle */
 }
 
 function updateStrategyStats(signal, won){
@@ -5500,28 +5591,7 @@ function updateStrategyStats(signal, won){
   const s = G.STRATEGY_STATS[code];
   s.total++;
   if(won) s.wins++; else s.losses++;
-  // For ensemble signals, skip individual strategy management
-  if(code === 'ENS'){
-    if(!G._ensStats) G._ensStats = {wins:0,losses:0,total:0};
-    G._ensStats.total++; if(won) G._ensStats.wins++; else G._ensStats.losses++;
-    // Recalibrate individual strategy weights from REV-traded results
-    return;
-  }
-  // Individual strategy management (works for REV direct trades)
-  if(s.total >= 5 && s.wins / s.total < 0.50){
-    const idx = G.STRATEGIES.findIndex(st => st.code === code);
-    if(idx >= 0 && G.STRATEGY_ACTIVE[idx]){
-      G.STRATEGY_ACTIVE[idx] = false;
-      log(`[LEARN] Disabled ${code} (${(s.wins/s.total*100).toFixed(0)}% winrate)`,'w');
-      renderStratList();
-    }
-  }
-  const activeIdx = G.STRATEGIES.findIndex(st => st.code === code);
-  if(activeIdx >= 0 && !G.STRATEGY_ACTIVE[activeIdx] && s.total >= 5 && s.wins / s.total >= 0.60){
-    G.STRATEGY_ACTIVE[activeIdx] = true;
-    log(`[LEARN] Re-enabled ${code} (${(s.wins/s.total*100).toFixed(0)}% winrate)`,'s');
-    renderStratList();
-  }
+  if(s.total>=3) log(`[STATS] ${code}: ${(s.wins/s.total*100).toFixed(0)}% (${s.wins}/${s.total})`,'i');
 }
 function evidenceKey(ev){
   if(!ev) return '?';
@@ -5694,15 +5764,8 @@ function restoreState(){
     }
     G.TELEGRAM_BOT_TOKEN='8903146940:AAHDEPeUaw_ihF9dTme3Hi0eS7Cv2MbzRyg'; G.TELEGRAM_CHAT_ID='8363983871';
     sbLinkTelegram();
-    // Strategy is single-select from dropdown
-    const savedStrat = localStorage.getItem('deriv_selected_strategy');
-    if(savedStrat){
-      G.SELECTED_STRATEGY = savedStrat;
-      const elS = document.getElementById('strategySelect');
-      if(elS) elS.value = savedStrat;
-    } else {
-      G.SELECTED_STRATEGY = 'AROON';
-    }
+    // Autorotation uses all 10 elite strategies
+    G.SELECTED_STRATEGY = 'AUTO';
     const th = localStorage.getItem('deriv_trade_history');
     if(th) G.TRADE_HISTORY = JSON.parse(th);
     const bs = localStorage.getItem('deriv_botstate');
