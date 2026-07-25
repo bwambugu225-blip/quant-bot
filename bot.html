@@ -2236,14 +2236,16 @@ function initStrategies(){
     return null;
   }});
 
-  // ── 3. Wyckoff Spring/UTAD ──
-  S.push({name:'Wyckoff Spring/UTAD',code:'WYCKOFF',analyze:(c,sym,tf)=>{
-    const n=c.length;if(n<15)return null;const last=c[n-1],prev=c[n-2];
-    let lo=Infinity,hi=-Infinity;
-    for(let i=n-10;i<n-2;i++){if(c[i].low<lo)lo=c[i].low;if(c[i].high>hi)hi=c[i].high;}
-    const tol=last.close*0.001;
-    if(prev.low<lo-tol&&prev.close<lo-tol&&last.close>lo)return{action:'RISE',conf:88,src:'WYCKOFF'};
-    if(prev.high>hi+tol&&prev.close>hi+tol&&last.close<hi)return{action:'FALL',conf:88,src:'WYCKOFF'};
+  // ── 3. Bollinger Band Bounce (mean reversion — synthetics excel) ──
+  S.push({name:'BB Bounce',code:'BB_BOUNCE',analyze:(c,sym,tf)=>{
+    const n=c.length;if(n<25)return null;
+    const p=c.map(x=>x.close),per=20;
+    const m=sma(p,per);if(m===null)return null;
+    const sd=Math.sqrt(p.slice(-per).reduce((s,v)=>s+(v-m)**2,0)/per);
+    if(sd<0.0001)return null;
+    const bbU=m+2*sd,bbL=m-2*sd,last=c[n-1],prev=c[n-2];
+    if(prev.low<=bbL&&last.close>prev.close&&last.close>last.open&&prev.close<prev.open)return{action:'RISE',conf:84,src:'BB_BOUNCE'};
+    if(prev.high>=bbU&&last.close<prev.close&&last.close<last.open&&prev.close>prev.open)return{action:'FALL',conf:84,src:'BB_BOUNCE'};
     return null;
   }});
 
@@ -2281,15 +2283,14 @@ function initStrategies(){
     return null;
   }});
 
-  // ── 7. Fibonacci Confluence ──
-  S.push({name:'Fibonacci Confluence',code:'FIB_CONF',analyze:(c,sym,tf)=>{
-    const n=c.length;if(n<15)return null;const last=c[n-1];let hi=-Infinity,hiI=-1,lo=Infinity,loI=-1;
-    for(let i=n-12;i<n;i++){if(c[i].high>hi){hi=c[i].high;hiI=i;}if(c[i].low<lo){lo=c[i].low;loI=i;}}
-    if(hiI<2||loI<2)return null;const rng=hi-lo;if(rng<0.0001)return null;
-    const fibs=[0.236,0.382,0.5,0.618,0.786],tol2=rng*0.1;let na=0,nb=0;
-    for(const f of fibs){const lvl=hi-rng*f;if(Math.abs(last.low-lvl)<tol2)na++;if(Math.abs(last.high-lvl)<tol2)nb++;}
-    if(loI>hiI&&na>=2&&last.close>last.open)return{action:'RISE',conf:82,src:'FIB_CONF'};
-    if(hiI>loI&&nb>=2&&last.close<last.open)return{action:'FALL',conf:82,src:'FIB_CONF'};
+  // ── 7. RSI Divergence (oversold/overbought + candle confirmation) ──
+  S.push({name:'RSI Divergence',code:'RSI_DIV',analyze:(c,sym,tf)=>{
+    const n=c.length;if(n<20)return null;
+    const cl=c.map(x=>x.close),r=rsi(cl,14);
+    if(r===null)return null;
+    const last=c[n-1],prev=c[n-2];
+    if(r<30&&last.close>prev.close&&last.close>last.open&&prev.close<prev.open)return{action:'RISE',conf:85,src:'RSI_DIV'};
+    if(r>70&&last.close<prev.close&&last.close<last.open&&prev.close>prev.open)return{action:'FALL',conf:85,src:'RSI_DIV'};
     return null;
   }});
 
@@ -2316,15 +2317,14 @@ function initStrategies(){
     return null;
   }});
 
-  // ── 10. VWAP Mean Reversion ──
-  S.push({name:'VWAP Mean Reversion',code:'VWAP_REV',analyze:(c,sym,tf)=>{
-    const n=c.length;if(n<25)return null;const last=c[n-1];
-    const tp=c.slice(-20).map(x=>(x.high+x.low+x.close)/3);
-    const vwap=tp.reduce((s,v)=>s+v,0)/tp.length;
-    const pct=Math.abs(last.close-vwap)/vwap;
-    if(pct<0.001)return null;
-    if(last.close>vwap*(1+0.0012)&&last.close<last.open)return{action:'FALL',conf:82,src:'VWAP_REV'};
-    if(last.close<vwap*(1-0.0012)&&last.close>last.open)return{action:'RISE',conf:82,src:'VWAP_REV'};
+  // ── 10. ADX Trend Following (strong trend + DI+ > DI- confirmation) ──
+  S.push({name:'ADX Trend',code:'ADX_TREND',analyze:(c,sym,tf)=>{
+    const n=c.length;if(n<20)return null;
+    const tfP=tf==='5s'?14:tf==='15s'?12:tf==='30s'?10:8;
+    const d=calcADX(c,tfP);if(!d||d.adx<25)return null;
+    const last=c[n-1],prev=c[n-2];
+    if(d.pDI>d.nDI&&last.close>prev.close&&last.close>last.open)return{action:'RISE',conf:86,src:'ADX_TREND'};
+    if(d.nDI>d.pDI&&last.close<prev.close&&last.close<last.open)return{action:'FALL',conf:86,src:'ADX_TREND'};
     return null;
   }});
 
@@ -3350,7 +3350,8 @@ function runStrategyAnalysis(sym, candles, liveBuf, tf){
 
       G._tfGate[tfKey] = now;
 
-      return { action, conf:finalConf, src:finalSrc, evidence:{votes:allVotes.length, riseVotes:allVotes.filter(v=>v.action==='RISE').length, fallVotes:allVotes.filter(v=>v.action==='FALL').length, trend:trendDir, adx:Math.round(trendStrength), tf} };
+      const pd = pickOptimalDuration(finalSrc, finalConf, sym);
+      return { action, conf:finalConf, src:finalSrc, dur:pd.dur, durUnit:pd.unit, evidence:{votes:allVotes.length, riseVotes:allVotes.filter(v=>v.action==='RISE').length, fallVotes:allVotes.filter(v=>v.action==='FALL').length, trend:trendDir, adx:Math.round(trendStrength), tf} };
 
     } else {
       // ==========================================
@@ -3444,7 +3445,8 @@ function runStrategyAnalysis(sym, candles, liveBuf, tf){
       if(streak >= 2) finalConf = Math.round(finalConf * (1 - streak * 0.02));
       if(G.WINS > 0 && G.LOSSES === 0) finalConf = Math.min(96, finalConf + 3);
 
-      return { action, conf:finalConf, src:finalSrc, evidence:{votes:votes.length, riseVotes, fallVotes} };
+      const pd = pickOptimalDuration(finalSrc, finalConf, sym);
+      return { action, conf:finalConf, src:finalSrc, dur:pd.dur, durUnit:pd.unit, evidence:{votes:votes.length, riseVotes, fallVotes} };
     }
   } catch(e) {
     log(`[CRASH] runStrategyAnalysis: ${e.message}`,'e');
@@ -3511,27 +3513,34 @@ function evaluateAndTrade(sym, liveBuf){
 // ============================================================
 // TRADE EXECUTION
 // ============================================================
-// Auto duration picker for the "AUTO 1-10t" mode.
-// Higher conviction + calmer tape => shorter tick window (snap the move fast);
-// lower conviction / choppier tape => longer window (let the edge play out).
-function pickAutoTickDuration(signal, sym){
-  const conf = signal?.conf || 80;
+// Smart duration adapter: maps each strategy to optimal duration
+// based on conviction, volatility, and strategy type.
+// Scalp strategies → fast ticks (1-5t), trend strats → longer (6-10t or 15-60s).
+function pickOptimalDuration(src, conf, sym){
+  const map = {
+    ICT_OB:[3,6], FVG:[2,5], BB_BOUNCE:[5,8], MSB:[4,7],
+    SUPERTREND:[6,10], S_D_FLIP:[3,6], RSI_DIV:[3,6],
+    KELTNER_SQZ:[4,7], MOMENTUM:[2,5], ADX_TREND:[7,10]
+  };
+  const [lo,hi] = map[src] || [3,6];
+  const cw = Math.max(0, Math.min(1, (conf-80)/16));
+  let ticks = Math.round(hi - (hi-lo) * cw);
+  // volatility trim: high vol → shorter, low vol → longer
   const candles = G.MARKET.candles[sym];
-  let vol = 0.5;
   if(candles && candles.length >= 6){
     const slice = candles.slice(-6);
     const avgR = slice.reduce((s,c)=>s+(c.high-c.low),0)/slice.length || 1;
     const lastR = slice[slice.length-1].high - slice[slice.length-1].low;
-    vol = Math.max(0, Math.min(1, lastR / (avgR*2 || 1)));
+    const vol = lastR / (avgR*2 || 1);
+    if(vol > 0.8) ticks = Math.max(lo, ticks-1);
+    if(vol < 0.3) ticks = Math.min(hi, ticks+1);
   }
-  // confidence 80..96 -> weight 0..1 (higher conf = shorter)
-  const cw = Math.max(0, Math.min(1, (conf - 80) / 16));
-  // base 1..10 ; high conviction & calm tape -> short, low conviction & choppy -> long
-  let ticks = Math.round(10 - (cw * 5) - (vol * 4));
-  ticks = Math.max(1, Math.min(10, ticks));
-  // small jitter so consecutive trades aren't identical
-  if(Math.random() < 0.4) ticks = Math.max(1, Math.min(10, ticks + (Math.random() < 0.5 ? -1 : 1)));
-  return ticks;
+  // strong trend signals → use seconds for longer exposure
+  if((src==='SUPERTREND'||src==='ADX_TREND') && conf >= 90 && ticks >= 6){
+    const sec = Math.round(20 + (ticks-6)*10);
+    return { dur:Math.min(60,sec), unit:'s' };
+  }
+  return { dur:Math.max(1,Math.min(10,ticks)), unit:'t' };
 }
 function execTrade(signal, asset){
   try {
@@ -3547,8 +3556,7 @@ function execTrade(signal, asset){
   asset = asset || G.CURRENT_MARKET;
   let stake = signal.copyStake || (Martingale.enabled ? Martingale.currentStake : parseFloat(document.getElementById('rfStake')?.value||1));
 
-  const dur = G.TRADE_DURATION_TICKS || 5;
-  const durUnit = 't';
+  const { dur, unit: durUnit } = signal.dur ? { dur:signal.dur, unit:signal.durUnit||'t' } : pickOptimalDuration(signal.src, signal.conf||80, asset);
 
   const ct = signal.action==='RISE'?'CALL':'PUT';
 
@@ -3566,7 +3574,7 @@ function execTrade(signal, asset){
   G.LAST_SIGNAL = { ...signal, stake, dur, asset };
   G._lastTradeAt = Date.now();
   const tfTag = (G.TF_SELECTED||'5s');
-  log(`[TRADE] ${ct} $${stake.toFixed(2)} ${asset}@${tfTag} via ${signal.src} (${signal.conf||'?'}%)`,'t');
+  log(`[TRADE] ${ct} $${stake.toFixed(2)} ${asset}@${tfTag} ${dur}${durUnit} via ${signal.src} (${signal.conf||'?'}%)`,'t');
   haxPush(`EXEC ${asset} ${ct} $${stake.toFixed(2)} conf=${signal.conf||'?'}% → Deriv`, 'a');
   if(!G._tradedCandle) G._tradedCandle = {};
   G._tradedCandle[asset] = true;
