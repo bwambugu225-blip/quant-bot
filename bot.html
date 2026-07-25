@@ -3303,12 +3303,12 @@ function runStrategyAnalysis(sym, candles, liveBuf, tf){
         if(v.action==='FALL'&&paFall) v.conf=Math.min(96,Math.round(v.conf*1.08));
       }
 
-      if(allVotes.length===0) return null;
+      if(allVotes.length < 2) return null; // require at least 2 strategies to agree
 
       // Rank strategies by recent win rate (tracked), break ties by confidence
       const tfConfMult = tf==='5s'?1.0:tf==='15s'?1.05:tf==='30s'?1.10:1.15;
-      const confFloor = tf==='5s'?78:tf==='15s'?80:tf==='30s'?82:84;
-      const minADX = tf==='5s'?18:tf==='15s'?20:tf==='30s'?22:25;
+      const confFloor = tf==='5s'?82:tf==='15s'?84:tf==='30s'?86:88;
+      const minADX = tf==='5s'?22:tf==='15s'?24:tf==='30s'?26:28;
 
       // Score each vote: weight = strategy WR (or 0.5 if no data) * conf
       let best=null, bestScore=-1;
@@ -3333,9 +3333,10 @@ function runStrategyAnalysis(sym, candles, liveBuf, tf){
         if(mi.vol === 'high') finalConf -= 2;
       }
 
-      // Consecutive-loss dampening (scales with TF)
+      // Consecutive-loss dampening (scales with TF) — skip at 3+
       const streak = G.CONS_LOSS || 0;
-      if(streak >= 2) finalConf = Math.round(finalConf * (1 - streak * (tf==='5s'?0.02:tf==='15s'?0.025:tf==='30s'?0.03:0.04)));
+      if(streak >= 3) return null;
+      if(streak >= 1) finalConf = Math.round(finalConf * (1 - streak * (tf==='5s'?0.06:tf==='15s'?0.08:tf==='30s'?0.10:0.12)));
 
       // Perfect streak boost
       if(G.WINS > 0 && G.LOSSES === 0) finalConf = Math.min(96, finalConf + (tf==='5s'?3:tf==='15s'?4:tf==='30s'?5:6));
@@ -3473,6 +3474,14 @@ function evaluateAndTrade(sym, liveBuf){
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
   if(Date.now() - G.BOOT_AT < 4000) return;
   if(G.MARKET_SELECTION_MODE==='manual' && sym!==G.SELECTED_MARKET) return;
+  // ── Sustainability gates ──
+  if(G._clusterUntil && Date.now() < G._clusterUntil) return;
+  if(G._marketLossAt?.[sym] && Date.now()-G._marketLossAt[sym] < 60000) return;
+  const minGapMs = G.TF_SELECTED==='5s'?10000:G.TF_SELECTED==='15s'?15000:G.TF_SELECTED==='30s'?20000:30000;
+  if(G._lastTradeAt && Date.now()-G._lastTradeAt < minGapMs) return;
+  G._tradeTimes=G._tradeTimes||[]; const hrAgo=Date.now()-3600000;
+  G._tradeTimes=G._tradeTimes.filter(t=>t>hrAgo);
+  if(G._tradeTimes.length >= 5) return; // max 5 trades/hour
 
   const c = G.MARKET.candles[sym];
   if(!c || c.length < 10) return;
@@ -3566,13 +3575,14 @@ function execTrade(signal, asset){
     const pWin = Math.min(0.95, Math.max(0.5, (signal.conf/100 * 0.7 + recentWR * 0.3)));
     const kellyFrac = calcKelly(pWin, 0.8);
     const baseStake = parseFloat(document.getElementById('rfStake')?.value||1);
-    const kellyStake = +(baseStake * Math.min(2, kellyFrac * 3)).toFixed(2);
-    stake = Math.max(0.35, Math.min(100, kellyStake));
+    const kellyStake = +(baseStake * Math.min(1, kellyFrac * 0.5)).toFixed(2);
+    stake = Math.max(0.35, Math.min(5, kellyStake));
     log(`[KELLY] pWin=${(pWin*100).toFixed(0)}% f=${(kellyFrac*100).toFixed(0)}% stake=$${stake.toFixed(2)}`,'i');
   }
 
   G.LAST_SIGNAL = { ...signal, stake, dur, asset };
   G._lastTradeAt = Date.now();
+  (G._tradeTimes=G._tradeTimes||[]).push(Date.now());
   const tfTag = (G.TF_SELECTED||'5s');
   log(`[TRADE] ${ct} $${stake.toFixed(2)} ${asset}@${tfTag} ${dur}${durUnit} via ${signal.src} (${signal.conf||'?'}%)`,'t');
   haxPush(`EXEC ${asset} ${ct} $${stake.toFixed(2)} conf=${signal.conf||'?'}% → Deriv`, 'a');
@@ -3670,8 +3680,8 @@ function handleContract(c){
         showToast('5 consecutive losses — engine stopped', 'sl');
         return;
       }
-      if(G.DAILY.pnl <= -50 && G.RUNNING){
-        log(`[STOP] Daily loss limit -$50 reached — stopping engine`,'e');
+      if(G.DAILY.pnl <= -20 && G.RUNNING){
+        log(`[STOP] Daily loss limit -$20 reached — stopping engine`,'e');
         stopBot();
         showToast('Daily loss limit reached!', 'sl');
         return;
