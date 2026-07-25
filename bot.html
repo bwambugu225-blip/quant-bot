@@ -5108,7 +5108,7 @@ async function callGroq(messages, temperature=0.7, maxTokens=500){
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method:'POST',
       headers:{'Authorization':`Bearer ${key}`, 'Content-Type':'application/json'},
-      body:JSON.stringify({ model:'llama3-70b-8192', messages, temperature, max_tokens:maxTokens })
+      body:JSON.stringify({ model:'llama-3.3-70b-versatile', messages, temperature, max_tokens:maxTokens })
     });
     const data = await res.json();
     return data.choices?.[0]?.message?.content || null;
@@ -5172,7 +5172,7 @@ Keep responses under 3-4 sentences unless asked for details. Use markdown. Be en
       method:'POST',
       headers:{'Authorization':`Bearer ${key}`, 'Content-Type':'application/json'},
       body:JSON.stringify({
-        model:'llama3-70b-8192',
+        model:'llama-3.3-70b-versatile',
         messages:[
           {role:'system', content:systemPrompt},
           {role:'user', content:text}
@@ -5181,6 +5181,12 @@ Keep responses under 3-4 sentences unless asked for details. Use markdown. Be en
         max_tokens:400
       })
     });
+    if(!res.ok){
+      const errBody = await res.text();
+      console.log('[GROQ] API error:', res.status, errBody);
+      tgSend(chatId, `🤖 Groq API error (${res.status}). Try again or use /status.`);
+      return;
+    }
     const data = await res.json();
     const reply = data.choices?.[0]?.message?.content;
     if(reply) tgSend(chatId, reply);
