@@ -3511,7 +3511,6 @@ function evaluateAndTrade(sym, liveBuf){
     result.sym = sym;
     storeSignal(sym, arr[arr.length-1]?.epoch||0, result, true);
     log(`[SIGNAL] ${sym}: ${result.action} ${result.conf}% (${result.src})`,'t');
-    if(G.AI_TRADING_ENABLED) aiAnalyzeTrade(sym, result, arr);
     G.CURRENT_MARKET = sym;
     G.SELECTED_MARKET = sym;
     syncMarketSelection();
@@ -5105,7 +5104,6 @@ function groqOk(){
 async function callGroq(messages, temperature=0.7, maxTokens=500){
   const key = G.GROQ_API_KEY;
   if(!key){ console.log('[GROQ] No API key'); return null; }
-  if(!groqOk()){ console.log('[GROQ] Rate limited (30/min)'); return null; }
   try {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method:'POST',
@@ -5135,45 +5133,6 @@ function toggleAiTrading(){
   tgSend(G.TELEGRAM_CHAT_ID, `🧠 *AI Trading* ${G.AI_TRADING_ENABLED?'✅ Enabled':'❌ Disabled'}\n${G.AI_TRADING_ENABLED?'Groq will analyze market conditions for trade decisions.':'Falling back to standard strategy engine.'}`);
   log(`[GROQ] AI Trading ${G.AI_TRADING_ENABLED?'enabled':'disabled'}`,'i');
   updateDash();
-}
-
-async function aiAnalyzeTrade(sym, signal, candles){
-  try {
-    const key = G.GROQ_API_KEY;
-    if(!key) return;
-    if(!groqOk()) return;
-    const lastCandle = candles[candles.length-1];
-    const prevCandle = candles.length>=2 ? candles[candles.length-2] : null;
-    const volume = G._tickerVolumes?.[sym] || 'N/A';
-    const prompt = `You are a trading AI assistant. Analyze this trade setup:
-
-Market: ${sym}
-Action: ${signal.action} (${signal.conf}% confidence)
-Strategy: ${signal.strategy || signal.src || G.SELECTED_STRATEGY}
-Price: ${lastCandle?.close?.toFixed(5)||'N/A'}
-Candle: O=${lastCandle?.open?.toFixed(5)} H=${lastCandle?.high?.toFixed(5)} L=${lastCandle?.low?.toFixed(5)} C=${lastCandle?.close?.toFixed(5)}
-Previous: ${prevCandle ? `O=${prevCandle.open.toFixed(5)} C=${prevCandle.close.toFixed(5)}` : 'N/A'}
-Volume/Activity: ${volume}
-Bot running: ${G.RUNNING?'Yes':'No'}
-Account: ${G.ACCOUNT_TYPE||'demo'} $${G.BALANCE.toFixed(2)}
-Today's P&L: $${G.DAILY?.pnl?.toFixed(2)||'0.00'}
-Wins/Losses: ${G.WINS}/${G.LOSSES}
-
-Provide a brief 2-3 sentence analysis of this trade setup. Be honest about risks.`;
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method:'POST',
-      headers:{'Authorization':`Bearer ${key}`, 'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:'llama3-70b-8192',
-        messages:[{role:'user', content:prompt}],
-        temperature:0.5,
-        max_tokens:200
-      })
-    });
-    const data = await res.json();
-    const analysis = data.choices?.[0]?.message?.content;
-    if(analysis && G.TELEGRAM_CHAT_ID) tgSend(G.TELEGRAM_CHAT_ID, `🧠 *AI Trade Analysis*\n${sym} ${signal.action} ${signal.conf}%\n\n${analysis}`);
-  } catch(e){ console.log('[GROQ] aiAnalyzeTrade error:', e); }
 }
 
 async function handleTgChat(chatId, text){
