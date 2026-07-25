@@ -868,9 +868,14 @@ table tr{border-bottom:1px solid var(--line)}
         <div id="modeTargetMarket" style="font-size:9px;font-weight:600;margin-bottom:2px"></div>
         <select id="marketSelect" class="inp" onchange="selectMarketFromDropdown(this.value)" style="font-size:9px;width:100%"></select>
       </div>
-      <div style="display:flex;gap:4px;margin-bottom:8px;align-items:center">
-        <span style="font-size:8px;color:var(--muted);white-space:nowrap">TRADE LENGTH</span>
-        <span style="font-size:11px;font-weight:700;color:var(--accent);padding:4px 8px;border:1px solid var(--accent)">5 ticks</span>
+      <div style="margin-bottom:8px">
+        <span style="font-size:8px;color:var(--muted);display:block;margin-bottom:4px">TIMEFRAME</span>
+        <div style="display:flex;gap:3px" id="tfSelector">
+          <button class="tf-btn active" data-tf="5s"  onclick="setTimeframe('5s')"  style="flex:1;padding:4px;font-size:9px;font-weight:700;border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:4px;cursor:pointer">5s</button>
+          <button class="tf-btn" data-tf="15s" onclick="setTimeframe('15s')" style="flex:1;padding:4px;font-size:9px;font-weight:600;border:1px solid var(--line);background:none;color:var(--muted);border-radius:4px;cursor:pointer">15s</button>
+          <button class="tf-btn" data-tf="30s" onclick="setTimeframe('30s')" style="flex:1;padding:4px;font-size:9px;font-weight:600;border:1px solid var(--line);background:none;color:var(--muted);border-radius:4px;cursor:pointer">30s</button>
+          <button class="tf-btn" data-tf="1m"  onclick="setTimeframe('1m')"  style="flex:1;padding:4px;font-size:9px;font-weight:600;border:1px solid var(--line);background:none;color:var(--muted);border-radius:4px;cursor:pointer">1m</button>
+        </div>
       </div>
       <div class="field" style="margin-bottom:8px">
         <label>Trading Strategy</label>
@@ -884,7 +889,7 @@ table tr{border-bottom:1px solid var(--line)}
       <div class="stake-row" style="margin-bottom:8px;display:flex;gap:8px">
         <div class="field" style="flex:1"><label>Stake</label><input class="inp" id="rfStake" type="number" value="1" min="0.35" step="0.5"></div>
         <div class="field" style="flex:1"><label>Duration</label>
-          <span style="font-size:11px;font-weight:700;color:var(--accent);padding:4px 0;display:block">5 ticks <span style="font-size:8px;color:var(--muted)">(locked)</span></span>
+          <span style="font-size:11px;font-weight:700;color:var(--accent);padding:4px 0;display:block"><span id="tfDurLabel">5 ticks</span> <span style="font-size:8px;color:var(--muted)">(locked)</span></span>
           <input type="hidden" id="rfDuration" value="10">
         </div>
       </div>
@@ -1114,11 +1119,20 @@ const G = {
   SG_TAB:0,
   LAST_SIGNAL:null, LAST_MARKET_MSG_AT:0, LAST_TRADE_MSG_AT:0,
   BOOT_AT:0, PENDING_SIGNAL:null, PENDING_SIGNAL_AT:0,
-  CANDLE_TICK_SIZE:5,         // 5 ticks per candle
-  CHART_MODE:'candle',        // 'candle' or 'line'
-  CANDLE_BUFFER_MS:3000,     // 3s buffer for settlement between trades
-  TRADE_DURATION_TICKS:5,     // 5-tick trade duration
-  DURATION_MODE:'fixed',      // 'fixed' = tick-locked
+  CANDLE_TICK_SIZE:5,         // (synced from TF_SELECTED config)
+  CHART_MODE:'candle',
+  CANDLE_BUFFER_MS:3000,
+  TRADE_DURATION_TICKS:5,     // (synced from TF_SELECTED config)
+  DURATION_MODE:'fixed',
+  // ── Multi-Timeframe System ──
+  TF_LIST:['5s','15s','30s','1m'],
+  TF_SELECTED:'5s',
+  TF:{
+    '5s': { tickSize:5, tradeTicks:5,  label:'5s', candles:{}, prices:{}, tickBuf:{}, lastCloseAt:{} },
+    '15s':{ tickSize:15,tradeTicks:12, label:'15s',candles:{}, prices:{}, tickBuf:{}, lastCloseAt:{} },
+    '30s':{ tickSize:30,tradeTicks:25, label:'30s',candles:{}, prices:{}, tickBuf:{}, lastCloseAt:{} },
+    '1m': { tickSize:60,tradeTicks:50, label:'1m', candles:{}, prices:{}, tickBuf:{}, lastCloseAt:{} }
+  },
   // Market-specific parameters derived from 15s OHLC analysis (see analyze.py)
   // vol: high/mid/low classification, minConf: minimum confidence floor,
   // revPenalty: penalty for fighting trend (lighter on high vol)
@@ -2201,10 +2215,13 @@ function initStrategies(){
   S.push({
     name: 'Aroon (25) — Traffic Light',
     code: 'AROON',
-    analyze: (candles, sym) => {
-      if (candles.length < 30) return null;
+    analyze: (candles, sym, tf) => {
+      tf = tf || '5s';
+      const period = tf==='5s'?25:tf==='15s'?15:tf==='30s'?10:8;
+      const minLen = period + 5;
+      if (candles.length < minLen) return null;
       const st = G._aroonState[sym] || (G._aroonState[sym] = { dirs: [], traded: null, touched: false });
-      const { up, down } = aroon(candles, 25);
+      const { up, down } = aroon(candles, period);
       const dir = up > down ? 'U' : 'D';
 
       // Noise guard: count flips in last 12 bars (>3 = choppy, skip)
@@ -2237,7 +2254,8 @@ function initStrategies(){
   S.push({
     name: 'Williams Fractal Reversal',
     code: 'FRACTAL_BRK',
-    analyze: (candles, sym) => {
+    analyze: (candles, sym, tf) => {
+      tf = tf || '5s';
       if (candles.length < 12) return null;
       const n = candles.length;
       const last = candles[n-1];
@@ -2276,12 +2294,14 @@ function initStrategies(){
       if(!riseBase && !fallBase) return null;
 
       // ── SUBSTANTIAL CONFIRMATION (beyond the rule) ──
-      // 1) Trend pullback context: price must be stretched from EMA(20) (reversal into mean)
+      // 1) Trend pullback context: price must be stretched from EMA (reversal into mean)
+      // TF-adapted EMA period: shorter for faster TFs
+      const emaPeriod = tf==='5s'?20:tf==='15s'?14:tf==='30s'?10:8;
       const pr = candles.map(c=>c.close);
-      const e20 = ema(pr, 20);
-      if(e20 !== null){
-        if(riseBase && last.close >= e20) return null;       // bounce only valid below mean
-        if(fallBase && last.close <= e20) return null;
+      const eMA = ema(pr, emaPeriod);
+      if(eMA !== null){
+        if(riseBase && last.close >= eMA) return null;       // bounce only valid below mean
+        if(fallBase && last.close <= eMA) return null;
       }
       // 2) Momentum flip on AO: AO crossed to our side within last 3 bars
       const aoArr = ao(candles);
@@ -2291,9 +2311,10 @@ function initStrategies(){
         if(fallBase && aoArr[i-1] > 0 && aoArr[i] <= 0) flipped = true;
       }
       if(!flipped) return null;
-      // 3) Rejection strength: trigger candle closed away from the wick (real rejection, body >= 45%)
+      // 3) Rejection strength: trigger candle closed away from the wick (TF-adapted body %)
+      const minBodyRatio = tf==='5s'?0.45:tf==='15s'?0.48:tf==='30s'?0.50:0.55;
       const rng = (last.high - last.low) || 0.0001;
-      if(Math.abs(last.close - last.open) / rng < 0.45) return null;
+      if(Math.abs(last.close - last.open) / rng < minBodyRatio) return null;
       // 4) Follow-through: current candle breaks the fractal extreme
       if(riseBase && last.close <= bullF.low) return null;
       if(fallBase && last.close >= bearF.high) return null;
@@ -2305,8 +2326,10 @@ function initStrategies(){
   S.push({
     name: 'Awesome Oscillator',
     code: 'AO',
-    analyze: (candles, sym) => {
-      if (candles.length < 40) return null;
+    analyze: (candles, sym, tf) => {
+      tf = tf || '5s';
+      const minLen = tf==='5s'?40:tf==='15s'?30:tf==='30s'?25:20;
+      if (candles.length < minLen) return null;
       const aoArr = ao(candles);
       const acArr = ac(aoArr);
       const n = aoArr.length;
@@ -2356,11 +2379,16 @@ function initStrategies(){
       const acNow = acArr[n-1];
       if(out.action==='RISE' && acNow < 0) return null;
       if(out.action==='FALL' && acNow > 0) return null;
+      // TF-adapted body ratio: longer TFs need stronger confirmation
+      const bodyMin = tf==='5s'?0.30:tf==='15s'?0.33:tf==='30s'?0.36:0.40;
       const rng = (c0.high - c0.low) || 0.0001;
-      if(Math.abs(c0.close - c0.open) / rng < 0.3) return null;
+      if(Math.abs(c0.close - c0.open) / rng < bodyMin) return null;
       // Volatility gate: require some range so we're not trading dead ticks
-      const atrV = atr(candles, 14);
-      if(atrV !== null && atrV < candles[n-1].close * 0.0002) return null;
+      const atrP = tf==='5s'?14:tf==='15s'?10:tf==='30s'?8:6;
+      const atrV = atr(candles, atrP);
+      // TF-adapted volatility threshold: larger TFs need proportionally more range
+      const volThreshold = tf==='5s'?0.0002:tf==='15s'?0.0003:tf==='30s'?0.0004:0.0005;
+      if(atrV !== null && atrV < candles[n-1].close * volThreshold) return null;
 
       return out;
     }
@@ -2373,7 +2401,9 @@ function initStrategies(){
 // AUTO-PICK TRADE DURATION (based on volatility + signal strength)
 // ============================================================
 function autoPickDuration(sym, signal){
-  return 10; // 10s — matches candle interval for consistent expiry
+  const tf = G.TF_SELECTED || '5s';
+  const cfg = G.TF[tf];
+  return cfg ? cfg.tradeTicks : 5;
 }
 
 // ============================================================
@@ -3053,19 +3083,27 @@ function buildCandlesFromTicks(sym, times, prices){
     const p = +prices[i];
     if(Number.isFinite(p)){ const d = processDigit(sym, p); if(i<=2) log(`[DIGIT] ${sym} history price #${i}: ${p} → digit ${d}`,'i'); }
   }
-  const { candles } = bucketTicks(times, prices, G.CANDLE_TICK_SIZE);
-  G.MARKET.tickBuf[sym] = [];
-  const arr = candles.slice(-200);
-  if(arr.length){
-    G.MARKET.candles[sym] = arr;
-    G.MARKET.prices[sym] = arr.map(c=>c.close);
-    G.MARKET.lastCloseAt[sym] = Date.now();
-    const reBtn = document.getElementById('reconnMktBtn');
-    if(reBtn) reBtn.hidden = true;
-    updateDigitsUI();
-    if(sym === G.CURRENT_MARKET) drawChart();
-    log(`[HIST] ${sym}: ${arr.length} 5-tick candles built`,'i');
+  // Build candles for ALL timeframes
+  for(let ti=0;ti<G.TF_LIST.length;ti++){
+    const tk=G.TF_LIST[ti], cfg=G.TF[tk];
+    const { candles } = bucketTicks(times, prices, cfg.tickSize);
+    const arr = candles.slice(-200);
+    cfg.candles[sym] = arr;
+    cfg.prices[sym] = arr.map(c=>c.close);
+    cfg.lastCloseAt[sym] = Date.now();
+    cfg.tickBuf[sym] = [];
   }
+  // Sync selected TF to G.MARKET
+  const selCfg = G.TF[G.TF_SELECTED||'5s'];
+  G.MARKET.candles[sym] = selCfg.candles[sym];
+  G.MARKET.prices[sym] = selCfg.prices[sym];
+  G.MARKET.tickBuf[sym] = [];
+  G.MARKET.lastCloseAt[sym] = Date.now();
+  const reBtn = document.getElementById('reconnMktBtn');
+  if(reBtn) reBtn.hidden = true;
+  updateDigitsUI();
+  if(sym === G.CURRENT_MARKET) drawChart();
+  log(`[HIST] ${sym}: ${selCfg.candles[sym]?.length||0} ${G.TF_SELECTED} candles built`,'i');
 }
 
 function handleHistory(data){
@@ -3123,33 +3161,44 @@ function handleTick(data){
       }
     }
   }
-  let candles=G.MARKET.candles[sym]; if(!candles) G.MARKET.candles[sym]=candles=[];
-  let buf=G.MARKET.tickBuf[sym]; if(!buf) G.MARKET.tickBuf[sym]=buf=[];
-  buf.push(price);
-  if(buf.length >= G.CANDLE_TICK_SIZE){
-    const candle={epoch,open:buf[0]||price,high:max(buf),low:min(buf),close:price,ticks:buf.length};
-    candles.push(candle);
-    if(candles.length>200) candles.shift();
-    const tp=G.MARKET.tickPrices||(G.MARKET.tickPrices={});
-    const ta=tp[sym]||(tp[sym]=[]); ta.push.apply(ta,buf);
-    if(ta.length>80) ta.splice(0,ta.length-60);
-    G.MARKET.tickBuf[sym]=[];
-    G.MARKET.prices[sym]=candles.map(c=>c.close);
-    G.MARKET.lastCloseAt[sym]=Date.now();
-    if(G._tradedCandle?.[sym]){
-      const key=sym+':'+candle.epoch;
-      G._signalOnCandle||(G._signalOnCandle={});
-      G._signalOnCandle[key]={action:G.LAST_SIGNAL?.action||'FALL',conf:G.LAST_SIGNAL?.conf||0,price:candle.close};
-      candle.signal=G._signalOnCandle[key];
-      storeSignal(sym,candle.epoch,G.LAST_SIGNAL,true);
-      G._tradedCandle[sym]=false;
+  // ── Multi-timeframe candle building ──
+  for(let ti=0;ti<G.TF_LIST.length;ti++){
+    const tfk=G.TF_LIST[ti], cfg=G.TF[tfk];
+    const isSel = tfk===G.TF_SELECTED;
+    // For selected TF, use G.MARKET.* as canonical (backward compat)
+    const gCandles = isSel ? G.MARKET.candles : cfg.candles;
+    const gBuf     = isSel ? G.MARKET.tickBuf : cfg.tickBuf;
+    let buf = gBuf[sym]; if(!buf){ gBuf[sym]=buf=[]; }
+    buf.push(price);
+    if(buf.length >= cfg.tickSize){
+      const candle={epoch,open:buf[0]||price,high:max(buf),low:min(buf),close:price,ticks:buf.length};
+      let candles = gCandles[sym]; if(!candles){ gCandles[sym]=candles=[]; }
+      candles.push(candle);
+      if(candles.length>200) candles.shift();
+      gBuf[sym]=[];
+      const px = cfg.prices; px[sym]=candles.map(c=>c.close);
+      const lc = cfg.lastCloseAt; lc[sym]=Date.now();
+      // tickPrices only from selected TF (used for live price action)
+      if(isSel){
+        const tp=G.MARKET.tickPrices||(G.MARKET.tickPrices={});
+        const ta=tp[sym]||(tp[sym]=[]); ta.push.apply(ta,buf);
+        if(ta.length>80) ta.splice(0,ta.length-60);
+      }
+      if(isSel && G._tradedCandle?.[sym]){
+        const key=sym+':'+candle.epoch;
+        G._signalOnCandle||(G._signalOnCandle={});
+        G._signalOnCandle[key]={action:G.LAST_SIGNAL?.action||'FALL',conf:G.LAST_SIGNAL?.conf||0,price:candle.close};
+        candle.signal=G._signalOnCandle[key];
+        storeSignal(sym,candle.epoch,G.LAST_SIGNAL,true);
+        G._tradedCandle[sym]=false;
+      }
+      if(isSel){
+        G._candleCloseAt = G._candleCloseAt || {};
+        G._candleCloseAt[sym] = Date.now();
+        evaluateAndTrade(sym);
+      }
+      if(isSel && G._tradedCandle) G._tradedCandle[sym]=false;
     }
-    if(candle.ticks >= G.CANDLE_TICK_SIZE){
-      G._candleCloseAt = G._candleCloseAt || {};
-      G._candleCloseAt[sym] = Date.now();
-      evaluateAndTrade(sym);
-    }
-    if(G._tradedCandle) G._tradedCandle[sym]=false;
   }
   if(sym===G.CURRENT_MARKET) {
     const lastEpochKey = '_lastChartEpoch_'+sym;
@@ -3173,13 +3222,19 @@ function handleCandles(data){
     close: +c.close,
     ticks: 30
   }));
-  // Store as 1m fallback — does NOT overwrite 15s candles from tick data
+  // Feed into 1m TF data (candles from Deriv's OHLC API)
+  if(G.TF['1m']){
+    G.TF['1m'].candles[sym] = arr.slice(-250);
+    G.TF['1m'].prices[sym] = arr.map(c => c.close);
+    G.TF['1m'].lastCloseAt[sym] = Date.now();
+  }
+  // Store as 1m fallback — does NOT overwrite tick-derived candles
   G.MARKET.candles1m = G.MARKET.candles1m || {};
   G.MARKET.candles1m[sym] = arr.slice(-250);
-  // Only set main candles if tick data hasn't arrived yet
-  if(!G.MARKET.candles[sym]?.length){
-    G.MARKET.candles[sym] = G.MARKET.candles1m[sym];
-    G.MARKET.prices[sym] = G.MARKET.candles[sym].map(x => x.close);
+  // Only set main candles if tick data hasn't arrived yet (and using 1m TF)
+  if(!G.MARKET.candles[sym]?.length && G.TF_SELECTED === '1m'){
+    G.MARKET.candles[sym] = G.TF['1m'].candles[sym];
+    G.MARKET.prices[sym] = G.TF['1m'].prices[sym];
     G.MARKET.lastCloseAt[sym] = Date.now();
     drawChart();
   }
@@ -3262,9 +3317,11 @@ function calibrateThresholds(){
 // ============================================================
 // GOD MODE ENSEMBLE STRATEGY ENGINE
 // ============================================================
-function runStrategyAnalysis(sym, candles, liveBuf){
+function runStrategyAnalysis(sym, candles, liveBuf, tf){
   try {
-    if(!candles || candles.length < 28) return null;
+    tf = tf || G.TF_SELECTED || '5s';
+    const tfCfg = G.TF[tf];
+    if(!candles || candles.length < (tf==='5s'?28:tf==='15s'?20:tf==='30s'?15:12)) return null;
     const prices = candles.map(c => c.close);
     const last = candles[candles.length-1];
     const hi = candles.map(c => c.high);
@@ -3275,34 +3332,52 @@ function runStrategyAnalysis(sym, candles, liveBuf){
 
     if (G.DURATION_MODE === 'fixed') {
       // ==========================================
-      // PIPELINE 1: 15s CANDLE-LEVEL SELECTED STRATEGY (BB INTEGRATED)
+      // PIPELINE 1: TF-ADAPTED STRATEGY ENGINE
       // ==========================================
 
-      // ── Indicators ──
-      const adx = calcADX(candles, 14);
+      // ── TF-Adapted Indicator Periods ──
+      const adxPeriod = tf==='5s'?14:tf==='15s'?10:tf==='30s'?8:6;
+      const minCandles = tf==='5s'?28:tf==='15s'?20:tf==='30s'?15:12;
+      if(candles.length < minCandles) return null;
+
+      const adx = calcADX(candles, adxPeriod);
       const trendStrength = adx ? adx.strength : 0;
       const trendDir = adx ? adx.trend : null;
 
-      // Strategy selection and execution
+      // ── TF-Adapted Strategy Call ──
       const stratCode = G.SELECTED_STRATEGY || 'AROON';
       const strategyObj = G.STRATEGIES.find(st => st.code === stratCode);
       if (strategyObj && typeof strategyObj.analyze === 'function') {
-        const vote = strategyObj.analyze(candles, sym);
+        const vote = strategyObj.analyze(candles, sym, tf);
         if (vote) votes.push(vote);
       }
 
-      // Boost with Price Action confirmation if available
-      const paRise = checkPriceAction(sym, 'RISE');
-      const paFall = checkPriceAction(sym, 'FALL');
+      // ── TF-Adapted Confirmation Layer ──
+      // Different timeframes require different confirmation strictness
+      const tfConfMult = tf==='5s' ? 1.0 : tf==='15s' ? 1.05 : tf==='30s' ? 1.10 : 1.15;
+      // TF-specific ADX filters: longer TF = stronger trend required
+      const minADX = tf==='5s' ? 18 : tf==='15s' ? 20 : tf==='30s' ? 22 : 25;
+      // How many candles back to check for trend continuity
+      const trendLookback = tf==='5s' ? 3 : tf==='15s' ? 4 : tf==='30s' ? 5 : 6;
+
+      // Volatility gate per TF
+      const now=Date.now(), tfKey=tf+'_'+sym;
+      G._tfGate = G._tfGate || {};
+      if(G.ACTIVE_CONTRACTS.size===0) G._tfGate[tfKey]=0;
+      if(Date.now()-G._tfGate[tfKey] < (tf==='5s'?3000:tf==='15s'?6000:tf==='30s'?10000:15000) && G._tfGate[tfKey]>0) return null;
+
+      // Price Action confirmation (boost)
+      const paRise = tf==='1m' ? false : checkPriceAction(sym, 'RISE');
+      const paFall = tf==='1m' ? false : checkPriceAction(sym, 'FALL');
       for (const v of votes) {
-        if (v.action === 'RISE' && paRise) v.conf = Math.min(96, v.conf + 8);
-        if (v.action === 'FALL' && paFall) v.conf = Math.min(96, v.conf + 8);
+        if (v.action === 'RISE' && paRise) v.conf = Math.min(96, Math.round(v.conf * 1.08));
+        if (v.action === 'FALL' && paFall) v.conf = Math.min(96, Math.round(v.conf * 1.08));
       }
 
       if(votes.length === 0) return null;
       const v = votes[0];
       let action = v.action;
-      let finalConf = v.conf;
+      let finalConf = Math.round(v.conf * tfConfMult);
       let finalSrc = v.src;
 
       let riseVotes = 0, fallVotes = 0;
@@ -3311,18 +3386,36 @@ function runStrategyAnalysis(sym, candles, liveBuf){
         else if (vt.action === 'FALL') fallVotes++;
       }
 
-      finalConf = Math.min(96, Math.max(80, finalConf));
-      // Volatility penalty adjustment
+      // ── TF-Adapted Confidence Floor ──
+      const confFloor = tf==='5s' ? 78 : tf==='15s' ? 80 : tf==='30s' ? 82 : 84;
+      finalConf = Math.min(96, Math.max(confFloor, finalConf));
+
+      // Market stats adjustment
       const mi = G.MARKET_STATS?.[sym];
       if(mi){
         if(mi.vol === 'low') finalConf += 2;
         if(mi.vol === 'high') finalConf -= 2;
       }
-      const streak = G.CONS_LOSS || 0;
-      if(streak >= 2) finalConf = Math.round(finalConf * (1 - streak * 0.02));
-      if(G.WINS > 0 && G.LOSSES === 0) finalConf = Math.min(96, finalConf + 3);
 
-      return { action, conf:finalConf, src:finalSrc, evidence:{votes:votes.length, riseVotes, fallVotes, trend:trendDir, adx:Math.round(trendStrength)} };
+      // Consecutive-loss dampening (scales with TF)
+      const streak = G.CONS_LOSS || 0;
+      if(streak >= 2) finalConf = Math.round(finalConf * (1 - streak * (tf==='5s'?0.02:tf==='15s'?0.025:tf==='30s'?0.03:0.04)));
+
+      // Perfect streak boost
+      if(G.WINS > 0 && G.LOSSES === 0) finalConf = Math.min(96, finalConf + (tf==='5s'?3:tf==='15s'?4:tf==='30s'?5:6));
+
+      // Trend confirmation gate: if ADX shows strong trend, only trade WITH it
+      if(trendStrength >= minADX && trendDir){
+        if((trendDir==='up' && action==='FALL') || (trendDir==='down' && action==='RISE')){
+          finalConf = Math.max(confFloor, Math.round(finalConf * 0.85));
+          finalSrc = finalSrc + '~CTR';
+        }
+      }
+
+      // ── TF-Gated Cooldown ──
+      G._tfGate[tfKey] = now;
+
+      return { action, conf:finalConf, src:finalSrc, evidence:{votes:votes.length, riseVotes, fallVotes, trend:trendDir, adx:Math.round(trendStrength), tf} };
 
     } else {
       // ==========================================
@@ -3452,8 +3545,10 @@ function evaluateAndTrade(sym, liveBuf){
   if(!G._warmup[sym]){ G._warmup[sym] = true; return; }
 
   // Visible readout so you can SEE the analysis on every candle close
-  const _ar = aroon(c, 25);
-  log(`[ANAL] ${sym}: Aroon Up=${_ar.up.toFixed(0)} Down=${_ar.down.toFixed(0)}`,'i');
+  const tf = G.TF_SELECTED || '5s';
+  const arPeriod = tf==='5s'?25:tf==='15s'?15:tf==='30s'?10:8;
+  const _ar = aroon(c, arPeriod);
+  log(`[ANAL] ${sym}@${tf}: Aroon Up=${_ar.up.toFixed(0)} Down=${_ar.down.toFixed(0)}`,'i');
 
   const arr = liveBuf && liveBuf.length >= 2 ? [...c, {
     open: c[c.length-1].close,
@@ -3462,12 +3557,12 @@ function evaluateAndTrade(sym, liveBuf){
     close: liveBuf[liveBuf.length-1]
   }] : c;
 
-  const result = runStrategyAnalysis(sym, arr, liveBuf);
+  const result = runStrategyAnalysis(sym, arr, liveBuf, tf);
   if(result){
     result.lastPrice = arr[arr.length-1].close;
     result.sym = sym;
     storeSignal(sym, arr[arr.length-1]?.epoch||0, result, true);
-    log(`[SIGNAL] ${sym}: ${result.action} ${result.conf}% (${result.src})`,'t');
+    log(`[SIGNAL] ${sym}@${tf}: ${result.action} ${result.conf}% (${result.src})`,'t');
     G.CURRENT_MARKET = sym;
     G.SELECTED_MARKET = sym;
     syncMarketSelection();
@@ -3535,7 +3630,8 @@ function execTrade(signal, asset){
 
   G.LAST_SIGNAL = { ...signal, stake, dur, asset };
   G._lastTradeAt = Date.now();
-  log(`[TRADE] ${ct} $${stake.toFixed(2)} ${asset} via ${signal.src} (${signal.conf||'?'}%)`,'t');
+  const tfTag = (G.TF_SELECTED||'5s');
+  log(`[TRADE] ${ct} $${stake.toFixed(2)} ${asset}@${tfTag} via ${signal.src} (${signal.conf||'?'}%)`,'t');
   haxPush(`EXEC ${asset} ${ct} $${stake.toFixed(2)} conf=${signal.conf||'?'}% → Deriv`, 'a');
   if(!G._tradedCandle) G._tradedCandle = {};
   G._tradedCandle[asset] = true;
@@ -3687,14 +3783,22 @@ function startBot(){
   if(!G.AUTH){ log('[ERROR] Authorize first','e'); return; }
   if(G.ACCOUNT_BLOCKED){ log(`[HALT] Cannot start — this account is ${G.ACCOUNT_BLOCKED_ACTION}`,'e'); return; }
   if(G.RUNNING) return;
+  // Sync to selected TF config
+  const tf = G.TF_SELECTED || '5s';
+  const tfCfg = G.TF[tf];
+  G.CANDLE_TICK_SIZE = tfCfg.tickSize;
+  G.TRADE_DURATION_TICKS = tfCfg.tradeTicks;
+  G.MARKET.candles = tfCfg.candles;
+  G.MARKET.prices = tfCfg.prices;
+  G.MARKET.tickBuf = tfCfg.tickBuf;
+  G.MARKET.lastCloseAt = tfCfg.lastCloseAt;
   // Flush tick buffers so the first candle after start forms from fresh ticks only
   for(const sym of Object.keys(G.MARKET?.tickBuf||{})){ G.MARKET.tickBuf[sym]=[]; }
   G._aroonState = {};
   G._warmup = {};
   G.RUNNING=true;
-  const raw = document.getElementById('rfDuration')?.value || '15';
-  if(raw.endsWith('t')){ G.TRADE_DURATION = parseInt(raw); G.TRADE_DURATION_UNIT = 't'; }
-  else { G.TRADE_DURATION = parseInt(raw); G.TRADE_DURATION_UNIT = 's'; }
+  G.TRADE_DURATION = tfCfg.tradeTicks;
+  G.TRADE_DURATION_UNIT = 't';
   G.CONS_LOSS=0; G.CONS_LOSS_COOLDOWN=0;
   G.PROCESSED_CONTRACTS = new Set();
   G.SESSION_START_SENT = false;
@@ -3829,7 +3933,8 @@ function drawChart(){
   const clr = k=>s.getPropertyValue('--'+k).trim();
   const MUTED=clr('muted'), LINE=clr('line'), POS=clr('positive'), NEG=clr('negative'), ACC=clr('accent');
   const sym = G.CURRENT_MARKET;
-  // 1m candle source for the chart
+  const tfLabel = G.TF_SELECTED || '5s';
+  // Data source: selected timeframe candles
   const raw = G.MARKET.candles[sym] || [];
 
   const w = canvas.parentNode.clientWidth || canvas.clientWidth || 800;
@@ -3856,9 +3961,9 @@ function drawChart(){
     ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
     ctx.fillStyle=MUTED; ctx.font='11px monospace';
     if(raw.length<25){
-      ctx.fillText('Importing 5-tick candles… '+raw.length+'/15',12,h/2);
+      ctx.fillText('Importing '+tfLabel+' candles… '+raw.length+'/15',12,h/2);
     } else {
-      ctx.fillText('Waiting for data...',12,h/2);
+      ctx.fillText('Waiting for '+tfLabel+' data...',12,h/2);
     }
     return;
   }
@@ -4398,6 +4503,35 @@ function setDurationMode(mode){
 }
 function updateDurModeUI(){
   setDurationMode(G.DURATION_MODE);
+}
+function setTimeframe(tf){
+  if(!G.TF[tf]) return;
+  G.TF_SELECTED = tf;
+  const cfg = G.TF[tf];
+  G.CANDLE_TICK_SIZE = cfg.tickSize;
+  G.TRADE_DURATION_TICKS = cfg.tradeTicks;
+  // Sync G.MARKET.* to the selected TF's data
+  G.MARKET.candles = cfg.candles;
+  G.MARKET.prices = cfg.prices;
+  G.MARKET.tickBuf = cfg.tickBuf;
+  G.MARKET.lastCloseAt = cfg.lastCloseAt;
+  // Update UI buttons
+  document.querySelectorAll('.tf-btn').forEach(b => {
+    const isActive = b.dataset.tf === tf;
+    b.style.background = isActive ? 'var(--accent)' : 'none';
+    b.style.color = isActive ? '#fff' : 'var(--muted)';
+    b.style.borderColor = isActive ? 'var(--accent)' : 'var(--line)';
+    b.style.fontWeight = isActive ? '700' : '600';
+  });
+  // Update trade length display
+  const durLabel = document.getElementById('tfDurLabel');
+  if(durLabel) durLabel.textContent = cfg.tradeTicks + ' ticks';
+  log(`[TF] Switched to ${tf} (${cfg.tickSize} ticks/candle, ${cfg.tradeTicks}-tick trade)`,'i');
+  saveState();
+  drawChart();
+}
+function syncTFUI(){
+  setTimeframe(G.TF_SELECTED);
 }
 function updateModeUI(){
   const indicator = document.getElementById('modeIndicator');
@@ -5502,6 +5636,7 @@ function flushState(){
     if(tgChat) localStorage.setItem('deriv_tg_chat', tgChat);
     const dur = document.getElementById('rfDuration')?.value;
     if(dur) localStorage.setItem('deriv_duration', dur);
+    localStorage.setItem('deriv_tf', G.TF_SELECTED || '5s');
     // Mirror to DB (best-effort, non-blocking) for cross-device persistence
     if(G.ACCOUNT_ID) saveSettingsToDB();
   } catch(e){ console.log('[SAVE]', e.message); }
@@ -5602,6 +5737,9 @@ function restoreState(){
     }catch(e){}
     const cte = localStorage.getItem('deriv_copy_trading_enabled');
     G.COPYTRADING_ENABLED = (cte !== 'false');
+    // Restore timeframe
+    const savedTf = localStorage.getItem('deriv_tf');
+    if(savedTf && G.TF[savedTf]) G.TF_SELECTED = savedTf;
     // Never auto-start trading on login — reset engines
     BotState.isTrading = false;
     G.RUNNING = false;
@@ -6364,11 +6502,19 @@ document.addEventListener('DOMContentLoaded', () => {
   // Login Enter key
   document.getElementById('loginPat')?.addEventListener('keydown', e => { if(e.key==='Enter') authorizePat(); });
   initStrategies();
-  SYMBOLS.forEach(s => { G.MARKET.candles[s.sym] = []; G.MARKET.prices[s.sym] = []; });
+  SYMBOLS.forEach(s => {
+    G.MARKET.candles[s.sym] = [];
+    G.MARKET.prices[s.sym] = [];
+    for(const tk of G.TF_LIST){
+      if(!G.TF[tk].candles[s.sym]) G.TF[tk].candles[s.sym] = [];
+      if(!G.TF[tk].prices[s.sym])  G.TF[tk].prices[s.sym] = [];
+    }
+  });
   restoreState();
   syncAiToggleUI();
   renderStratList();
   updateDurModeUI();
+  syncTFUI();
   // Populate market dropdown
   const sel = document.getElementById('marketSelect');
   if(sel){

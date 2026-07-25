@@ -500,6 +500,35 @@ function switchTab(tab){
 // ============================================================
 // WEBSOCKET CONNECTION
 // ============================================================
+function connectOTP(url){
+  if(G.WS && (G.WS.readyState===WebSocket.OPEN || G.WS.readyState===WebSocket.CONNECTING)){
+    try{ G.WS.close(); }catch(e){}
+  }
+  const ws = new WebSocket(url);
+  G.WS = ws;
+  const to = setTimeout(() => { log('[WS] OTP connection timeout','e'); try{ ws.close(); }catch(e){} }, 15000);
+  ws.onopen = () => {
+    clearTimeout(to);
+    G.AUTH = true; G.CONNECTED = true;
+    $id('connDot').className = 'conn g';
+    $id('statusPill').textContent = 'ONLINE';
+    log('[AUTH] Connected via OTP','s');
+    updateUI();
+    startHeartbeat();
+    setTimeout(subscribeAll, 200);
+  };
+  ws.onmessage = (e) => { try{ handleMsg(JSON.parse(e.data)); }catch(ex){ log(`[WS] Parse: ${ex.message}`,'e'); } };
+  ws.onerror = () => { G.CONNECTED=false; $id('connDot').className='conn r'; log('[WS] Connection error','e'); };
+  ws.onclose = () => {
+    clearTimeout(to);
+    if(G.WS === ws){
+      G.AUTH = false; G.CONNECTED = false;
+      $id('connDot').className = 'conn r';
+      $id('statusPill').textContent = 'OFFLINE';
+      log('[WS] Disconnected','e');
+    }
+  };
+}
 function connectDirectWS(token){
   const url = 'wss://ws.derivws.com/websockets/v3?app_id='+G.APP_ID+'&token='+token+'&l=EN';
   const ws = new WebSocket(url);
@@ -569,6 +598,15 @@ async function authorizePat(){
     G.BALANCE = account.balance||0; G.TOKEN = token;
     document.getElementById('loginOverlay').classList.add('hidden');
     document.getElementById('app').style.display='block';
+    try {
+      const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID };
+      const otpResp = await fetch('https://api.derivws.com/trading/v1/options/accounts/'+account.account+'/otp', { method:'POST', headers:hdrs, body:'{}' });
+      if(otpResp.ok){
+        const otpData = await otpResp.json();
+        const wsUrl = otpData.data?.url || otpData.url;
+        if(wsUrl){ connectOTP(wsUrl); inp.disabled=false; return; }
+      }
+    } catch(e){ log('[AUTH] OTP failed, trying direct WS...','w'); }
     connectDirectWS(token);
     const savedTier = localStorage.getItem('btr_tier');
     if(savedTier) setTier(savedTier);
@@ -583,14 +621,14 @@ function oauthLogin(){
   const err = document.getElementById('loginError');
   err.textContent='';
   const redirectUri = window.location.origin;
-  const url = 'https://oauth.deriv.com/oauth2/authorize?app_id='+encodeURIComponent(G.APP_ID)+'&l=EN&redirect_uri='+encodeURIComponent(redirectUri);
-  window.location.href = url;
+  sessionStorage.setItem('oauth_redirect_uri', redirectUri);
+  window.location.href = 'https://oauth.deriv.com/oauth2/authorize?app_id='+encodeURIComponent(G.APP_ID)+'&l=EN&redirect_uri='+encodeURIComponent(redirectUri);
 }
 
 async function exchangeOAuthCode(code){
   const err = document.getElementById('loginError');
   const codeVerifier = sessionStorage.getItem('oauth_code_verifier');
-  const redirectUri = sessionStorage.getItem('oauth_redirect_uri') || window.location.origin+'/app';
+  const redirectUri = sessionStorage.getItem('oauth_redirect_uri');
   sessionStorage.removeItem('oauth_code_verifier');
   sessionStorage.removeItem('oauth_state');
   sessionStorage.removeItem('oauth_redirect_uri');
@@ -1048,10 +1086,14 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('loginPat').value = urlToken;
     document.getElementById('loginError').textContent = 'Token received — connecting...';
     setTimeout(() => authorizePat(), 200);
+  } else if(urlCode && !urlState){
+    window.history.replaceState({}, document.title, window.location.pathname);
+    document.getElementById('loginError').textContent = 'OAuth code received but state parameter missing — try again';
   } else if(params.get('error')){
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
     const desc = params.get('error_description') || params.get('error');
     document.getElementById('loginError').textContent = 'OAuth error: '+desc;
+    console.warn('[OAUTH] Error:', {error:params.get('error'), description:desc, state:params.get('state')});
   }
   updateUI();
   setInterval(updateUI, 2000);
