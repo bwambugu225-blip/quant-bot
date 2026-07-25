@@ -901,6 +901,14 @@ table tr{border-bottom:1px solid var(--line)}
         <span id="rfCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
         <span id="rfSysBadge" style="font-size:7px;color:var(--warn)"></span>
       </div>
+      <div style="display:flex;gap:4px;margin-top:6px;align-items:center">
+        <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
+          <input type="checkbox" id="rfAiToggle" onchange="toggleAiTrading()" style="width:13px;height:13px;accent-color:var(--accent)">
+          AI TRADING
+        </label>
+        <span id="rfAiLabel" style="font-size:8px;color:var(--warn);font-weight:600">OFF</span>
+        <span style="font-size:7px;color:var(--dim);margin-left:4px">(Groq-powered analysis)</span>
+      </div>
       <div style="display:flex;gap:4px;margin-top:10px;border-top:1px solid var(--line);padding-top:8px">
         <button class="btn btn-ghost" onclick="resetDemo()" style="flex:1;padding:6px;font-size:8px">RESET DEMO</button>
         <button class="btn btn-ghost" onclick="resetSession()" style="flex:1;padding:6px;font-size:8px">RESET SESSION</button>
@@ -1137,6 +1145,8 @@ const G = {
   // Telegram configuration
   TELEGRAM_BOT_TOKEN:'8903146940:AAHDEPeUaw_ihF9dTme3Hi0eS7Cv2MbzRyg',
   TELEGRAM_CHAT_ID:'8363983871',
+  GROQ_API_KEY:'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',
+  AI_TRADING_ENABLED:false,
   SESSION_START_SENT:false,
   // Copytrading
   COPY_TRADERS:[], // [{token, name, addedAt, tradesCopied, wins, losses, pnl, status, accountType, accountId, balance, currency}]
@@ -1540,6 +1550,7 @@ function collectSettings(){
       enabled: Martingale.enabled, mult: Martingale.mult,
       baseStake: Martingale.baseStake, currentStake: Martingale.currentStake
     },
+    ai_trading_enabled: G.AI_TRADING_ENABLED,
     copy_trading_enabled: G.COPYTRADING_ENABLED,
     copy_traders: G.COPY_TRADERS.map(c => ({
       name: c.name, token: c.token, accountType: c.accountType,
@@ -1582,6 +1593,7 @@ function applySettings(s){
       if(m.baseStake) Martingale.baseStake=m.baseStake;
       if(m.currentStake) Martingale.currentStake=m.currentStake;
     }
+    if(typeof s.ai_trading_enabled==='boolean'){ G.AI_TRADING_ENABLED = s.ai_trading_enabled; syncAiToggleUI(); }
     if(typeof s.copy_trading_enabled==='boolean') G.COPYTRADING_ENABLED = s.copy_trading_enabled;
     if(Array.isArray(s.copy_traders)) G.COPY_TRADERS = s.copy_traders.map(c => ({ ...c, copyOnline: !!c.copyOnline, status: 'offline' }));
     if(s.telegram_token){ const e=document.getElementById('tgToken'); if(e) e.value=s.telegram_token; }
@@ -3499,6 +3511,7 @@ function evaluateAndTrade(sym, liveBuf){
     result.sym = sym;
     storeSignal(sym, arr[arr.length-1]?.epoch||0, result, true);
     log(`[SIGNAL] ${sym}: ${result.action} ${result.conf}% (${result.src})`,'t');
+    if(G.AI_TRADING_ENABLED) aiAnalyzeTrade(sym, result, arr);
     G.CURRENT_MARKET = sym;
     G.SELECTED_MARKET = sym;
     syncMarketSelection();
@@ -4978,19 +4991,7 @@ function sendSessionSummary(final) {
 G.TELEGRAM_OFFSET = 0;
 G._tgPollTimer = null;
 const TG_MINIAPP_URL = (window.location.origin || 'https://quant-bot-b0231911-2730s-projects.vercel.app') + '/app';
-function tgMainKeyboard(){
-  return {
-    inline_keyboard: [
-      [{text:'🟢 CALL',callback_data:'call'},{text:'🔴 PUT',callback_data:'put'}],
-      [{text:'🚀 Auto Start',callback_data:'start'},{text:'⏹ Auto Stop',callback_data:'stop'}],
-      [{text:'📊 Status',callback_data:'status'},{text:'💰 Balance',callback_data:'balance'}],
-      [{text:'📈 PnL',callback_data:'pnl'},{text:'📋 Stats',callback_data:'stats'}],
-      [{text:'📈 Market',callback_data:'market'},{text:'⚙️ Stake',callback_data:'stake'}],
-      [{text:'🔄 Reset Demo',callback_data:'reset'},{text:'❓ Help',callback_data:'help'}],
-      [{text:'📱 Open Mini App', web_app:{url:TG_MINIAPP_URL}}]
-    ]
-  };
-}
+function tgMainKeyboard(){ return null; }
 function tgSend(chatId, text, kb){
   const token = document.getElementById('tgToken')?.value || G.TELEGRAM_BOT_TOKEN;
   if(!token || !chatId) return;
@@ -5074,7 +5075,7 @@ function testTg(){
   const chatId = document.getElementById('tgChatId')?.value || G.TELEGRAM_CHAT_ID;
   const token = document.getElementById('tgToken')?.value || G.TELEGRAM_BOT_TOKEN;
   if(!token || !chatId){ log('[TG] No token or chat ID configured','e'); return; }
-  tgSend(chatId, `🧪 *Test*\nIf you see this, Telegram is working!`, tgMainKeyboard());
+  tgSend(chatId, `🧪 *Test*\nIf you see this, Telegram is working!`);
   log('[TG] Test message sent','i');
 }
 function stopTgPolling(){ if(G._tgPollTimer){ clearTimeout(G._tgPollTimer); G._tgPollTimer = null; } }
@@ -5092,133 +5093,196 @@ function tgTradeInfo(){
   return { symName, marketName, total, wr, pnl, hist, curStake, cc };
 }
 
-function handleTgChat(chatId, text){
-  const t = text.toLowerCase();
-  const info = tgTradeInfo();
-  if(/^(hi|hello|hey|yo|sup|good.morning|good.evening|gm|gn|what.up|howdy)$/i.test(t)){
-    const g = ['Hey there! Ready to trade?','Hello! The markets are waiting.','Yo! Let\'s make some pips.','Hey! Tap a button or /help to see what I can do.'];
-    tgReply(chatId, `🤖 ${g[Math.floor(Math.random()*g.length)]}\n\n📊 ${info.marketName} — ${G.RUNNING?'🟢 Trading':'⏸ Stopped'}`); return;
+async function callGroq(messages, temperature=0.7, maxTokens=500){
+  const key = G.GROQ_API_KEY;
+  if(!key){ console.log('[GROQ] No API key'); return null; }
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method:'POST',
+      headers:{'Authorization':`Bearer ${key}`, 'Content-Type':'application/json'},
+      body:JSON.stringify({ model:'llama3-70b-8192', messages, temperature, max_tokens:maxTokens })
+    });
+    const data = await res.json();
+    return data.choices?.[0]?.message?.content || null;
+  } catch(e){ console.log('[GROQ] Error:', e); return null; }
+}
+
+function syncAiToggleUI(){
+  const cb = document.getElementById('rfAiToggle');
+  const lbl = document.getElementById('rfAiLabel');
+  if(cb) cb.checked = G.AI_TRADING_ENABLED;
+  if(lbl) lbl.textContent = G.AI_TRADING_ENABLED ? 'ON' : 'OFF';
+  if(lbl) lbl.style.color = G.AI_TRADING_ENABLED ? 'var(--positive)' : 'var(--warn)';
+}
+
+function toggleAiTrading(){
+  G.AI_TRADING_ENABLED = !G.AI_TRADING_ENABLED;
+  const cb = document.getElementById('rfAiToggle');
+  const lbl = document.getElementById('rfAiLabel');
+  if(cb) cb.checked = G.AI_TRADING_ENABLED;
+  if(lbl) lbl.textContent = G.AI_TRADING_ENABLED ? 'ON' : 'OFF';
+  if(lbl) lbl.style.color = G.AI_TRADING_ENABLED ? 'var(--positive)' : 'var(--warn)';
+  tgSend(G.TELEGRAM_CHAT_ID, `🧠 *AI Trading* ${G.AI_TRADING_ENABLED?'✅ Enabled':'❌ Disabled'}\n${G.AI_TRADING_ENABLED?'Groq will analyze market conditions for trade decisions.':'Falling back to standard strategy engine.'}`);
+  log(`[GROQ] AI Trading ${G.AI_TRADING_ENABLED?'enabled':'disabled'}`,'i');
+  updateDash();
+}
+
+async function aiAnalyzeTrade(sym, signal, candles){
+  try {
+    const key = G.GROQ_API_KEY;
+    if(!key) return;
+    const lastCandle = candles[candles.length-1];
+    const prevCandle = candles.length>=2 ? candles[candles.length-2] : null;
+    const volume = G._tickerVolumes?.[sym] || 'N/A';
+    const prompt = `You are a trading AI assistant. Analyze this trade setup:
+
+Market: ${sym}
+Action: ${signal.action} (${signal.conf}% confidence)
+Strategy: ${signal.strategy || signal.src || G.SELECTED_STRATEGY}
+Price: ${lastCandle?.close?.toFixed(5)||'N/A'}
+Candle: O=${lastCandle?.open?.toFixed(5)} H=${lastCandle?.high?.toFixed(5)} L=${lastCandle?.low?.toFixed(5)} C=${lastCandle?.close?.toFixed(5)}
+Previous: ${prevCandle ? `O=${prevCandle.open.toFixed(5)} C=${prevCandle.close.toFixed(5)}` : 'N/A'}
+Volume/Activity: ${volume}
+Bot running: ${G.RUNNING?'Yes':'No'}
+Account: ${G.ACCOUNT_TYPE||'demo'} $${G.BALANCE.toFixed(2)}
+Today's P&L: $${G.DAILY?.pnl?.toFixed(2)||'0.00'}
+Wins/Losses: ${G.WINS}/${G.LOSSES}
+
+Provide a brief 2-3 sentence analysis of this trade setup. Be honest about risks.`;
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method:'POST',
+      headers:{'Authorization':`Bearer ${key}`, 'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'llama3-70b-8192',
+        messages:[{role:'user', content:prompt}],
+        temperature:0.5,
+        max_tokens:200
+      })
+    });
+    const data = await res.json();
+    const analysis = data.choices?.[0]?.message?.content;
+    if(analysis && G.TELEGRAM_CHAT_ID) tgSend(G.TELEGRAM_CHAT_ID, `🧠 *AI Trade Analysis*\n${sym} ${signal.action} ${signal.conf}%\n\n${analysis}`);
+  } catch(e){ console.log('[GROQ] aiAnalyzeTrade error:', e); }
+}
+
+async function handleTgChat(chatId, text){
+  try {
+    const key = G.GROQ_API_KEY;
+    if(!key){
+      tgSend(chatId, `🤖 I need a Groq API key to chat intelligently. Set it in the bot config.`);
+      return;
+    }
+    const info = tgTradeInfo();
+    const today = new Date().toDateString();
+    const dayHist = G.TRADE_HISTORY.filter(t => new Date(t.time).toDateString() === today);
+    const dPnl = dayHist.reduce((s,t)=>s+(+t.profit||0),0);
+    const dTrades = dayHist.length;
+    const lastPrice = G.MARKET.lastPrice && G.MARKET.lastPrice[G.CURRENT_MARKET];
+    const recentTicks = G.MARKET.liveBuf && G.MARKET.liveBuf[G.CURRENT_MARKET] ? G.MARKET.liveBuf[G.CURRENT_MARKET].slice(-20) : [];
+    const trend = recentTicks.length>=2 ? (recentTicks[recentTicks.length-1]>recentTicks[0]?'up':'down') : 'neutral';
+    const avgWin = G.TRADE_HISTORY.filter(t=>t.won).length ? G.TRADE_HISTORY.filter(t=>t.won).reduce((s,t)=>s+(+t.profit||0),0)/G.TRADE_HISTORY.filter(t=>t.won).length : 0;
+    const avgLoss = G.TRADE_HISTORY.filter(t=>!t.won).length ? G.TRADE_HISTORY.filter(t=>!t.won).reduce((s,t)=>s+(+t.profit||0),0)/G.TRADE_HISTORY.filter(t=>!t.won).length : 0;
+    const systemPrompt = `You are BTraders, a professional trading bot assistant. Be concise, warm, and helpful. Current state:
+- Market: ${info.marketName} (${info.symName})
+- Price: ${lastPrice != null ? '$'+lastPrice.toFixed(5) : 'N/A'}
+- Trend: ${trend}
+- Balance: $${G.BALANCE.toFixed(2)} (${G.ACCOUNT_TYPE||'demo'})
+- P&L: $${info.pnl.toFixed(2)}
+- Trades: ${info.total} (WR: ${info.wr}%)
+- Today: $${dPnl.toFixed(2)} (${dTrades} trades)
+- Strategy: ${G.SELECTED_STRATEGY||'AROON'}
+- Bot: ${G.RUNNING?'RUNNING':'STOPPED'}
+- AI Trading: ${G.AI_TRADING_ENABLED?'ENABLED':'DISABLED'}
+- Avg Win: +$${avgWin.toFixed(2)}, Avg Loss: -$${Math.abs(avgLoss).toFixed(2)}
+- Plan: ${G.TIER_FEATURES[getTier()]?.label||'FREE'}
+
+Keep responses under 3-4 sentences unless asked for details. Use markdown. Be encouraging.`;
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method:'POST',
+      headers:{'Authorization':`Bearer ${key}`, 'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'llama3-70b-8192',
+        messages:[
+          {role:'system', content:systemPrompt},
+          {role:'user', content:text}
+        ],
+        temperature:0.7,
+        max_tokens:400
+      })
+    });
+    const data = await res.json();
+    const reply = data.choices?.[0]?.message?.content;
+    if(reply) tgSend(chatId, reply);
+    else tgSend(chatId, `🤖 I'm having trouble thinking right now. Try again or use /help.`);
+  } catch(e){
+    console.log('[GROQ] Chat error:', e);
+    tgSend(chatId, `🤖 My brain overheated. Try again or use a command like /status.`);
   }
-  if(/thanks|thank.you|thx|ty|appreciate/i.test(t)){
-    tgReply(chatId, `🤖 ${['You\'re welcome! 🤝','Anytime! 💪','Glad to help! 🚀','No problem! 😊'][Math.floor(Math.random()*4)]}`); return;
-  }
-  if(/market|price|chart|rate|tick|volatility|index|r_|1hz|symbol/i.test(t)){
-    const r = G.MARKET.lastPrice && G.MARKET.lastPrice[G.CURRENT_MARKET];
-    const ps = r != null ? `$${r.toFixed(5)}` : '—';
-    const s = G.MARKET.liveBuf && G.MARKET.liveBuf[G.CURRENT_MARKET] ? G.MARKET.liveBuf[G.CURRENT_MARKET].slice(-15) : [];
-    const d = s.length>=2 ? (s[s.length-1]>s[0]?'uptrend 📈':'downtrend 📉') : 'neutral';
-    tgReply(chatId, `📊 *${info.marketName}*\n📍 \`${info.symName}\`\n💵 Price: ${ps}\n🧭 ${d}\n🎯 ${G.SELECTED_STRATEGY||'AROON'}\n⚡ ${G.RUNNING?'🟢 Active':'⏸ Stopped'}\n\nUse /market R_100 to switch.`); return;
-  }
-  if(/strategy|aroon|fractal|awesome|oscillator|indicator|signal|entry/i.test(t)){
-    const m={'AROON':'📊 *Aroon* — 25-period trend crossover with noise filtering.','FRACTAL_BRK':'🔷 *Fractal Reversal* — 5-bar fractals + pinbar + AO.','AO':'📈 *Awesome Oscillator* — Saucer & divergence patterns.'};
-    tgReply(chatId, `💡 *${G.SELECTED_STRATEGY||'AROON'}*\n\n${m[G.SELECTED_STRATEGY]||'—'}`); return;
-  }
-  if(/profit|pnl|win|loss|earn|made|how.much|gain|return|performance/i.test(t)){
-    const w=info.hist.filter(t=>t.won).length, l=info.hist.length-w;
-    const aw=w?info.hist.filter(t=>t.won).reduce((s,t)=>s+(+t.profit||0),0)/w:0;
-    const al=l?info.hist.filter(t=>!t.won).reduce((s,t)=>s+(+t.profit||0),0)/l:0;
-    const mx=info.hist.length?Math.max(...info.hist.map(t=>+t.profit||0)):0;
-    const mn=info.hist.length?Math.min(...info.hist.map(t=>+t.profit||0)):0;
-    tgReply(chatId, `💰 *Performance*\n📊 ${info.total} trades ✅ ${info.wins} ❌ ${info.losses}\n📈 WR: ${info.wr}%\n💵 PnL: ${info.pnl>=0?'+':''}$${info.pnl.toFixed(2)}\n📈 Avg Win: +$${aw.toFixed(2)}\n📉 Avg Loss: -$${Math.abs(al).toFixed(2)}\n🏆 Best: +$${mx.toFixed(2)}\n😞 Worst: $${mn.toFixed(2)}\n🔥 Streak: ${G.CONS_LOSS||0}L\n💡 Let the bot run 50+ trades before judging.`); return;
-  }
-  if(/balance|money|fund|account|wallet|demo|real/i.test(t)){
-    const tf=G.TIER_FEATURES[getTier()];
-    tgReply(chatId, `💰 *Account*\nBalance: $${G.BALANCE.toFixed(2)}\nType: ${(G.ACCOUNT_TYPE||'demo').toUpperCase()}\nPlan: ${tf?.label||'FREE'}\n\nUse /reset to reset demo.`); return;
-  }
-  if(/risk|danger|safe|stop|loss|protect/i.test(t)){
-    tgReply(chatId, `🛡️ *Risk*\nTarget: $${(G.DAILY_TAKEPROFIT||0).toFixed(2)}\nStop: $${(G.DAILY_STOPLOSS||0).toFixed(2)}\nCooldown: 5L → pause\nMartingale: ${Martingale?.enabled?'✅ ON':'❌ OFF'}\n\n💡 Never risk >1-2% per trade.`); return;
-  }
-  if(/tip|advice|suggest|guide|learn|teach|how|tutorial/i.test(t)){
-    const tips=[
-      '📌 Aroon works best on Volatility 50+ indices.',
-      '📌 Run 50-100 trades before tweaking settings.',
-      '📌 Martingale increases risk — use carefully.',
-      '📌 R_10 is slow, R_100 is fast — pick your pace.',
-      '📌 Digits engine needs Pro plan for Over/Under.',
-      '📌 Keep your API token secure — never share it.',
-      '📌 Use the Mini App to monitor in real time!'
-    ];
-    tgReply(chatId, tips[Math.floor(Math.random()*tips.length)]); return;
-  }
-  if(/mini|app|dashboard|web|ui|interface/i.test(t)){
-    tgReply(chatId, `📱 *Mini App*\n\nOpen the BTraders Mini App inside Telegram to monitor, view charts, and manage settings.\n\n📎 \`${TG_MINIAPP_URL}\`\n\nOr tap "📱 Open Mini App" below.`); return;
-  }
-  if(/running|status|live|active|working|busy/i.test(t)){
-    const ls = G.LAST_SIGNAL ? `${G.LAST_SIGNAL.action} ${G.LAST_SIGNAL.conf}%` : '—';
-    tgReply(chatId, `🤖 *Status*\n🔌 ${G.RUNNING?'🟢 RUNNING':'⏸ STOPPED'}\n📊 ${info.marketName}\n🎯 ${ls}\n📈 ${info.pnl>=0?'+':''}$${info.pnl.toFixed(2)}\n🔢 ${info.total} trades\n⚡ ${info.cc} active\n💵 $${G.BALANCE.toFixed(2)}`); return;
-  }
-  const c = ['Try /help to see what I can do!','I understand commands like /status, /pnl, /market.','Ask me something trade-related!'];
-  tgReply(chatId, `🤖 ${c[Math.floor(Math.random()*c.length)]}`);
 }
 
 function processTgAction(action, chatId, msgId){
   const info = tgTradeInfo();
   switch(action){
     case 'call':{
-      if(G.ACTIVE_CONTRACTS.size>=1){ tgEdit(chatId, msgId, `⏳ Contract active — wait`, tgMainKeyboard()); break; }
+      if(G.ACTIVE_CONTRACTS.size>=1){ tgSend(chatId, `⏳ Contract active — wait`); break; }
       G._tgTradeChat = chatId;
       execTrade({ action:'RISE', conf:100, src:'TG', sym:info.symName, lastPrice:0 });
-      tgEdit(chatId, msgId, `🟢 *CALL* $${info.curStake.toFixed(2)} on ${info.marketName}\n⏳ Waiting for result...`, tgMainKeyboard()); break;
+      tgSend(chatId, `🟢 *CALL* $${info.curStake.toFixed(2)} on ${info.marketName}\n⏳ Waiting for result...`); break;
     }
     case 'put':{
-      if(G.ACTIVE_CONTRACTS.size>=1){ tgEdit(chatId, msgId, `⏳ Contract active — wait`, tgMainKeyboard()); break; }
+      if(G.ACTIVE_CONTRACTS.size>=1){ tgSend(chatId, `⏳ Contract active — wait`); break; }
       G._tgTradeChat = chatId;
       execTrade({ action:'FALL', conf:100, src:'TG', sym:info.symName, lastPrice:0 });
-      tgEdit(chatId, msgId, `🔴 *PUT* $${info.curStake.toFixed(2)} on ${info.marketName}\n⏳ Waiting for result...`, tgMainKeyboard()); break;
+      tgSend(chatId, `🔴 *PUT* $${info.curStake.toFixed(2)} on ${info.marketName}\n⏳ Waiting for result...`); break;
     }
     case 'start':
       if(G.TRADE_MODE!=='RISEFALL') switchMode('RISEFALL');
       startBot();
-      tgEdit(chatId, msgId, `🚀 *Bot Started*\n📊 ${info.marketName}\n💰 $${G.BALANCE.toFixed(2)}`, tgMainKeyboard()); break;
+      tgSend(chatId, `🚀 *Bot Started*\n📊 ${info.marketName}\n💰 $${G.BALANCE.toFixed(2)}`); break;
     case 'stop':
       stopBot();
-      tgEdit(chatId, msgId, `⏹ *Bot Stopped*\n📊 ${G.WINS+G.LOSSES} trades \\| ✅ ${G.WINS} \\| ❌ ${G.LOSSES}`, tgMainKeyboard()); break;
+      tgSend(chatId, `⏹ *Bot Stopped*\n📊 ${G.WINS+G.LOSSES} trades \\| ✅ ${G.WINS} \\| ❌ ${G.LOSSES}`); break;
     case 'status':
-      tgEdit(chatId, msgId,
+      tgSend(chatId,
         `📊 *Status*\n📈 ${info.marketName}\n💰 Balance: $${G.BALANCE.toFixed(2)}\n`+
         `📊 PnL: ${info.pnl>=0?'+':''}$${info.pnl.toFixed(2)}\n`+
         `🎯 ${info.total} trades \\| ✅ ${G.WINS} \\| ❌ ${G.LOSSES} \\| ${info.wr}%\n`+
-        `🔥 Streak: ${G.CONS_LOSS||0}L\n${G.RUNNING?'🟢 Running':'⏸ Stopped'} \\| ${info.cc} active`,
-        tgMainKeyboard()); break;
+        `🔥 Streak: ${G.CONS_LOSS||0}L\n${G.RUNNING?'🟢 Running':'⏸ Stopped'} \\| ${info.cc} active`); break;
     case 'balance':
-      tgEdit(chatId, msgId, `💰 *Balance*\n$${G.BALANCE.toFixed(2)} (${G.ACCOUNT_TYPE||'demo'})`, tgMainKeyboard()); break;
+      tgSend(chatId, `💰 *Balance*\n$${G.BALANCE.toFixed(2)} (${G.ACCOUNT_TYPE||'demo'})`); break;
     case 'market':
-      tgEdit(chatId, msgId,
-        `📍 *Current Market:* ${info.marketName}\n\nSend /market R_100 to switch.\n\nAvailable: R_10, R_25, R_50, R_75, R_100, 1HZ10V, 1HZ25V, 1HZ50V, 1HZ75V, 1HZ100V`,
-        tgMainKeyboard()); break;
+      tgSend(chatId,
+        `📍 *Current Market:* ${info.marketName}\n\nSend /market R_100 to switch.\n\nAvailable: R_10, R_25, R_50, R_75, R_100, 1HZ10V, 1HZ25V, 1HZ50V, 1HZ75V, 1HZ100V`); break;
     case 'stake':
-      tgEdit(chatId, msgId, `⚙️ *Current Stake:* $${info.curStake.toFixed(2)}\n\nSend /stake 2.0 to change.`, tgMainKeyboard()); break;
+      tgSend(chatId, `⚙️ *Current Stake:* $${info.curStake.toFixed(2)}\n\nSend /stake 2.0 to change.`); break;
     case 'reset':
-      if(G.ACCOUNT_TYPE!=='demo'){ tgEdit(chatId, msgId, `❌ Reset only works on demo accounts`, tgMainKeyboard()); break; }
+      if(G.ACCOUNT_TYPE!=='demo'){ tgSend(chatId, `❌ Reset only works on demo accounts`); break; }
       resetDemo();
-      setTimeout(() => tgEdit(chatId, msgId, `✅ Demo reset to $${G.BALANCE.toFixed(2)}`, tgMainKeyboard()), 1500); break;
+      setTimeout(() => tgSend(chatId, `✅ Demo reset to $${G.BALANCE.toFixed(2)}`), 1500); break;
     case 'pnl':{
       const mx = info.hist.length ? Math.max(...info.hist.map(t=>+t.profit||0)) : 0;
       const mn = info.hist.length ? Math.min(...info.hist.map(t=>+t.profit||0)) : 0;
-      tgEdit(chatId, msgId,
-        `📈 *PnL*\nTotal: ${info.pnl>=0?'+':''}$${info.pnl.toFixed(2)}\nBest: +$${mx.toFixed(2)}\nWorst: $${mn.toFixed(2)}\nBalance: $${G.BALANCE.toFixed(2)}`,
-        tgMainKeyboard()); break;
+      tgSend(chatId,
+        `📈 *PnL*\nTotal: ${info.pnl>=0?'+':''}$${info.pnl.toFixed(2)}\nBest: +$${mx.toFixed(2)}\nWorst: $${mn.toFixed(2)}\nBalance: $${G.BALANCE.toFixed(2)}`); break;
     }
     case 'stats':{
       const w=info.hist.filter(t=>t.won).length, l=info.hist.length-w;
       const aw=w?info.hist.filter(t=>t.won).reduce((s,t)=>s+(+t.profit||0),0)/w:0;
       const al=l?info.hist.filter(t=>!t.won).reduce((s,t)=>s+(+t.profit||0),0)/l:0;
-      tgEdit(chatId, msgId,
-        `📋 *Stats*\n📊 ${info.total} ✅ ${G.WINS} ❌ ${G.LOSSES}\n📈 WR: ${info.wr}%\n💰 ${info.pnl>=0?'+':''}$${info.pnl.toFixed(2)}\n📈 Avg Win: +$${aw.toFixed(2)}\n📉 Avg Loss: -$${Math.abs(al).toFixed(2)}\n🔥 ${G.CONS_LOSS||0}L\n💡 ${G.SELECTED_STRATEGY||'—'}\n${G.RUNNING?'🟢 Running':'⏸ Stopped'}`,
-        tgMainKeyboard()); break;
+      tgSend(chatId,
+        `📋 *Stats*\n📊 ${info.total} ✅ ${G.WINS} ❌ ${G.LOSSES}\n📈 WR: ${info.wr}%\n💰 ${info.pnl>=0?'+':''}$${info.pnl.toFixed(2)}\n📈 Avg Win: +$${aw.toFixed(2)}\n📉 Avg Loss: -$${Math.abs(al).toFixed(2)}\n🔥 ${G.CONS_LOSS||0}L\n💡 ${G.SELECTED_STRATEGY||'—'}\n${G.RUNNING?'🟢 Running':'⏸ Stopped'}`); break;
     }
     case 'miniapp':
-      tgEdit(chatId, msgId,
-        `📱 *BTraders Mini App*\n\n📎 \`${TG_MINIAPP_URL}\`\n\nOr tap "📱 Open Mini App" below.`,
-        tgMainKeyboard()); break;
+      tgSend(chatId,
+        `📱 *BTraders Mini App*\n\n📎 \`${TG_MINIAPP_URL}\``); break;
     case 'help':
-      tgEdit(chatId, msgId,
+      tgSend(chatId,
         `🤖 *BTraders Bot*\n\n`+
         `/start — Welcome\n/help — Help\n/status — Status\n/balance — Balance\n`+
         `/pnl — P&L\n/stats — Details\n/daily — Today\n/market — Switch\n`+
-        `/stake — Change\n/settings — Config\n/tier — Plan\n/miniapp — Open\n/reset — Demo\n\n`+
-        `💬 Chat: "how's the market?" "show P&L" "tip"\n\n📱 \`${TG_MINIAPP_URL}\``,
-        tgMainKeyboard()); break;
+        `/stake — Change\n/ai — AI Trading\n/settings — Config\n/tier — Plan\n`+
+        `/miniapp — Open\n/reset — Demo\n\n`+
+        `💬 Chat naturally — I'll answer with AI!\n📱 \`${TG_MINIAPP_URL}\``); break;
   }
 }
 
@@ -5238,43 +5302,40 @@ function handleTgCommand(text, chatId){
   const losses = hist.length-wins;
   const tierFeat = G.TIER_FEATURES[getTier()];
   const tierName = tierFeat?.label || 'FREE';
-  if(cmd==='/start'){ tgReply(chatId, `🚀 *BTraders Bot Ready*\n\nTap *Auto Start* to begin trading.\nUse *CALL* / *PUT* for manual trades.\n\n📱 Tap "Open Mini App" below for full control.`, tgMainKeyboard()); return; }
-  if(cmd==='/help'){ tgReply(chatId,
+  if(cmd==='/start'){ tgSend(chatId, `🚀 *BTraders Bot Ready*\n\nCommands: /status /balance /pnl /market /stake /ai /help\n📱 Mini App: ${TG_MINIAPP_URL}`); return; }
+  if(cmd==='/help'){ tgSend(chatId,
     `🤖 *BTraders Commands*\n\n`+
-    `/start — Welcome & start\n/status — Session status\n/balance — Account balance\n`+
+    `/start — Welcome\n/help — Help\n/status — Status\n/balance — Balance\n`+
     `/pnl — PnL report\n/stats — Detailed stats\n/daily — Daily perf\n`+
     `/market R_100 — Switch market\n/stake 2.0 — Change stake\n`+
-    `/settings — Bot config\n/tier — Plan info\n/reset — Reset demo\n`+
-    `/miniapp — Open Mini App\n/help — This message`,
-    tgMainKeyboard()); return; }
+    `/ai — Toggle AI trading\n/settings — Bot config\n/tier — Plan info\n`+
+    `/reset — Reset demo\n/miniapp — Open Mini App\n\n`+
+    `💬 Chat naturally and I'll answer with Groq AI!\n📱 ${TG_MINIAPP_URL}`); return; }
   if(cmd==='/status'){
     const cc = G.ACTIVE_CONTRACTS.size;
-    tgReply(chatId,
+    tgSend(chatId,
       `📊 *Status*\n📈 ${marketName}\n💰 Balance: $${G.BALANCE.toFixed(2)}\n`+
       `📊 PnL: ${pnl>=0?'+':''}$${pnl.toFixed(2)}\n`+
       `🎯 ${total} trades \\| ✅ ${G.WINS} \\| ❌ ${G.LOSSES} \\| ${wr}%\n`+
-      `🔥 Streak: ${G.CONS_LOSS||0}L\n${G.RUNNING?'🟢 Running':'⏸ Stopped'} \\| ${cc} active`,
-      tgMainKeyboard()); return;
+      `🔥 Streak: ${G.CONS_LOSS||0}L\n${G.RUNNING?'🟢 Running':'⏸ Stopped'} \\| ${cc} active`); return;
   }
-  if(cmd==='/balance'){ tgReply(chatId, `💰 *Balance*\n$${G.BALANCE.toFixed(2)} (${G.ACCOUNT_TYPE||'demo'})\n📈 PnL: ${pnl>=0?'+':''}$${pnl.toFixed(2)}`, tgMainKeyboard()); return; }
+  if(cmd==='/balance'){ tgSend(chatId, `💰 *Balance*\n$${G.BALANCE.toFixed(2)} (${G.ACCOUNT_TYPE||'demo'})\n📈 PnL: ${pnl>=0?'+':''}$${pnl.toFixed(2)}`); return; }
   if(cmd==='/pnl'){
     const maxWin = hist.length ? Math.max(...hist.map(t=>+t.profit||0)) : 0;
     const maxLoss = hist.length ? Math.min(...hist.map(t=>+t.profit||0)) : 0;
-    tgReply(chatId,
+    tgSend(chatId,
       `📈 *PnL Report*\nTotal: ${pnl>=0?'+':''}$${pnl.toFixed(2)}\n`+
       `Best: +$${maxWin.toFixed(2)}\nWorst: $${maxLoss.toFixed(2)}\n`+
-      `Balance: $${G.BALANCE.toFixed(2)}`,
-      tgMainKeyboard()); return;
+      `Balance: $${G.BALANCE.toFixed(2)}`); return;
   }
   if(cmd==='/stats'){
     const avgWin = wins ? hist.filter(t=>t.won).reduce((s,t)=>s+(+t.profit||0),0)/wins : 0;
     const avgLoss = losses ? hist.filter(t=>!t.won).reduce((s,t)=>s+(+t.profit||0),0)/losses : 0;
-    tgReply(chatId,
+    tgSend(chatId,
       `📋 *Session Stats*\nTrades: ${total}\n✅ ${G.WINS} ❌ ${G.LOSSES}\n`+
       `📈 WR: ${wr}%\n💰 PnL: ${pnl>=0?'+':''}$${pnl.toFixed(2)}\n`+
       `📈 Avg Win: +$${avgWin.toFixed(2)}\n📉 Avg Loss: -$${Math.abs(avgLoss).toFixed(2)}\n`+
-      `🔥 Streak: ${G.CONS_LOSS||0}L\n💡 ${G.SELECTED_STRATEGY||'—'}\n${G.RUNNING?'🟢 Running':'⏸ Stopped'}`,
-      tgMainKeyboard()); return;
+      `🔥 Streak: ${G.CONS_LOSS||0}L\n💡 ${G.SELECTED_STRATEGY||'—'}\n${G.RUNNING?'🟢 Running':'⏸ Stopped'}`); return;
   }
   if(cmd==='/daily'){
     const today = new Date().toDateString();
@@ -5283,15 +5344,14 @@ function handleTgCommand(text, chatId){
     const dLoss = dayHist.length-dWins;
     const dPnl = dayHist.reduce((s,t)=>s+(+t.profit||0),0);
     const dWr = dayHist.length ? Math.round(dWins/dayHist.length*100) : 0;
-    tgReply(chatId,
+    tgSend(chatId,
       `📅 *Daily Report*\n${today}\n━━━━━━━━━━\n`+
       `Trades: ${dayHist.length}\n✅ ${dWins} ❌ ${dLoss}\n`+
-      `📈 WR: ${dWr}%\n💰 PnL: ${dPnl>=0?'+':''}$${dPnl.toFixed(2)}`,
-      tgMainKeyboard()); return;
+      `📈 WR: ${dWr}%\n💰 PnL: ${dPnl>=0?'+':''}$${dPnl.toFixed(2)}`); return;
   }
   if(cmd==='/tier'){
     const mktCount = G.TIER_MARKETS ? G.TIER_MARKETS.length : 3;
-    tgReply(chatId,
+    tgSend(chatId,
       `📋 *Your Plan: ${tierName}*\n`+
       `📊 Markets: ${mktCount}/13\n`+
       `💡 Strategies: ${tierFeat.strategies.join(', ')}\n`+
@@ -5299,8 +5359,11 @@ function handleTgCommand(text, chatId){
       `⚡ Martingale: ${tierFeat.martingale?'✅':'❌'}\n`+
       `📈 Charts: ${tierFeat.charting?'✅':'❌'}\n`+
       `📡 Copy Trading: ${tierFeat.copyTrading?'✅':'❌'}\n\n`+
-      `Upgrade at btraders.app/pricing`,
-      tgMainKeyboard()); return;
+      `Upgrade at btraders.app/pricing`); return;
+  }
+  if(cmd==='/ai'){
+    toggleAiTrading();
+    tgSend(chatId, `🧠 AI Trading is now *${G.AI_TRADING_ENABLED?'ON':'OFF'}*\n${G.AI_TRADING_ENABLED?'Groq will analyze market conditions to suggest trades.':'Standard strategy engine active.'}`); return;
   }
   if(cmd==='/settings'){
     const tradeMode = G.TRADE_MODE||'RISEFALL';
@@ -5310,44 +5373,44 @@ function handleTgCommand(text, chatId){
     const copy = G.COPYTRADING_ENABLED?'ON':'OFF';
     const dTarget = G.DAILY_TAKEPROFIT||0;
     const dStop = G.DAILY_STOPLOSS||0;
-    tgReply(chatId,
+    const ai = G.AI_TRADING_ENABLED?'ON':'OFF';
+    tgSend(chatId,
       `⚙️ *Bot Settings*\n`+
       `📊 Market: ${symName}\n💡 Strategy: ${strat}\n`+
       `🎯 Mode: ${tradeMode}\n💰 Stake: $${curStake.toFixed(2)}\n`+
       `🔄 Multi-Market: ${multi}\n⚡ Martingale: ${mart}\n`+
+      `🧠 AI Trading: ${ai}\n`+
       `📡 Copy Trading: ${copy}\n`+
-      `🎯 Daily Target: $${dTarget.toFixed(2)}\n🛑 Daily Stop: $${dStop.toFixed(2)}`,
-      tgMainKeyboard()); return;
+      `🎯 Daily Target: $${dTarget.toFixed(2)}\n🛑 Daily Stop: $${dStop.toFixed(2)}`); return;
   }
   if(cmd==='/miniapp'){
-    tgReply(chatId,
+    tgSend(chatId,
       `📱 *BTraders Mini App*\n\n`+
       `Monitor, control, and analyze your bot inside Telegram.\n\n`+
-      `Tap the "📱 Open Mini App" button below to open it directly in Telegram.`,
-      tgMainKeyboard()); return;
+      `📎 ${TG_MINIAPP_URL}`); return;
   }
   if(cmd==='/reset'){
-    if(G.ACCOUNT_TYPE!=='demo'){ tgReply(chatId, `❌ Reset only works on demo accounts`, tgMainKeyboard()); return; }
+    if(G.ACCOUNT_TYPE!=='demo'){ tgSend(chatId, `❌ Reset only works on demo accounts`); return; }
     resetDemo();
-    setTimeout(() => tgReply(chatId, `✅ Demo reset to $${G.BALANCE.toFixed(2)}`, tgMainKeyboard()), 1500);
+    setTimeout(() => tgSend(chatId, `✅ Demo reset to $${G.BALANCE.toFixed(2)}`), 1500);
     return;
   }
   if(cmd==='/market' && args.length){
     const q = args.join(' ').toUpperCase();
     const found = SYMBOLS.find(s=>s.sym===q || s.name?.toUpperCase().includes(q));
-    if(!found){ tgReply(chatId, `❌ Market not found. Use /market R_50`, tgMainKeyboard()); return; }
+    if(!found){ tgSend(chatId, `❌ Market not found. Use /market R_50`); return; }
     G.CURRENT_MARKET = found.sym; G.SELECTED_MARKET = found.sym; updateDash();
-    tgReply(chatId, `✅ Switched to *${found.name||found.sym}*`, tgMainKeyboard());
+    tgSend(chatId, `✅ Switched to *${found.name||found.sym}*`);
     return;
   }
   if(cmd==='/stake' && args.length){
     const s = parseFloat(args[0]);
-    if(!s || s<0.35){ tgReply(chatId, `Min stake $0.35. /stake 1.0`, tgMainKeyboard()); return; }
+    if(!s || s<0.35){ tgSend(chatId, `Min stake $0.35. /stake 1.0`); return; }
     if(stakeEl) stakeEl.value = s;
-    tgReply(chatId, `✅ Stake set to $${s.toFixed(2)}`, tgMainKeyboard());
+    tgSend(chatId, `✅ Stake set to $${s.toFixed(2)}`);
     return;
   }
-  tgReply(chatId, `🤖 *BTraders*\nTap a button below to trade`, tgMainKeyboard());
+  tgSend(chatId, `🤖 *BTraders*\nUse /help to see commands, or chat with me naturally!`);
 }
 
 function checkMiniappAction(){
@@ -6397,6 +6460,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initStrategies();
   SYMBOLS.forEach(s => { G.MARKET.candles[s.sym] = []; G.MARKET.prices[s.sym] = []; });
   restoreState();
+  syncAiToggleUI();
   renderStratList();
   updateDurModeUI();
   // Populate market dropdown
