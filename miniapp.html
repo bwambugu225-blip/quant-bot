@@ -582,10 +582,33 @@ async function authorizePat(){
 function oauthLogin(){
   const err = document.getElementById('loginError');
   err.textContent='';
-  const redirectUri = window.location.origin;
-  sessionStorage.setItem('oauth_redirect_uri', redirectUri);
-  const url = 'https://oauth.deriv.com/oauth2/authorize?app_id='+encodeURIComponent(G.APP_ID)+'&l=EN&redirect_uri='+encodeURIComponent(redirectUri);
-  window.location.href = url;
+  try {
+    const redirectUri = window.location.origin;
+    const array = crypto.getRandomValues(new Uint8Array(64));
+    const codeVerifier = Array.from(array).map(v =>
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'[v % 66]
+    ).join('');
+    const hash = crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier));
+    hash.then(h => {
+      const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(h)))
+        .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+        .map(v => v.toString(16).padStart(2,'0')).join('');
+      sessionStorage.setItem('oauth_code_verifier', codeVerifier);
+      sessionStorage.setItem('oauth_state', state);
+      sessionStorage.setItem('oauth_redirect_uri', redirectUri);
+      const authUrl = 'https://auth.deriv.com/oauth2/auth?' + new URLSearchParams({
+        response_type: 'code',
+        client_id: G.APP_ID,
+        redirect_uri: redirectUri,
+        scope: 'trade',
+        state: state,
+        code_challenge: codeChallenge,
+        code_challenge_method: 'S256'
+      }).toString();
+      window.location.href = authUrl;
+    }).catch(e => { err.textContent='PKCE error: '+e.message; });
+  } catch(e){ err.textContent='OAuth error: '+e.message; }
 }
 
 async function exchangeOAuthCode(code){

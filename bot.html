@@ -6139,7 +6139,7 @@ async function oauthLogin(){
     const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map(v => v.toString(16).padStart(2,'0')).join('');
     // 4. Store PKCE params so they survive the redirect back
-    const redirectUri = 'https://dv-quant.vercel.app';
+    const redirectUri = window.location.origin;
     sessionStorage.setItem('oauth_code_verifier', codeVerifier);
     sessionStorage.setItem('oauth_state', state);
     sessionStorage.setItem('oauth_redirect_uri', redirectUri);
@@ -6158,7 +6158,7 @@ async function oauthLogin(){
   } catch(e){ err.textContent='OAuth error: '+e.message; }
 }
 function legacyLogin(){
-  const redirectUri = 'https://dv-quant.vercel.app';
+  const redirectUri = window.location.origin;
   sessionStorage.setItem('oauth_redirect_uri', redirectUri);
   const url = 'https://oauth.deriv.com/oauth2/authorize?app_id='+encodeURIComponent(G.APP_ID)+'&l=EN&redirect_uri='+encodeURIComponent(redirectUri);
   window.location.href = url;
@@ -6433,18 +6433,8 @@ document.addEventListener('DOMContentLoaded', () => {
     exchangeOAuthCode(urlCode);
   } else if(urlToken){
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
-    // Cross-domain (Vercel): proxy token back to localhost
-    if(window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'){
-      window.location.href = 'http://localhost:8080/bot.html?token1='+encodeURIComponent(urlToken);
-      return;
-    }
     document.getElementById('loginPat').value = urlToken;
     setTimeout(() => authorizePat(), 100);
-  } else if(urlCode && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'){
-    // Cross-domain PKCE: proxy code back to localhost
-    const s = urlState ? '&state='+encodeURIComponent(urlState) : '';
-    window.location.href = 'http://localhost:8080/bot.html?code='+encodeURIComponent(urlCode)+s;
-    return;
   } else if(urlCode && !urlState){
     // Code received but no state — can't verify, show error
     window.history.replaceState({}, document.title, window.location.pathname);
