@@ -870,7 +870,7 @@ table tr{border-bottom:1px solid var(--line)}
       </div>
       <div style="display:flex;gap:4px;margin-bottom:8px;align-items:center">
         <span style="font-size:8px;color:var(--muted);white-space:nowrap">TRADE LENGTH</span>
-        <span style="font-size:11px;font-weight:700;color:var(--accent);padding:4px 8px;border:1px solid var(--accent)">10 ticks</span>
+        <span style="font-size:11px;font-weight:700;color:var(--accent);padding:4px 8px;border:1px solid var(--accent)">5 ticks</span>
       </div>
       <div class="field" style="margin-bottom:8px">
         <label>Trading Strategy</label>
@@ -884,7 +884,7 @@ table tr{border-bottom:1px solid var(--line)}
       <div class="stake-row" style="margin-bottom:8px;display:flex;gap:8px">
         <div class="field" style="flex:1"><label>Stake</label><input class="inp" id="rfStake" type="number" value="1" min="0.35" step="0.5"></div>
         <div class="field" style="flex:1"><label>Duration</label>
-          <span style="font-size:11px;font-weight:700;color:var(--accent);padding:4px 0;display:block">10 ticks <span style="font-size:8px;color:var(--muted)">(locked)</span></span>
+          <span style="font-size:11px;font-weight:700;color:var(--accent);padding:4px 0;display:block">5 ticks <span style="font-size:8px;color:var(--muted)">(locked)</span></span>
           <input type="hidden" id="rfDuration" value="10">
         </div>
       </div>
@@ -1102,7 +1102,7 @@ const G = {
   HEARTBEAT:null, PING_TIMEOUT:null, RECONN:null, RECONN_ATT:0, RECONN_ACTIVE:false,
   STRATEGIES:[], STRATEGY_ACTIVE:[],
   WINS:0, LOSSES:0, CONS_LOSS:0, PNL:0, TRADES:0,
-  MARKET:{ candles:{}, candles10:{}, prices:{}, tickSubs:{}, tickBuf:{}, tickBuf10:{}, candleOpenAt:{}, candle10OpenAt:{}, lastCloseAt:{}, subOk:{}, cooldown:{}, liveBuf:{}, lastPrice:{}, digHist:{} },
+  MARKET:{ candles:{}, prices:{}, tickSubs:{}, tickBuf:{}, lastCloseAt:{}, subOk:{}, cooldown:{}, liveBuf:{}, lastPrice:{}, digHist:{} },
   CURRENT_MARKET:'R_50',
   MARKET_SELECTION_MODE:'auto',
   SELECTED_MARKET:'R_50',
@@ -1114,11 +1114,11 @@ const G = {
   SG_TAB:0,
   LAST_SIGNAL:null, LAST_MARKET_MSG_AT:0, LAST_TRADE_MSG_AT:0,
   BOOT_AT:0, PENDING_SIGNAL:null, PENDING_SIGNAL_AT:0,
-  CANDLE_INTERVAL_MS:60000,   // 1-minute candles
+  CANDLE_TICK_SIZE:5,         // 5 ticks per candle
   CHART_MODE:'candle',        // 'candle' or 'line'
   CANDLE_BUFFER_MS:3000,     // 3s buffer for settlement between trades
-  TRADE_DURATION_SECONDS:60,  // 60s — matches candle interval for back-to-back trades
-  DURATION_MODE:'fixed',       // 'fixed' = 10s locked; 'auto_ticks' = per-trade 1-10 tick auto pick
+  TRADE_DURATION_TICKS:5,     // 5-tick trade duration
+  DURATION_MODE:'fixed',      // 'fixed' = tick-locked
   // Market-specific parameters derived from 15s OHLC analysis (see analyze.py)
   // vol: high/mid/low classification, minConf: minimum confidence floor,
   // revPenalty: penalty for fighting trend (lighter on high vol)
@@ -2873,15 +2873,11 @@ function subscribeMarketDataOnAuthWS(){
   if(!G.WS || G.WS.readyState !== WebSocket.OPEN) return;
   SYMBOLS.forEach(s=>{
     G.WS.send(JSON.stringify({
-      ticks_history:s.sym, end:'latest', count:250, style:'candles',
-      granularity:60, req_id:genId()
-    }));
-    G.WS.send(JSON.stringify({
       ticks_history:s.sym, end:'latest', count:1100, style:'ticks',
       subscribe:1, req_id:genId()
     }));
   });
-  log(`[SUB-AUTH] ${SYMBOLS.length} markets via trading WS`,'i');
+  log(`[SUB-AUTH] ${SYMBOLS.length} markets via trading WS (5-tick candles)`,'i');
 }
 
 function connectMarketWS(){
@@ -2898,18 +2894,12 @@ function connectMarketWS(){
     if(mDot) mDot.className = 'conn g';
     log('[MARKET] Connected','s');
     SYMBOLS.forEach(s=>{
-      // Pre-fill with 250 historical 1m candles (fallback until tick data arrives)
-      mws.send(JSON.stringify({
-        ticks_history:s.sym, end:'latest', count:250, style:'candles',
-        granularity:60, req_id:genId()
-      }));
-      // Subscribe to live ticks with 1100 ticks lookback
       mws.send(JSON.stringify({
         ticks_history:s.sym, end:'latest', count:1100, style:'ticks',
         subscribe:1, req_id:genId()
       }));
     });
-    log(`[SUB] ${SYMBOLS.length} markets · 250m candles + 1100 live ticks requested`,'i');
+    log(`[SUB] ${SYMBOLS.length} markets · 1100 ticks requested (5-tick candles)`,'i');
     startHeartbeat();
   };
   mws.onmessage = (e)=>{
@@ -3032,19 +3022,16 @@ function handleBal(data){
   }
 }
 
-function bucketTicks(times, prices, intervalMs){
+function bucketTicks(times, prices, tickSize){
   const len = Math.min(times.length, prices.length);
   const candles = [];
-  let candleStart = null;
   let bucket = [];
   for(let i=0;i<len;i++){
     const epochSec = +times[i];
-    const epochMs = epochSec * 1000;
     const price = +prices[i];
-    if(!Number.isFinite(epochMs) || !Number.isFinite(price)) continue;
-    if(candleStart === null) candleStart = epochMs;
+    if(!Number.isFinite(epochSec) || !Number.isFinite(price)) continue;
     bucket.push({ epoch:epochSec, price });
-    if(epochMs - candleStart >= intervalMs){
+    if(bucket.length >= tickSize){
       const ps = bucket.map(b=>b.price);
       candles.push({
         epoch: bucket[bucket.length-1].epoch,
@@ -3054,11 +3041,10 @@ function bucketTicks(times, prices, intervalMs){
         close: bucket[bucket.length-1].price,
         ticks: bucket.length
       });
-      candleStart = epochMs;
       bucket = [];
     }
   }
-  return { candles, bucket, candleStart };
+  return { candles, bucket };
 }
 
 function buildCandlesFromTicks(sym, times, prices){
@@ -3067,21 +3053,9 @@ function buildCandlesFromTicks(sym, times, prices){
     const p = +prices[i];
     if(Number.isFinite(p)){ const d = processDigit(sym, p); if(i<=2) log(`[DIGIT] ${sym} history price #${i}: ${p} → digit ${d}`,'i'); }
   }
-  const { candles, bucket, candleStart } = bucketTicks(times, prices, G.CANDLE_INTERVAL_MS);
-  // Same logic, 10s bucket, into the chart buffer (candles10)
-  const c10 = bucketTicks(times, prices, 10000);
-  G.MARKET.tickBuf10[sym] = [];
-  G.MARKET.candle10OpenAt[sym] = Date.now();
-  const arr10 = c10.candles.slice(-180);
-  if(arr10.length){
-    G.MARKET.candles10[sym] = arr10;
-    log(`[HIST] ${sym}: 10s chart candles built → ${arr10.length}`,'i');
-  }
-  // Clear stale tick buffer so first live tick starts a fresh candle.
-  // The leftover bucket ticks are already reflected in the last candle's close.
+  const { candles } = bucketTicks(times, prices, G.CANDLE_TICK_SIZE);
   G.MARKET.tickBuf[sym] = [];
-  G.MARKET.candleOpenAt[sym] = Date.now();
-  const arr = candles.slice(-250);
+  const arr = candles.slice(-200);
   if(arr.length){
     G.MARKET.candles[sym] = arr;
     G.MARKET.prices[sym] = arr.map(c=>c.close);
@@ -3090,7 +3064,7 @@ function buildCandlesFromTicks(sym, times, prices){
     if(reBtn) reBtn.hidden = true;
     updateDigitsUI();
     if(sym === G.CURRENT_MARKET) drawChart();
-    log(`[HIST] ${sym}: ${arr.length} candles built — waiting for next fresh candle to trade`,'i');
+    log(`[HIST] ${sym}: ${arr.length} 5-tick candles built`,'i');
   }
 }
 
@@ -3151,32 +3125,15 @@ function handleTick(data){
   }
   let candles=G.MARKET.candles[sym]; if(!candles) G.MARKET.candles[sym]=candles=[];
   let buf=G.MARKET.tickBuf[sym]; if(!buf) G.MARKET.tickBuf[sym]=buf=[];
-  let openAt=G.MARKET.candleOpenAt[sym]; if(!openAt) G.MARKET.candleOpenAt[sym]=openAt=epoch*1000;
   buf.push(price);
-  // --- 10s candle buffer (chart only; strategy still uses 15s candles) ---
-  let candles10=G.MARKET.candles10[sym]; if(!candles10) G.MARKET.candles10[sym]=candles10=[];
-  let buf10=G.MARKET.tickBuf10[sym]; if(!buf10) G.MARKET.tickBuf10[sym]=buf10=[];
-  let openAt10=G.MARKET.candle10OpenAt[sym]; if(!openAt10) G.MARKET.candle10OpenAt[sym]=openAt10=epoch*1000;
-  buf10.push(price);
-  if((epoch*1000)-openAt10 >= 10000){
-    const c10={epoch,open:buf10[0]||price,high:max(buf10),low:min(buf10),close:price,ticks:buf10.length};
-    candles10.push(c10);
-    if(candles10.length>180) candles10.shift();
-    G.MARKET.tickBuf10[sym]=[];
-    G.MARKET.candle10OpenAt[sym]=epoch*1000;
-  }
-  if((epoch*1000)-openAt >= G.CANDLE_INTERVAL_MS){
-    const info=SYMBOLS.find(x=>x.sym===sym);
-    const expT=info&&(info.cat==='VOL1S'||info.cat==='STEP')?60:30;
-    const minT=Math.max(5,Math.round(expT*0.4));
+  if(buf.length >= G.CANDLE_TICK_SIZE){
     const candle={epoch,open:buf[0]||price,high:max(buf),low:min(buf),close:price,ticks:buf.length};
     candles.push(candle);
-    if(candles.length>250) candles.shift();
+    if(candles.length>200) candles.shift();
     const tp=G.MARKET.tickPrices||(G.MARKET.tickPrices={});
     const ta=tp[sym]||(tp[sym]=[]); ta.push.apply(ta,buf);
     if(ta.length>80) ta.splice(0,ta.length-60);
     G.MARKET.tickBuf[sym]=[];
-    G.MARKET.candleOpenAt[sym]=epoch*1000;
     G.MARKET.prices[sym]=candles.map(c=>c.close);
     G.MARKET.lastCloseAt[sym]=Date.now();
     if(G._tradedCandle?.[sym]){
@@ -3187,7 +3144,7 @@ function handleTick(data){
       storeSignal(sym,candle.epoch,G.LAST_SIGNAL,true);
       G._tradedCandle[sym]=false;
     }
-    if(candle.ticks>=minT){
+    if(candle.ticks >= G.CANDLE_TICK_SIZE){
       G._candleCloseAt = G._candleCloseAt || {};
       G._candleCloseAt[sym] = Date.now();
       evaluateAndTrade(sym);
@@ -3560,16 +3517,8 @@ function execTrade(signal, asset){
   asset = asset || G.CURRENT_MARKET;
   let stake = signal.copyStake || (Martingale.enabled ? Martingale.currentStake : parseFloat(document.getElementById('rfStake')?.value||1));
 
-  // Autopick trade duration from 1-3 minutes
-  let dur = 2;
-  if (signal.conf && signal.conf >= 90) {
-    dur = 1; // highly confident, short-duration capture
-  } else if (signal.conf && signal.conf <= 83) {
-    dur = 3; // lower confidence / mean reversion breathing room
-  } else {
-    dur = 2; // balanced default
-  }
-  const durUnit = 'm'; // minutes
+  const dur = G.TRADE_DURATION_TICKS || 5;
+  const durUnit = 't';
 
   const ct = signal.action==='RISE'?'CALL':'PUT';
 
@@ -3786,7 +3735,7 @@ function syncFab(){
   const st = document.getElementById('fabState');
   const md = document.getElementById('fabMode');
   if(st) st.textContent = run ? 'STOP' : 'START';
-  if(md) md.textContent = run ? (G.DURATION_MODE==='fixed' ? '10s' : 'AUTO') : '';
+  if(md) md.textContent = run ? '5t' : '';
 }
 async function resetDemo(){
   if(!G.AUTH || !G.ACCOUNT_ID){ log('[RESET] Authorize first','e'); return; }
@@ -3907,7 +3856,7 @@ function drawChart(){
     ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
     ctx.fillStyle=MUTED; ctx.font='11px monospace';
     if(raw.length<25){
-      ctx.fillText('Importing 1m OHLC… '+raw.length+'/15',12,h/2);
+      ctx.fillText('Importing 5-tick candles… '+raw.length+'/15',12,h/2);
     } else {
       ctx.fillText('Waiting for data...',12,h/2);
     }
@@ -4444,7 +4393,7 @@ function setDurationMode(mode){
   const f=document.getElementById('durFixedBtn'), a=document.getElementById('durAutoBtn');
   if(f){ const on=mode==='fixed'; f.style.background=on?'var(--accent)':'none'; f.style.color=on?'#fff':'var(--muted)'; f.style.borderColor=on?'var(--accent)':'var(--line)'; }
   if(a){ const on=mode==='auto_ticks'; a.style.background=on?'var(--accent)':'none'; a.style.color=on?'#fff':'var(--muted)'; a.style.borderColor=on?'var(--accent)':'var(--line)'; }
-  log(`[DURATION] Mode: ${mode==='auto_ticks'?'AUTO 1-10 ticks':'1-3m fixed'}`,'i');
+  log(`[DURATION] Mode: 5-tick fixed`,'i');
   saveState();
 }
 function updateDurModeUI(){
