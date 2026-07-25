@@ -1182,9 +1182,9 @@ const G = {
   // Account tier: 'free', 'pro', 'enterprise'
   ACCOUNT_TIER:'free',
   TIER_FEATURES:{
-    free:{ label:'Free', markets:3, strategies:['AROON'], digits:false, martingale:false, kelly:false, copyTrading:false, charting:false },
-    pro:{ label:'Pro', markets:13, strategies:['AROON','FRACTAL_BRK','AO'], digits:true, martingale:true, kelly:true, copyTrading:false, charting:true },
-    enterprise:{ label:'Enterprise', markets:13, strategies:['AROON','FRACTAL_BRK','AO'], digits:true, martingale:true, kelly:true, copyTrading:true, charting:true }
+    free:{ label:'Free', markets:3, digits:false, martingale:false, kelly:false, copyTrading:false, charting:false },
+    pro:{ label:'Pro', markets:13, digits:true, martingale:true, kelly:true, copyTrading:false, charting:true },
+    enterprise:{ label:'Enterprise', markets:13, digits:true, martingale:true, kelly:true, copyTrading:true, charting:true }
   },
   // Admin & User Control
   ADMIN_PASSWORD_HASH:'5344ac1bbf825b5e14960473ce646f5e179018226d737737126de68fd39807f8',
@@ -2205,7 +2205,7 @@ function initStrategies(){
   G.DIGIT_AVG = {dou:{0:50,1:49,2:53,3:51,4:52,5:52,6:50,7:52,8:49,9:48},deo:{0:51,1:49,2:49,3:52,4:55,5:52,6:48,7:49,8:53,9:52},ou:{O:51,U:49},eo:{E:51,D:49},pou:{UU:51,UO:50,OO:51,OU:50},peo:{ED:49,DD:52,DE:54,EE:49}};
   G.STRATEGIES = [];
   const S = G.STRATEGIES;
-  function stratWR(code){const p=G.STRATEGY_STATS?.[code];if(!p||p.total<3)return-1;return p.wins/p.total;}
+  G._stratWR = function(code){const p=G.STRATEGY_STATS?.[code];if(!p||p.total<3)return-1;return p.wins/p.total;};
 
   // ── 1. ICT Order Block ──
   S.push({name:'ICT Order Block',code:'ICT_OB',analyze:(c,sym,tf)=>{
@@ -2330,178 +2330,6 @@ function initStrategies(){
 
   G.STRATEGY_ACTIVE = G.STRATEGIES.map(()=>true);
   G._stratCodes = G.STRATEGIES.map(s=>s.code);
-
-      // Noise guard: count flips in last 12 bars (>3 = choppy, skip)
-      st.dirs.push(dir);
-      if(st.dirs.length > 12) st.dirs.shift();
-      let flips = 0;
-      for(let i=1;i<st.dirs.length;i++) if(st.dirs[i] !== st.dirs[i-1]) flips++;
-      if(flips > 3) return null;
-
-      // Direction flip → reset cycle state (allow fresh entry)
-      if(st.traded && st.traded !== dir){ st.traded = null; st.touched = false; }
-      if(st.touched && st.dir !== dir) st.touched = false;
-      st.dir = dir;
-      if(st.traded === dir) return null; // already traded this direction
-
-      let action = null, conf = 0;
-      if(dir === 'U' && up === 100 && down <= 30){
-        if(st.touched) return null; // first touch already passed
-        action = 'RISE'; conf = Math.min(96, 80 + (30 - down) * 0.6);
-      } else if(dir === 'D' && down === 100 && up <= 30){
-        if(st.touched) return null;
-        action = 'FALL'; conf = Math.min(96, 80 + (30 - up) * 0.6);
-      }
-      if(!action) return null;
-      st.traded = dir; st.touched = true;
-      return { action, conf: Math.round(conf), src: 'AROON' };
-    }
-  });
-
-  S.push({
-    name: 'Williams Fractal Reversal',
-    code: 'FRACTAL_BRK',
-    analyze: (candles, sym, tf) => {
-      tf = tf || '5s';
-      if (candles.length < 12) return null;
-      const n = candles.length;
-      const last = candles[n-1];
-      // Locate most recent 5-bar fractals + track S/R from prior fractals
-      let bullF = null, bearF = null, lastBullLvl = null, lastBearLvl = null;
-      const fractals = [];
-      for(let i=2; i<n-2; i++){
-        const c = candles[i], a=candles[i-2], b=candles[i-1], d=candles[i+1], e=candles[i+2];
-        if(c.low < a.low && c.low < b.low && c.low <= d.low && c.low <= e.low){ fractals.push({type:'bull', lvl:c.low}); bullF = c; }
-        if(c.high > a.high && c.high > b.high && c.high >= d.high && c.high >= e.high){ fractals.push({type:'bear', lvl:c.high}); bearF = c; }
-      }
-      // nearest prior fractal levels act as support/resistance
-      for(const f of fractals){
-        if(f.type==='bull' && f.lvl < last.low && (lastBullLvl===null || f.lvl > lastBullLvl)) lastBullLvl = f.lvl;
-        if(f.type==='bear' && f.lvl > last.high && (lastBearLvl===null || f.lvl < lastBearLvl)) lastBearLvl = f.lvl;
-      }
-      const tol = last.close * 0.0005;
-
-      // Bullish reversal candidate (your rule): pinbar OR S/R bounce OR elite engulfing
-      let riseBase = false;
-      if(bullF){
-        const pin = isPinbar(bullF) === 'bull';
-        const atSR = lastBullLvl!==null && Math.abs(bullF.low - lastBullLvl) <= tol;
-        const elite = candles[n-2].close < candles[n-2].open && candles[n-3].close < candles[n-3].open &&
-                      last.close > last.open && last.close > candles[n-2].high;
-        riseBase = (pin || atSR || elite) && last.close > bullF.low && last.close > candles[n-2].close;
-      }
-      let fallBase = false;
-      if(bearF){
-        const pin = isPinbar(bearF) === 'bear';
-        const atSR = lastBearLvl!==null && Math.abs(bearF.high - lastBearLvl) <= tol;
-        const elite = candles[n-2].close > candles[n-2].open && candles[n-3].close > candles[n-3].open &&
-                      last.close < last.open && last.close < candles[n-2].low;
-        fallBase = (pin || atSR || elite) && last.close < bearF.high && last.close < candles[n-2].close;
-      }
-      if(!riseBase && !fallBase) return null;
-
-      // ── SUBSTANTIAL CONFIRMATION (beyond the rule) ──
-      // 1) Trend pullback context: price must be stretched from EMA (reversal into mean)
-      // TF-adapted EMA period: shorter for faster TFs
-      const emaPeriod = tf==='5s'?20:tf==='15s'?14:tf==='30s'?10:8;
-      const pr = candles.map(c=>c.close);
-      const eMA = ema(pr, emaPeriod);
-      if(eMA !== null){
-        if(riseBase && last.close >= eMA) return null;       // bounce only valid below mean
-        if(fallBase && last.close <= eMA) return null;
-      }
-      // 2) Momentum flip on AO: AO crossed to our side within last 3 bars
-      const aoArr = ao(candles);
-      let flipped = false;
-      for(let i=Math.max(1,n-3); i<n; i++){
-        if(riseBase && aoArr[i-1] < 0 && aoArr[i] >= 0) flipped = true;
-        if(fallBase && aoArr[i-1] > 0 && aoArr[i] <= 0) flipped = true;
-      }
-      if(!flipped) return null;
-      // 3) Rejection strength: trigger candle closed away from the wick (TF-adapted body %)
-      const minBodyRatio = tf==='5s'?0.45:tf==='15s'?0.48:tf==='30s'?0.50:0.55;
-      const rng = (last.high - last.low) || 0.0001;
-      if(Math.abs(last.close - last.open) / rng < minBodyRatio) return null;
-      // 4) Follow-through: current candle breaks the fractal extreme
-      if(riseBase && last.close <= bullF.low) return null;
-      if(fallBase && last.close >= bearF.high) return null;
-
-      return { action: riseBase ? 'RISE' : 'FALL', conf: 87, src: 'FRACTAL_BRK' };
-    }
-  });
-
-  S.push({
-    name: 'Awesome Oscillator',
-    code: 'AO',
-    analyze: (candles, sym, tf) => {
-      tf = tf || '5s';
-      const minLen = tf==='5s'?40:tf==='15s'?30:tf==='30s'?25:20;
-      if (candles.length < minLen) return null;
-      const aoArr = ao(candles);
-      const acArr = ac(aoArr);
-      const n = aoArr.length;
-      const a0 = aoArr[n-1], a1 = aoArr[n-2], a2 = aoArr[n-3], a3 = aoArr[n-4];
-      const c0 = candles[n-1], c1 = candles[n-2], c2 = candles[n-3];
-      const lastUp = c0.close > c0.open, lastDn = c0.close < c0.open;
-      let out = null;
-
-      // ── 1) AO Saucer (Bill Williams) ──
-      // Bullish saucer: AO above 0, two consecutive lower (red) bars, then a green bar → RISE
-      if(a0 > 0 && a1 < a0 && a2 <= a1 && a3 > a2 && lastUp){ out = {action:'RISE', conf:86, src:'AO'}; }
-      // Bearish saucer: AO below 0, two consecutive higher (green) bars, then a red bar → FALL
-      else if(a0 < 0 && a1 > a0 && a2 >= a1 && a3 < a2 && lastDn){ out = {action:'FALL', conf:86, src:'AO'}; }
-
-      // ── 2) Twin-Peaks Divergence ──
-      if(!out){
-        // scan last ~16 bars for two same-side peaks with a swing between
-        const L = 16;
-        let p1i=-1, p2i=-1, swingMin=Infinity, swingMax=-Infinity;
-        for(let i=n-L; i<n; i++){
-          const a = aoArr[i];
-          if(a < aoArr[i-1] && a <= aoArr[i+1]){ // local min
-            if(swingMin > a){ swingMin = a; }
-          }
-          if(a > aoArr[i-1] && a >= aoArr[i+1]){ // local max
-            if(swingMax < a){ swingMax = a; }
-          }
-        }
-        // Bullish twin peaks: two lows below 0, second higher than first
-        const lows = [];
-        for(let i=n-L; i<n; i++){ if(aoArr[i] < aoArr[i-1] && aoArr[i] <= aoArr[i+1] && aoArr[i] < 0) lows.push(i); }
-        if(lows.length >= 2){
-          const f = lows[lows.length-2], s = lows[lows.length-1];
-          if(aoArr[s] > aoArr[f] && aoArr[s] < 0 && lastUp && candles[s].close > candles[f].close){ out = {action:'RISE', conf:87, src:'AO'}; }
-        }
-        // Bearish twin peaks: two highs above 0, second lower than first
-        const highs = [];
-        for(let i=n-L; i<n; i++){ if(aoArr[i] > aoArr[i-1] && aoArr[i] >= aoArr[i+1] && aoArr[i] > 0) highs.push(i); }
-        if(!out && highs.length >= 2){
-          const f = highs[highs.length-2], s = highs[highs.length-1];
-          if(aoArr[s] < aoArr[f] && aoArr[s] > 0 && lastDn && candles[s].close < candles[f].close){ out = {action:'FALL', conf:87, src:'AO'}; }
-        }
-      }
-      if(!out) return null;
-
-      // ── Confirmation: AC must not contradict, and price body must be real ──
-      const acNow = acArr[n-1];
-      if(out.action==='RISE' && acNow < 0) return null;
-      if(out.action==='FALL' && acNow > 0) return null;
-      // TF-adapted body ratio: longer TFs need stronger confirmation
-      const bodyMin = tf==='5s'?0.30:tf==='15s'?0.33:tf==='30s'?0.36:0.40;
-      const rng = (c0.high - c0.low) || 0.0001;
-      if(Math.abs(c0.close - c0.open) / rng < bodyMin) return null;
-      // Volatility gate: require some range so we're not trading dead ticks
-      const atrP = tf==='5s'?14:tf==='15s'?10:tf==='30s'?8:6;
-      const atrV = atr(candles, atrP);
-      // TF-adapted volatility threshold: larger TFs need proportionally more range
-      const volThreshold = tf==='5s'?0.0002:tf==='15s'?0.0003:tf==='30s'?0.0004:0.0005;
-      if(atrV !== null && atrV < candles[n-1].close * volThreshold) return null;
-
-      return out;
-    }
-  });
-
-  G.STRATEGY_ACTIVE = G.STRATEGIES.map(()=>true);
 }
 
 // ============================================================
@@ -3485,7 +3313,7 @@ function runStrategyAnalysis(sym, candles, liveBuf, tf){
       // Score each vote: weight = strategy WR (or 0.5 if no data) * conf
       let best=null, bestScore=-1;
       for(const v of allVotes){
-        const wr = stratWR(v.src);
+        const wr = G._stratWR(v.src);
         const perfScore = wr>=0 ? wr : 0.5;
         const score = perfScore * v.conf;
         if(score>bestScore){ bestScore=score; best=v; }
