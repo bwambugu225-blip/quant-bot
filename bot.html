@@ -5153,7 +5153,7 @@ async function handleTgChat(chatId, text){
     const trend = recentTicks.length>=2 ? (recentTicks[recentTicks.length-1]>recentTicks[0]?'up':'down') : 'neutral';
     const avgWin = G.TRADE_HISTORY.filter(t=>t.won).length ? G.TRADE_HISTORY.filter(t=>t.won).reduce((s,t)=>s+(+t.profit||0),0)/G.TRADE_HISTORY.filter(t=>t.won).length : 0;
     const avgLoss = G.TRADE_HISTORY.filter(t=>!t.won).length ? G.TRADE_HISTORY.filter(t=>!t.won).reduce((s,t)=>s+(+t.profit||0),0)/G.TRADE_HISTORY.filter(t=>!t.won).length : 0;
-    const systemPrompt = `You are BTraders, a professional trading bot assistant. Be concise, warm, and helpful. Current state:
+    const sys = `You are BTraders, a professional trading bot assistant. Be concise, warm, and helpful. Current state:
 - Market: ${info.marketName} (${info.symName})
 - Price: ${lastPrice != null ? '$'+lastPrice.toFixed(5) : 'N/A'}
 - Trend: ${trend}
@@ -5163,37 +5163,27 @@ async function handleTgChat(chatId, text){
 - Today: $${dPnl.toFixed(2)} (${dTrades} trades)
 - Strategy: ${G.SELECTED_STRATEGY||'AROON'}
 - Bot: ${G.RUNNING?'RUNNING':'STOPPED'}
-- AI Trading: ${G.AI_TRADING_ENABLED?'ENABLED':'DISABLED'}
-- Avg Win: +$${avgWin.toFixed(2)}, Avg Loss: -$${Math.abs(avgLoss).toFixed(2)}
 - Plan: ${G.TIER_FEATURES[getTier()]?.label||'FREE'}
-
-Keep responses under 3-4 sentences unless asked for details. Use markdown. Be encouraging.`;
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method:'POST',
-      headers:{'Authorization':`Bearer ${key}`, 'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:'llama-3.3-70b-versatile',
-        messages:[
-          {role:'system', content:systemPrompt},
-          {role:'user', content:text}
-        ],
-        temperature:0.7,
-        max_tokens:400
-      })
-    });
-    if(!res.ok){
-      const errBody = await res.text();
-      console.log('[GROQ] API error:', res.status, errBody);
-      tgSend(chatId, `🤖 Groq API error (${res.status}). Try again or use /status.`);
-      return;
+Keep responses under 2-3 sentences unless asked. Use markdown. Be encouraging.`;
+    let reply = null;
+    const models = ['llama-3.3-70b-versatile','mixtral-8x7b-32768','llama-3.1-8b-instant'];
+    for(const model of models){
+      try {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method:'POST',
+          headers:{'Authorization':`Bearer ${key}`, 'Content-Type':'application/json'},
+          body:JSON.stringify({ model, messages:[{role:'system',content:sys},{role:'user',content:text}], temperature:0.7, max_tokens:400 })
+        });
+        if(!res.ok){ console.log('[GROQ]', model, res.status); continue; }
+        const data = await res.json();
+        if(data.choices?.[0]?.message?.content){ reply = data.choices[0].message.content; break; }
+      } catch(e){ console.log('[GROQ]', model, e.message); }
     }
-    const data = await res.json();
-    const reply = data.choices?.[0]?.message?.content;
     if(reply) tgSend(chatId, reply);
-    else tgSend(chatId, `🤖 I'm having trouble thinking right now. Try again or use /help.`);
+    else tgSend(chatId, `🤖 Groq is unavailable. Use /status, /pnl, /help etc.`);
   } catch(e){
     console.log('[GROQ] Chat error:', e);
-    tgSend(chatId, `🤖 My brain overheated. Try again or use a command like /status.`);
+    tgSend(chatId, `🤖 Bot error — use /help for commands.`);
   }
 }
 
