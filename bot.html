@@ -5982,6 +5982,11 @@ async function startOAuthLogin() {
   btn.textContent = 'Redirecting...';
   btn.disabled = true;
   
+  // Clear ALL cached data to ensure fresh authentication
+  localStorage.removeItem('deriv_token');
+  localStorage.removeItem('deriv_account_type');
+  sessionStorage.clear();
+  
   try {
     const { code_verifier, code_challenge } = await createPkce();
     const state = base64UrlEncode(crypto.getRandomValues(new Uint8Array(16)));
@@ -6048,8 +6053,17 @@ async function authorizePat(){
   if(!token){ err.textContent='Paste an API token from app.deriv.com/account/api-token'; return; }
   err.textContent='';
   inp.disabled=true;
+  
+  // Clear old auth state
+  G.AUTH = false;
+  G.CONNECTED = false;
+  G.ACCOUNT_ID = null;
+  G.BALANCE = 0;
+  G.TOKEN = '';
+  localStorage.removeItem('deriv_token');
+  localStorage.removeItem('deriv_account_type');
+  
   log('[AUTH] authorizePat called, token length: ' + (token?.length || 0), 'i');
-  // Connecting;
   await doRESTFlow(token);
 }
 async function doRESTFlow(token){
