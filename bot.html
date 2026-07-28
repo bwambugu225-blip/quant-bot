@@ -6,6 +6,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0d0c0a">
+<!-- Telegram WebApp SDK -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <title>BTraders</title>
 <style>
 :root{
@@ -542,6 +545,7 @@ table tr{border-bottom:1px solid var(--line)}
   </div>
   <div class="mtop-r">
     <button onclick="reconnectMarketWS()" title="Reconnect market data" style="background:none;border:1px solid var(--line);cursor:pointer;font-size:11px;line-height:1;padding:5px 8px;color:var(--muted);margin-right:4px" id="reconnMktBtn" hidden>⟳</button>
+    <button onclick="openMiniApp()" title="Open Mini App" style="background:none;border:1px solid var(--line);cursor:pointer;font-size:10px;line-height:1;padding:5px 8px;color:var(--accent);margin-right:4px">📱 MINI</button>
     <button onclick="toggleTheme()" title="Toggle theme" style="background:none;border:none;cursor:pointer;font-size:14px;line-height:1;padding:2px" id="themeBtn">🌙</button>
     <button onclick="logout()" title="Save &amp; logout" style="background:none;border:1px solid var(--line);cursor:pointer;font-size:11px;line-height:1;padding:5px 8px;color:var(--text)">⏻</button>
   </div>
@@ -3824,6 +3828,17 @@ function toggleTheme(){
   localStorage.setItem('btr_theme', isDark ? 'dark' : 'light');
 }
 
+// Function to open the Mini App
+function openMiniApp() {
+  // Save current state before switching
+  if(G.ACCOUNT_ID) saveSettingsToDB();
+  // Mark that we're redirecting to mini app
+  sessionStorage.setItem('oauth_initiator', 'bot');
+  // Navigate to mini app with current tier
+  const tier = localStorage.getItem('btr_tier') || 'free';
+  window.location.href = '/app?tier=' + tier;
+}
+
 // ============================================================
 // CANVAS CHART (10s candles + line mode)
 // ============================================================
@@ -6372,20 +6387,58 @@ document.addEventListener('DOMContentLoaded', () => {
   if(themeBtn) themeBtn.textContent = document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
   G.BOOT_AT = Date.now();
   
+  // Initialize Telegram WebApp
+  if (window.Telegram && window.Telegram.WebApp) {
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+    tg.enableClosingConfirmation();
+    // Apply Telegram theme colors if available
+    if (tg.themeParams) {
+      if (tg.themeParams.bg_color) document.documentElement.style.setProperty('--bg', tg.themeParams.bg_color);
+      if (tg.themeParams.button_color) document.documentElement.style.setProperty('--accent', tg.themeParams.button_color);
+    }
+    console.log('[TELEGRAM] WebApp initialized');
+  }
+  
   // Initialize trader ID
   initTraderId();
   console.log('%c[ADMIN] Default password: 13571 — change it in Admin → Settings','color:#d4a84b;font-weight:bold');
+  
+  // Store that main bot initialized OAuth (for redirect handling)
+  sessionStorage.setItem('oauth_initiator', 'bot');
+  
   // Check for OAuth redirect back (PKCE code or legacy token1)
   const params = new URLSearchParams(window.location.search);
   const urlCode = params.get('code');
   const urlState = params.get('state');
   const urlToken = params.get('token1');
+  
+  // Check which page initiated the OAuth flow
+  const oauthInitiator = sessionStorage.getItem('oauth_initiator');
+  
   if(urlCode && urlState === sessionStorage.getItem('oauth_state')){
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
     sessionStorage.removeItem('oauth_state');
+    
+    // If OAuth was initiated by mini app but we're on main bot, redirect back to mini app
+    if (oauthInitiator === 'miniapp') {
+      const dest = '/app' + window.location.search + window.location.hash;
+      window.location.href = dest;
+      return;
+    }
+    
     exchangeOAuthCode(urlCode);
   } else if(urlToken){
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    
+    // If token came from mini app but we're on main bot, redirect back to mini app
+    if (oauthInitiator === 'miniapp') {
+      const dest = '/app' + window.location.search + window.location.hash;
+      window.location.href = dest;
+      return;
+    }
+    
     document.getElementById('loginPat').value = urlToken;
     setTimeout(() => authorizePat(), 100);
   } else if(urlCode && !urlState){

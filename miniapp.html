@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>BTraders Mini App</title>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<!-- Telegram WebApp SDK -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<meta name="theme-color" content="#0d0c0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 :root{--bg:#0d0c0a;--surface:#141210;--surface-2:#1c1915;--line:#2a251f;--text:#f0e8da;--muted:#8a7e6a;--dim:#4a4032;--accent:#d4a84b;--positive:#5a8f64;--negative:#c45a5a;--warn:#c49a3a;--pos-dim:rgba(90,143,100,0.12);--neg-dim:rgba(196,90,90,0.12);--acc-dim:rgba(212,168,75,0.12);--font:'JetBrains Mono','SF Mono','Fira Code',monospace;--font-head:'Plus Jakarta Sans','Inter','Segoe UI',sans-serif;--font-serif:'Cinzel','Georgia',serif}
@@ -151,6 +156,7 @@ body{font-family:var(--font-head);background:var(--bg);color:var(--text);min-hei
       <span id="tierBadge" class="pill" style="border-color:var(--accent);color:var(--accent)">FREE</span>
     </div>
     <div class="top-r">
+      <button class="btn" style="padding:4px 10px;font-size:8px;border-color:var(--accent);color:var(--accent)" onclick="openFullPlatform()">FULL PLATFORM ↗</button>
       <span id="balLabel" class="bal-label">BAL</span>
       <span id="balance" class="balance">$0.00</span>
     </div>
@@ -276,6 +282,28 @@ function syncToMainBot(){
 
 function sendActionToMainBot(action){
   localStorage.setItem(TG_ACT_KEY, JSON.stringify({action, at:Date.now()}));
+}
+
+// Function to open the full web platform
+function openFullPlatform() {
+  // Sync current state before leaving
+  syncToMainBot();
+  // Mark that we're redirecting to the full bot
+  sessionStorage.setItem('oauth_initiator', 'miniapp');
+  // Navigate to full bot platform with current state
+  const tier = localStorage.getItem('btr_tier') || 'free';
+  window.location.href = '/bot?tier=' + tier;
+}
+
+// Function to open in Telegram (for web users)
+function openInTelegram() {
+  // Use Telegram WebApp if available
+  if (tg && tg.openTelegramLink) {
+    tg.openTelegramLink('https://t.me/btraderrsbot/app');
+  } else {
+    // Fallback: open Telegram bot
+    window.open('https://t.me/btraderrsbot/app', '_blank');
+  }
 }
 
 // ============================================================
@@ -1072,17 +1100,54 @@ document.addEventListener('DOMContentLoaded', () => {
   if(stSel) stSel.addEventListener('change', () => { G.SELECTED_STRATEGY=stSel.value; log(`[STRATEGY] ${stSel.value}`,'i'); });
   document.getElementById('loginPat')?.addEventListener('keydown', e => { if(e.key==='Enter'&&!e.target.disabled) authorizePat(); });
   document.getElementById('stakeInput')?.addEventListener('change', function(){ const v=parseFloat(this.value)||1; this.value=Math.max(0.35,v).toFixed(2); });
+  // Initialize Telegram WebApp
+  let isTelegram = false;
+  if (window.Telegram && window.Telegram.WebApp) {
+    isTelegram = true;
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+    tg.enableClosingConfirmation();
+    // Apply Telegram theme colors
+    if (tg.themeParams) {
+      document.documentElement.style.setProperty('--accent', tg.themeParams.button_color || '#d4a84b');
+      document.documentElement.style.setProperty('--bg', tg.themeParams.bg_color || '#0d0c0a');
+    }
+    log('[TELEGRAM] Mini App initialized','s');
+  }
+
   // Handle OAuth redirect back (supports both PKCE code and legacy token1)
   const params = new URLSearchParams(window.location.search);
   const urlCode = params.get('code');
   const urlState = params.get('state');
   const urlToken = params.get('token1');
+  const redirectTarget = params.get('redirect'); // Can be 'bot' or 'app'
+  
+  // Check which page initiated the OAuth flow
+  const oauthInitiator = sessionStorage.getItem('oauth_initiator');
+  
   if(urlCode && urlState === sessionStorage.getItem('oauth_state')){
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
     sessionStorage.removeItem('oauth_state');
+    
+    // If OAuth was initiated by main bot but we're on miniapp, redirect back to bot
+    if (oauthInitiator === 'bot' && !isTelegram) {
+      const dest = '/bot' + window.location.search + window.location.hash;
+      window.location.href = dest;
+      return;
+    }
+    
     exchangeOAuthCode(urlCode);
   } else if(urlToken){
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    
+    // If token came from main bot but we're on miniapp, redirect back to bot
+    if (oauthInitiator === 'bot' && !isTelegram) {
+      const dest = '/bot' + window.location.search + window.location.hash;
+      window.location.href = dest;
+      return;
+    }
+    
     document.getElementById('loginPat').value = urlToken;
     document.getElementById('loginError').textContent = 'Token received — connecting...';
     setTimeout(() => authorizePat(), 200);
@@ -1095,6 +1160,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('loginError').textContent = 'OAuth error: '+desc;
     console.warn('[OAUTH] Error:', {error:params.get('error'), description:desc, state:params.get('state')});
   }
+  
+  // Store that miniapp initiated OAuth (for redirect handling)
+  sessionStorage.setItem('oauth_initiator', 'app');
+  
   updateUI();
   setInterval(updateUI, 2000);
   setInterval(drawChart, 3000);
