@@ -1093,7 +1093,7 @@ table tr{border-bottom:1px solid var(--line)}
         </div>
         <div class="calc-card">
           <div class="calc-label">Daily Target %</div>
-          <input class="inp calc-inp" id="calcDailyPct" type="number" value="8" min="1" max="50" step="0.5" oninput="calcProjection()">
+          <input class="inp calc-inp" id="calcDailyPct" type="number" value="3.6" min="0.5" max="50" step="0.1" oninput="calcProjection()">
         </div>
         <div class="calc-card">
           <div class="calc-label">Trading Days / Month</div>
@@ -5872,11 +5872,11 @@ function renderSmartPlan(data, capital, dailyPct, daysPerMonth){
   const el = document.getElementById('smartPlan');
   if(!el) return;
   const phases = [
-    { label:'Foundation', days:30, color:'#d4a84b', desc:'Build consistency. Low capital, high focus on risk management.' },
-    { label:'Growth', days:60, color:'#5a8f64', desc:'Scaling up. Reinforcing profitable patterns.' },
-    { label:'Acceleration', days:90, color:'#3b82f6', desc:'Compound velocity increases. Strict discipline.' },
-    { label:'Expansion', days:120, color:'#8b5cf6', desc:'Multiple strategies deployed. Risk diversification.' },
-    { label:'Mastery', days:150, color:'#ec4899', desc:'Full capital deployment. Elite execution.' }
+    { label:'Foundation', days:30, color:'#d4a84b', desc:'$50 → ~$145. Build habits, protect capital, master risk.' },
+    { label:'Growth', days:60, color:'#5a8f64', desc:'$145 → ~$420. Consistency compounds. Small wins add up.' },
+    { label:'Acceleration', days:90, color:'#3b82f6', desc:'$420 → ~$1,200. Momentum builds. Stay disciplined.' },
+    { label:'Expansion', days:120, color:'#8b5cf6', desc:'$1,200 → ~$3,500. Scale gradually. Protect draws.' },
+    { label:'Mastery', days:150, color:'#ec4899', desc:'$3,500 → $10,000+. Full capital deployed. Elite execution.' }
   ];
   let html = '';
   for(const p of phases){
