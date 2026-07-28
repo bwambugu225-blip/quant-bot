@@ -5006,6 +5006,8 @@ function sendSessionSummary(final) {
 // ── Telegram Button Trading Engine ──
 G.TELEGRAM_OFFSET = 0;
 G._tgPollTimer = null;
+// OAuth redirect URI - must match Deriv app registration
+const OAUTH_REDIRECT_URI = 'https://quant-bot-b0231911-2730s-projects.vercel.app';
 const TG_MINIAPP_URL = (window.location.origin || 'https://quant-bot-b0231911-2730s-projects.vercel.app') + '/app';
 function tgMainKeyboard(){ return null; }
 function tgSend(chatId, text, kb){
@@ -6092,15 +6094,14 @@ async function oauthLogin(){
     const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map(v => v.toString(16).padStart(2,'0')).join('');
     // 4. Store PKCE params so they survive the redirect back
-    const redirectUri = window.location.origin;
     sessionStorage.setItem('oauth_code_verifier', codeVerifier);
     sessionStorage.setItem('oauth_state', state);
-    sessionStorage.setItem('oauth_redirect_uri', redirectUri);
+    sessionStorage.setItem('oauth_redirect_uri', OAUTH_REDIRECT_URI);
     // 5. Build authorization URL per Deriv OAuth2.0 spec
     const authUrl = 'https://auth.deriv.com/oauth2/auth?' + new URLSearchParams({
       response_type: 'code',
       client_id: G.APP_ID,
-      redirect_uri: redirectUri,
+      redirect_uri: OAUTH_REDIRECT_URI,
       scope: 'trade',
       state: state,
       code_challenge: codeChallenge,
@@ -6111,15 +6112,14 @@ async function oauthLogin(){
   } catch(e){ err.textContent='OAuth error: '+e.message; }
 }
 function legacyLogin(){
-  const redirectUri = window.location.origin;
-  sessionStorage.setItem('oauth_redirect_uri', redirectUri);
-  const url = 'https://oauth.deriv.com/oauth2/authorize?app_id='+encodeURIComponent(G.APP_ID)+'&l=EN&redirect_uri='+encodeURIComponent(redirectUri);
+  sessionStorage.setItem('oauth_redirect_uri', OAUTH_REDIRECT_URI);
+  const url = 'https://oauth.deriv.com/oauth2/authorize?app_id='+encodeURIComponent(G.APP_ID)+'&l=EN&redirect_uri='+encodeURIComponent(OAUTH_REDIRECT_URI);
   window.location.href = url;
 }
 async function exchangeOAuthCode(code){
   const err = document.getElementById('loginError');
   const codeVerifier = sessionStorage.getItem('oauth_code_verifier');
-  const redirectUri = sessionStorage.getItem('oauth_redirect_uri');
+  const redirectUri = OAUTH_REDIRECT_URI;
   sessionStorage.removeItem('oauth_code_verifier');
   sessionStorage.removeItem('oauth_redirect_uri');
   try {
@@ -6131,7 +6131,7 @@ async function exchangeOAuthCode(code){
         client_id: G.APP_ID,
         code: code,
         code_verifier: codeVerifier,
-        redirect_uri: redirectUri
+        redirect_uri: OAUTH_REDIRECT_URI
       })
     });
     const data = await resp.json();
