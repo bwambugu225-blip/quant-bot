@@ -1084,7 +1084,7 @@ table tr{border-bottom:1px solid var(--line)}
     <div class="section">
       <div class="section-title" style="display:flex;align-items:center;gap:8px">
         <span>📈 GROWTH CALCULATOR</span>
-        <span class="tag tag-blue" style="font-size:7px">COMPOUND</span>
+        <span class="tag tag-blue" style="font-size:7px">SCALE</span>
       </div>
       <div class="calc-grid">
         <div class="calc-card">
@@ -1092,8 +1092,8 @@ table tr{border-bottom:1px solid var(--line)}
           <input class="inp calc-inp" id="calcCapital" type="number" value="50" min="1" step="1" oninput="calcProjection()">
         </div>
         <div class="calc-card">
-          <div class="calc-label">Daily Target %</div>
-          <input class="inp calc-inp" id="calcDailyPct" type="number" value="3.6" min="0.5" max="50" step="0.1" oninput="calcProjection()">
+          <div class="calc-label">Scale/Day (×)</div>
+          <input class="inp calc-inp" id="calcDailyPct" type="number" value="3.6" min="0.1" max="50" step="0.1" oninput="calcProjection()">
         </div>
         <div class="calc-card">
           <div class="calc-label">Trading Days / Month</div>
@@ -1122,7 +1122,7 @@ table tr{border-bottom:1px solid var(--line)}
         <div class="plan-metric"><span class="pm-label">Day 90</span><span class="pm-val accent" id="psDay90">$0</span></div>
         <div class="plan-metric"><span class="pm-label">Day 120</span><span class="pm-val accent" id="psDay120">$0</span></div>
         <div class="plan-metric"><span class="pm-label">Day 150</span><span class="pm-val accent" id="psDay150">$0</span></div>
-        <div class="plan-metric"><span class="pm-label">Total Return</span><span class="pm-val green" id="psTotal">0%</span></div>
+        <div class="plan-metric"><span class="pm-label">Total Growth</span><span class="pm-val green" id="psTotal">0%</span></div>
         <div class="plan-metric"><span class="pm-label">Daily Avg</span><span class="pm-val" id="psDailyAvg">$0</span></div>
       </div>
     </div>
@@ -1137,7 +1137,7 @@ table tr{border-bottom:1px solid var(--line)}
       </div>
       <div id="planTableWrap" style="max-height:360px;overflow-y:auto;border:1px solid var(--line);border-radius:var(--radius-sm)">
         <table class="plan-table" id="planTable">
-          <thead><tr><th>Day</th><th>Capital</th><th>Daily P&L</th><th>Cumul. P&L</th><th>Return %</th></tr></thead>
+          <thead><tr><th>Day</th><th>Capital</th><th>Daily P&L</th><th>Cumul. P&L</th><th>Growth ×</th></tr></thead>
           <tbody id="planTbody"></tbody>
         </table>
       </div>
@@ -5803,15 +5803,15 @@ function clearRecentTrades(){
 let calcTableMode = 'milestones';
 function calcProjection(){
   const capital = parseFloat(document.getElementById('calcCapital')?.value) || 50;
-  const dailyPct = parseFloat(document.getElementById('calcDailyPct')?.value) || 8;
+  const scaleFactor = parseFloat(document.getElementById('calcDailyPct')?.value) || 8;
   const daysPerMonth = parseInt(document.getElementById('calcDays')?.value) || 22;
   const riskPct = parseFloat(document.getElementById('calcRisk')?.value) || 2;
   const wr = parseFloat(document.getElementById('calcWr')?.value) || 65;
   const tradesPerDay = parseInt(document.getElementById('calcTrades')?.value) || 3;
 
-  const dailyMult = 1 + dailyPct / 100;
+  const dailyMult = 1 + scaleFactor / 100;
   const totalDays = 150;
-  const data = [{ day:0, capital:capital, pnl:0, cumPnl:0, ret:0 }];
+  const data = [{ day:0, capital:capital, pnl:0, cumPnl:0, growth:1 }];
   let maxCapital = data[0].capital;
 
   for(let d=1; d<=totalDays; d++){
@@ -5819,12 +5819,12 @@ function calcProjection(){
     const dayCapital = prev * dailyMult;
     const dayPnl = dayCapital - prev;
     const cumPnl = data[0].capital * (Math.pow(dailyMult, d) - 1);
-    const ret = (dayCapital / data[0].capital - 1) * 100;
-    data.push({ day:d, capital:dayCapital, pnl:dayPnl, cumPnl:cumPnl, ret:ret });
+    const growth = dayCapital / data[0].capital;
+    data.push({ day:d, capital:dayCapital, pnl:dayPnl, cumPnl:cumPnl, growth:growth });
     maxCapital = Math.max(maxCapital, dayCapital);
   }
 
-  const totalRet = data[totalDays].ret;
+  const totalGrowth = data[totalDays].growth;
   const dailyAvg = data[totalDays].cumPnl / totalDays;
 
   // Update summary
@@ -5842,12 +5842,12 @@ function calcProjection(){
   });
   setF('psDay1', data[0].capital);
   const te = document.getElementById('psTotal');
-  if(te){ te.textContent = totalRet.toFixed(1) + '%'; te.className = 'pm-val ' + (totalRet > 0 ? 'green' : ''); }
+  if(te){ te.textContent = totalGrowth.toFixed(1) + '×'; te.className = 'pm-val ' + (totalGrowth > 1 ? 'green' : ''); }
   const dae = document.getElementById('psDailyAvg');
   if(dae) dae.textContent = '$' + dailyAvg.toFixed(2);
 
   renderPlanTable(data);
-  renderSmartPlan(data, capital, dailyPct, daysPerMonth);
+  renderSmartPlan(data, capital, scaleFactor, daysPerMonth);
 }
 
 function renderPlanTable(data){
@@ -5862,8 +5862,8 @@ function renderPlanTable(data){
     const capStr = '$' + d.capital.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     const pnlStr = (d.pnl >= 0 ? '+' : '') + '$' + d.pnl.toFixed(2);
     const cumStr = (d.cumPnl >= 0 ? '+' : '') + '$' + d.cumPnl.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    const retStr = d.ret.toFixed(1) + '%';
-    html += `<tr class="${cls}"><td>${d.day}</td><td>${capStr}</td><td style="color:${d.pnl>=0?'var(--positive)':'var(--negative)'}">${pnlStr}</td><td style="color:${d.cumPnl>=0?'var(--positive)':'var(--negative)'}">${cumStr}</td><td style="color:${d.ret>=0?'var(--positive)':'var(--negative)'}">${retStr}</td></tr>`;
+    const retStr = d.growth.toFixed(1) + '×';
+    html += `<tr class="${cls}"><td>${d.day}</td><td>${capStr}</td><td style="color:${d.pnl>=0?'var(--positive)':'var(--negative)'}">${pnlStr}</td><td style="color:${d.cumPnl>=0?'var(--positive)':'var(--negative)'}">${cumStr}</td><td style="color:${d.growth>=1?'var(--positive)':'var(--negative)'}">${retStr}</td></tr>`;
   }
   tbody.innerHTML = html;
 }
@@ -5872,18 +5872,18 @@ function renderSmartPlan(data, capital, dailyPct, daysPerMonth){
   const el = document.getElementById('smartPlan');
   if(!el) return;
   const phases = [
-    { label:'Foundation', days:30, color:'#d4a84b', desc:'$50 → ~$145. Build habits, protect capital, master risk.' },
-    { label:'Growth', days:60, color:'#5a8f64', desc:'$145 → ~$420. Consistency compounds. Small wins add up.' },
-    { label:'Acceleration', days:90, color:'#3b82f6', desc:'$420 → ~$1,200. Momentum builds. Stay disciplined.' },
-    { label:'Expansion', days:120, color:'#8b5cf6', desc:'$1,200 → ~$3,500. Scale gradually. Protect draws.' },
-    { label:'Mastery', days:150, color:'#ec4899', desc:'$3,500 → $10,000+. Full capital deployed. Elite execution.' }
+    { label:'Foundation', days:30, color:'#d4a84b', desc:'$50 → ~$145. Build habits, protect capital, learn to scale.' },
+    { label:'Growth', days:60, color:'#5a8f64', desc:'$145 → ~$420. Position size grows with account.' },
+    { label:'Acceleration', days:90, color:'#3b82f6', desc:'$420 → ~$1,200. Scaling momentum increases.' },
+    { label:'Expansion', days:120, color:'#8b5cf6', desc:'$1,200 → ~$3,500. Scale gradually, protect gains.' },
+    { label:'Mastery', days:150, color:'#ec4899', desc:'$3,500 → $10,000+. Full capital scaled. Elite.' }
   ];
   let html = '';
   for(const p of phases){
-    const d = data[p.days] || { capital:capital, cumPnl:0, ret:0 };
+    const d = data[p.days] || { capital:capital, cumPnl:0, growth:1 };
     const target = d.capital;
     const gain = d.cumPnl;
-    const ret = d.ret;
+    const growth = d.growth;
     const progress = Math.min(100, Math.max(0, (p.days/150)*100));
     html += `
       <div class="sp-card">
@@ -5895,7 +5895,7 @@ function renderSmartPlan(data, capital, dailyPct, daysPerMonth){
         <div class="sp-detail">
           <span class="sp-stat">$${target.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}<span class="sp-lbl"> Target</span></span>
           <span class="sp-stat" style="color:${gain>=0?'var(--positive)':'var(--negative)'}">${gain>=0?'+':''}$${gain.toFixed(2)}<span class="sp-lbl"> Gain</span></span>
-          <span class="sp-stat" style="color:${ret>=0?'var(--positive)':'var(--negative)'}">${ret.toFixed(1)}%<span class="sp-lbl"> Return</span></span>
+          <span class="sp-stat" style="color:${growth>=1?'var(--positive)':'var(--negative)'}">${growth.toFixed(1)}×<span class="sp-lbl"> Growth</span></span>
         </div>
         <div class="sp-bar"><i style="width:${progress}%;background:${p.color}"></i></div>
       </div>`;
