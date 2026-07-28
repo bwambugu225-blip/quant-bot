@@ -507,15 +507,14 @@ table tr{border-bottom:1px solid var(--line)}
 <div class="login-overlay" id="loginOverlay">
   <div class="login-card">
     <h1>BTraders</h1>
-    <p id="loginPrompt">Authorize with your Deriv account</p>
-    <button class="btn-login" onclick="oauthLogin()" id="oauthBtn">Login with Deriv</button>
+    <p id="loginPrompt">Connect with your Deriv API token</p>
     <div class="login-error" id="loginError"></div>
     <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08)">
-      <div style="font-size:9px;color:var(--muted);margin-bottom:6px">Or paste an API token</div>
-      <input type="password" id="loginPat" placeholder="Paste token from app.deriv.com/account/api-token" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#fff;font-size:11px;outline:none;margin-bottom:6px">
+      <div style="font-size:9px;color:var(--muted);margin-bottom:6px">Paste your API token from Deriv</div>
+      <input type="password" id="loginPat" placeholder="app.deriv.com/account/api-token" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#fff;font-size:11px;outline:none;margin-bottom:6px">
       <button class="btn btn-accent" onclick="authorizePat()" style="width:100%;padding:6px;border-radius:8px;border:none;font-size:11px;font-weight:600;cursor:pointer">Connect</button>
     </div>
-    <div class="login-footer">Requires <strong>Read</strong> + <strong>Trade</strong> scopes · <a href="landing.html" style="color:var(--accent);text-decoration:none">About</a> · <a href="https://t.me/btraderrsbot" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">Telegram</a></div>
+    <div class="login-footer">Requires <strong>Read</strong> + <strong>Trade</strong> scopes · <a href="https://t.me/btraderrsbot" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">Telegram Support</a></div>
     <div style="font-size:8px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap">
       <span style="color:var(--muted);font-size:7px">Plan:</span>
       <button class="tag tag-gray" style="font-size:7px;cursor:pointer;border:none;padding:2px 8px" onclick="selectLoginTier('free')" id="tierBtnFree">FREE</button>
@@ -998,7 +997,6 @@ table tr{border-bottom:1px solid var(--line)}
           <details style="border-bottom:1px solid var(--line);padding-bottom:6px">
             <summary style="font-weight:600;color:var(--text);cursor:pointer;font-size:9px">🔑 1. Authorization & App ID</summary>
             <div style="margin-top:6px;padding-left:8px">
-              <p style="margin-bottom:4px">BTraders connects to your Deriv.com options trading account securely using either <strong>OAuth 2.0 (Login with Deriv)</strong> or a <strong>Personal API Token (PAT)</strong>.</p>
               <p style="margin-bottom:4px"><strong>Required Token Scopes:</strong> To trade, your API Token must have both <strong>Read</strong> and <strong>Trade</strong> checkboxes enabled on the Deriv platform.</p>
               <p><strong>Custom App ID:</strong> For white-label deployment or utilizing custom API limits, input your developer Deriv App ID in the <em>Platform Settings</em> section and click Save. The system will refresh and run under your private brand configuration.</p>
             </div>
@@ -5959,83 +5957,7 @@ async function bulkPurchaseCopy(accounts, type, clientRefs, mult) {
   }
 }
 
-// ── Login Screen (Deriv OAuth2.0 PKCE flow) ──
-async function oauthLogin(){
-  const err = document.getElementById('loginError');
-  err.textContent='';
-  try {
-    // 1. Generate PKCE code_verifier
-    const array = crypto.getRandomValues(new Uint8Array(64));
-    const codeVerifier = Array.from(array).map(v =>
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'[v % 66]
-    ).join('');
-    // 2. Derive SHA-256 code_challenge
-    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier));
-    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    // 3. Generate random state for CSRF
-    const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-      .map(v => v.toString(16).padStart(2,'0')).join('');
-    // 4. Store PKCE params so they survive the redirect back
-    const redirectUri = window.location.origin;
-    sessionStorage.setItem('oauth_code_verifier', codeVerifier);
-    sessionStorage.setItem('oauth_state', state);
-    sessionStorage.setItem('oauth_redirect_uri', redirectUri);
-    // 5. Build authorization URL per Deriv OAuth2.0 spec
-    const authUrl = 'https://auth.deriv.com/oauth2/auth?' + new URLSearchParams({
-      response_type: 'code',
-      client_id: G.APP_ID,
-      redirect_uri: redirectUri,
-      scope: 'trade',
-      state: state,
-      code_challenge: codeChallenge,
-      code_challenge_method: 'S256'
-    }).toString();
-    // 6. Full-page redirect
-    window.location.href = authUrl;
-  } catch(e){ err.textContent='OAuth error: '+e.message; }
-}
-function legacyLogin(){
-  const redirectUri = window.location.origin;
-  sessionStorage.setItem('oauth_redirect_uri', redirectUri);
-  const url = 'https://oauth.deriv.com/oauth2/authorize?app_id='+encodeURIComponent(G.APP_ID)+'&l=EN&redirect_uri='+encodeURIComponent(redirectUri);
-  window.location.href = url;
-}
-async function exchangeOAuthCode(code){
-  const err = document.getElementById('loginError');
-  const codeVerifier = sessionStorage.getItem('oauth_code_verifier');
-  const redirectUri = sessionStorage.getItem('oauth_redirect_uri');
-  sessionStorage.removeItem('oauth_code_verifier');
-  sessionStorage.removeItem('oauth_redirect_uri');
-  try {
-    const resp = await fetch('https://auth.deriv.com/oauth2/token', {
-      method:'POST',
-      headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        grant_type:'authorization_code',
-        client_id: G.APP_ID,
-        code: code,
-        code_verifier: codeVerifier,
-        redirect_uri: redirectUri
-      })
-    });
-    const data = await resp.json();
-    if(data.access_token){
-      // If this is the popup (window.opener exists), pass token to main window
-      if(window.opener && !window.opener.closed){
-        window.opener.document.getElementById('loginPat').value = data.access_token;
-        window.opener.document.getElementById('loginError').textContent='';
-        window.opener.authorizePat();
-        setTimeout(()=>window.close(), 500);
-      } else {
-        document.getElementById('loginPat').value = data.access_token;
-        err.textContent='';
-        authorizePat();
-      }
-    } else {
-      err.textContent='Token exchange failed: '+(data.error_description||data.error||'unknown');
-  } catch(e){ err.textContent='Token exchange error: '+e.message; }
-}
+
 async function authorizePat(){
   const inp = document.getElementById('loginPat');
   const err = document.getElementById('loginError');
@@ -6043,11 +5965,10 @@ async function authorizePat(){
   if(!token){ err.textContent='Paste an API token from app.deriv.com/account/api-token'; return; }
   err.textContent='';
   inp.disabled=true;
-  document.getElementById('oauthBtn').textContent='Connecting...';
+  // Connecting;
   await doRESTFlow(token);
 }
 async function doRESTFlow(token){
-  let accounts = G._oauthAccounts;
   // Step 1: Try REST API first
   try {
     if(!accounts || !accounts.length){
@@ -6056,7 +5977,6 @@ async function doRESTFlow(token){
       if(resp.ok){
         const data = await resp.json();
         accounts = (data.data || []).map(a => ({ account:a.account_id, token:token, currency:a.currency||'USD', isDemo:a.account_type==='demo'||a.is_virtual, balance:parseFloat(a.balance||0) }));
-        G._oauthAccounts = accounts;
       }
   } catch(e){ log('[AUTH] REST accounts failed, trying WS...','w'); }
   // Step 2: Fallback — WS authorize (works with PAT and legacy tokens)
@@ -6065,14 +5985,13 @@ async function doRESTFlow(token){
       const wsAuth = await wsAuthorize(token);
       if(wsAuth && wsAuth.length){
         accounts = wsAuth;
-        G._oauthAccounts = accounts;
       }
     } catch(e){ log('[AUTH] WS authorize also failed','e'); }
   }
   if(!accounts || !accounts.length){
     document.getElementById('loginError').textContent = 'Could not fetch Deriv accounts — check your token';
     document.getElementById('loginPat').disabled=false;
-    document.getElementById('oauthBtn').textContent='Login with Deriv';
+    // Login;
     return;
   }
   // Step 3: Pick preferred account
@@ -6136,7 +6055,7 @@ function connectDirectWS(token){
     saveState();
     showApp();
     document.getElementById('loginPat').disabled=false;
-    document.getElementById('oauthBtn').textContent='Login with Deriv';
+    // Login;
     document.getElementById('loginError').textContent='';
     document.getElementById('connDot').className='conn g';
     document.getElementById('engineStatus').textContent='ONLINE';
@@ -6151,7 +6070,7 @@ function connectDirectWS(token){
   ws.onerror = () => {
     document.getElementById('loginError').textContent = 'WebSocket connection failed';
     document.getElementById('loginPat').disabled=false;
-    document.getElementById('oauthBtn').textContent='Login with Deriv';
+    // Login;
   };
   ws.onclose = () => { 
     if(G.WS === ws){ 
@@ -6271,40 +6190,11 @@ document.addEventListener('DOMContentLoaded', () => {
   initTraderId();
   console.log('%c[ADMIN] Default password: 13571 — change it in Admin → Settings','color:#d4a84b;font-weight:bold');
   
-  // Store that main bot initialized OAuth (for redirect handling)
   
-  // Check for OAuth redirect back (PKCE code or legacy token1)
+  // Clear any URL params silently
   const params = new URLSearchParams(window.location.search);
-  const urlCode = params.get('code');
-  const urlState = params.get('state');
-  const urlToken = params.get('token1');
-  
-  // ALWAYS clear URL first
-  if(urlCode || urlToken || params.get('error')){
+  if(params.toString()){
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
-  }
-  
-  if(urlCode && urlState === sessionStorage.getItem('oauth_state')){
-    // Prevent code reuse
-    const usedCodes = JSON.parse(sessionStorage.getItem('oauth_used_codes') || '[]');
-    if(usedCodes.includes(urlCode)){
-      document.getElementById('loginError').textContent = 'OAuth code already used. Please try again.';
-      console.warn('[OAUTH] Code reuse detected');
-    } else {
-      usedCodes.push(urlCode);
-      sessionStorage.setItem('oauth_used_codes', JSON.stringify(usedCodes.slice(-5)));
-      sessionStorage.removeItem('oauth_state');
-      exchangeOAuthCode(urlCode);
-    }
-  } else if(urlToken){
-    document.getElementById('loginPat').value = urlToken;
-    setTimeout(() => authorizePat(), 100);
-  } else if(urlCode && !urlState){
-    document.getElementById('loginError').textContent = 'OAuth code received but state missing - try again';
-  } else if(params.get('error')){
-    const desc = params.get('error_description') || params.get('error');
-    document.getElementById('loginError').textContent = 'OAuth error: '+desc;
-    console.warn('[OAUTH] Error:', desc);
   }
   // Login Enter key
   document.getElementById('loginPat')?.addEventListener('keydown', e => { if(e.key==='Enter') authorizePat(); });
