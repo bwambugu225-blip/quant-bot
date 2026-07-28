@@ -646,11 +646,6 @@ table tr{border-bottom:1px solid var(--line)}
 .pm-val{display:block;font-size:18px;font-weight:800;font-family:var(--font-head);color:var(--text)}
 .pm-val.accent{color:var(--accent)}
 .pm-val.green{color:var(--positive)}
-.plan-table{width:100%;border-collapse:collapse;font-size:10px}
-.plan-table th{position:sticky;top:0;background:var(--surface);padding:8px 10px;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:2px solid var(--accent);z-index:2}
-.plan-table td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:center;font-family:var(--font);font-size:10px}
-.plan-table tr:hover td{background:var(--surface-2)}
-.plan-table tr.milestone td{color:var(--accent);font-weight:700;border-bottom:1px solid var(--accent);background:var(--acc-dim)}
 .smart-plan{display:flex;flex-direction:column;gap:8px}
 .smart-plan .sp-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px;transition:all .3s}
 .smart-plan .sp-card:hover{border-color:var(--accent);transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.2)}
@@ -1079,120 +1074,54 @@ table tr{border-bottom:1px solid var(--line)}
     </div>
   </div>
 
-  <!-- TAB 4: PLAN (Calculator + Projection) -->
+  <!-- TAB 4: PLAN -->
   <div class="tab-view" id="tab-plan">
     <div class="section">
       <div class="section-title" style="display:flex;align-items:center;gap:8px">
-        <span>📈 GROWTH CALCULATOR</span>
-        <span class="tag tag-blue" style="font-size:7px">SCALE</span>
+        <span>SCALING PLAN</span>
+        <span class="tag tag-blue" style="font-size:7px">FIXED $</span>
       </div>
-      <div class="calc-grid">
+      <div class="calc-grid" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">
         <div class="calc-card">
           <div class="calc-label">Starting Capital</div>
           <input class="inp calc-inp" id="calcCapital" type="number" value="50" min="1" step="1" oninput="calcProjection()">
         </div>
         <div class="calc-card">
-          <div class="calc-label">Month 1 Trade ($)</div>
-          <input class="inp calc-inp" id="calcM1" type="number" value="2" min="0.5" step="0.5" oninput="calcProjection()">
+          <div class="calc-label">M1 Trade ($)</div>
+          <input class="inp calc-inp" id="calcM1" type="number" value="3" min="0.5" step="0.5" oninput="calcProjection()">
         </div>
         <div class="calc-card">
-          <div class="calc-label">Month 2 Trade ($)</div>
-          <input class="inp calc-inp" id="calcM2" type="number" value="5" min="0.5" step="0.5" oninput="calcProjection()">
+          <div class="calc-label">Scale ($/mo)</div>
+          <input class="inp calc-inp" id="calcScaleStep" type="number" value="7" min="0" step="1" oninput="calcProjection()">
         </div>
         <div class="calc-card">
-          <div class="calc-label">Month 3 Trade ($)</div>
-          <input class="inp calc-inp" id="calcM3" type="number" value="12" min="0.5" step="0.5" oninput="calcProjection()">
+          <div class="calc-label">Trades / Day</div>
+          <input class="inp calc-inp" id="calcTradesDay" type="number" value="4" min="1" max="20" step="1" oninput="calcProjection()">
         </div>
         <div class="calc-card">
-          <div class="calc-label">Month 4 Trade ($)</div>
-          <input class="inp calc-inp" id="calcM4" type="number" value="25" min="0.5" step="0.5" oninput="calcProjection()">
-        </div>
-        <div class="calc-card">
-          <div class="calc-label">Month 5 Trade ($)</div>
-          <input class="inp calc-inp" id="calcM5" type="number" value="50" min="0.5" step="0.5" oninput="calcProjection()">
-        </div>
-        <div class="calc-card">
-          <div class="calc-label">Reward Multiple (×)</div>
-          <input class="inp calc-inp" id="calcRRatio" type="number" value="2" min="1" max="10" step="0.5" oninput="calcProjection()">
-        </div>
-        <div class="calc-card">
-          <div class="calc-label">Wins / Day</div>
-          <input class="inp calc-inp" id="calcWinsDay" type="number" value="3" min="0" max="20" step="1" oninput="calcProjection()">
-        </div>
-        <div class="calc-card">
-          <div class="calc-label">Losses / Day</div>
-          <input class="inp calc-inp" id="calcLossDay" type="number" value="1" min="0" max="20" step="1" oninput="calcProjection()">
-        </div>
-        <div class="calc-card">
-          <div class="calc-label">Trading Days / Month</div>
-          <input class="inp calc-inp" id="calcDays" type="number" value="22" min="5" max="30" step="1" oninput="calcProjection()">
+          <div class="calc-label">Net × Trade</div>
+          <input class="inp calc-inp" id="calcNetMult" type="number" value="1.5" min="0.1" step="0.1" oninput="calcProjection()">
         </div>
       </div>
     </div>
 
     <div class="section">
+      <div class="section-title">MILESTONES</div>
       <div class="plan-summary" id="planSummary">
-        <div class="plan-metric"><span class="pm-label">Day 1</span><span class="pm-val" id="psDay1">$50.00</span></div>
-        <div class="plan-metric"><span class="pm-label">Day 30</span><span class="pm-val accent" id="psDay30">$0</span></div>
-        <div class="plan-metric"><span class="pm-label">Day 60</span><span class="pm-val accent" id="psDay60">$0</span></div>
-        <div class="plan-metric"><span class="pm-label">Day 90</span><span class="pm-val accent" id="psDay90">$0</span></div>
-        <div class="plan-metric"><span class="pm-label">Day 120</span><span class="pm-val accent" id="psDay120">$0</span></div>
-        <div class="plan-metric"><span class="pm-label">Day 150</span><span class="pm-val accent" id="psDay150">$0</span></div>
-        <div class="plan-metric"><span class="pm-label">Total Growth</span><span class="pm-val green" id="psTotal">0%</span></div>
-        <div class="plan-metric"><span class="pm-label">Daily Avg</span><span class="pm-val" id="psDailyAvg">$0</span></div>
+        <div class="plan-metric"><span class="pm-label">Start</span><span class="pm-val" id="psDay1">$50</span></div>
+        <div class="plan-metric"><span class="pm-label">Day 30</span><span class="pm-val accent" id="psDay30">--</span></div>
+        <div class="plan-metric"><span class="pm-label">Day 60</span><span class="pm-val accent" id="psDay60">--</span></div>
+        <div class="plan-metric"><span class="pm-label">Day 90</span><span class="pm-val accent" id="psDay90">--</span></div>
+        <div class="plan-metric"><span class="pm-label">Day 120</span><span class="pm-val accent" id="psDay120">--</span></div>
+        <div class="plan-metric"><span class="pm-label">Day 150</span><span class="pm-val accent" id="psDay150">--</span></div>
+        <div class="plan-metric"><span class="pm-label">Growth</span><span class="pm-val green" id="psTotal">--</span></div>
+        <div class="plan-metric"><span class="pm-label">Daily Avg</span><span class="pm-val" id="psDailyAvg">--</span></div>
       </div>
     </div>
 
     <div class="section">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div class="section-title" style="margin:0">📊 150-DAY PROJECTION</div>
-        <div style="display:flex;gap:4px">
-          <button class="btn btn-ghost" onclick="calcTableMode='all';renderPlanTable()" style="padding:3px 8px;font-size:7px">ALL</button>
-          <button class="btn btn-ghost" onclick="calcTableMode='milestones';renderPlanTable()" style="padding:3px 8px;font-size:7px">MILESTONES</button>
-        </div>
-      </div>
-      <div id="planTableWrap" style="max-height:360px;overflow-y:auto;border:1px solid var(--line);border-radius:var(--radius-sm)">
-        <table class="plan-table" id="planTable">
-          <thead><tr><th>Day</th><th>Capital</th><th>Daily P&L</th><th>Cumul. P&L</th><th>Growth ×</th></tr></thead>
-          <tbody id="planTbody"></tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">🎯 SMART TRADING PLAN</div>
+      <div class="section-title">PHASES</div>
       <div id="smartPlan" class="smart-plan"></div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">⚡ RISK REWARD SIMULATOR</div>
-      <div class="rr-grid">
-        <div class="rr-card">
-          <div class="rr-label">Account Balance</div>
-          <input class="inp calc-inp" id="rrBalance" type="number" value="100" oninput="calcRR()">
-        </div>
-        <div class="rr-card">
-          <div class="rr-label">Risk Per Trade ($)</div>
-          <input class="inp calc-inp" id="rrRisk" type="number" value="2" oninput="calcRR()">
-        </div>
-        <div class="rr-card">
-          <div class="rr-label">Reward Per Trade ($)</div>
-          <input class="inp calc-inp" id="rrReward" type="number" value="4" oninput="calcRR()">
-        </div>
-        <div class="rr-card">
-          <div class="rr-label">Win Rate (%)</div>
-          <input class="inp calc-inp" id="rrWr" type="number" value="60" oninput="calcRR()">
-        </div>
-        <div class="rr-card">
-          <div class="rr-label">Trades / Day</div>
-          <input class="inp calc-inp" id="rrTrades" type="number" value="3" oninput="calcRR()">
-        </div>
-        <div class="rr-card">
-          <div class="rr-label">Trading Days</div>
-          <input class="inp calc-inp" id="rrDays" type="number" value="30" oninput="calcRR()">
-        </div>
-      </div>
-      <div id="rrResult" class="rr-result"></div>
     </div>
   </div>
 
@@ -5816,30 +5745,21 @@ function clearRecentTrades(){
 // ============================================================
 // CALCULATOR & TRADING PLAN
 // ============================================================
-let calcTableMode = 'milestones';
 function calcProjection(){
   const capital = parseFloat(document.getElementById('calcCapital')?.value) || 50;
-  const tradeAmts = [0,
-    parseFloat(document.getElementById('calcM1')?.value) || 2,
-    parseFloat(document.getElementById('calcM2')?.value) || 5,
-    parseFloat(document.getElementById('calcM3')?.value) || 12,
-    parseFloat(document.getElementById('calcM4')?.value) || 25,
-    parseFloat(document.getElementById('calcM5')?.value) || 50
-  ];
-  const rRatio = parseFloat(document.getElementById('calcRRatio')?.value) || 2;
-  const winsDay = parseInt(document.getElementById('calcWinsDay')?.value) || 3;
-  const lossDay = parseInt(document.getElementById('calcLossDay')?.value) || 1;
-  const daysPerMonth = parseInt(document.getElementById('calcDays')?.value) || 22;
+  const m1 = parseFloat(document.getElementById('calcM1')?.value) || 3;
+  const scaleStep = parseFloat(document.getElementById('calcScaleStep')?.value) || 7;
+  const tradesDay = parseInt(document.getElementById('calcTradesDay')?.value) || 4;
+  const netMult = parseFloat(document.getElementById('calcNetMult')?.value) || 1.5;
 
-  const daysInMonth = [0, 30, 30, 30, 30, 30];
+  const tradeAmts = [0, m1, m1+scaleStep, m1+scaleStep*2, m1+scaleStep*3, m1+scaleStep*4];
   const totalDays = 150;
   const data = [{ day:0, capital:capital, pnl:0, cumPnl:0, growth:1 }];
 
   for(let d=1; d<=totalDays; d++){
     const monthIdx = d <= 30 ? 1 : d <= 60 ? 2 : d <= 90 ? 3 : d <= 120 ? 4 : 5;
     const tradeAmt = tradeAmts[monthIdx];
-    const reward = tradeAmt * rRatio;
-    const dailyPnl = (winsDay * reward) - (lossDay * tradeAmt);
+    const dailyPnl = tradesDay * tradeAmt * netMult;
     const prev = data[d-1].capital;
     const newCap = prev + dailyPnl;
     const cumPnl = newCap - capital;
@@ -5850,75 +5770,50 @@ function calcProjection(){
   const totalGrowth = data[totalDays].growth;
   const dailyAvg = data[totalDays].cumPnl / totalDays;
 
-  // Update summary
-  const setF = (id, val, isAcct=false) => {
+  const setF = (id, val, acct) => {
     const e = document.getElementById(id);
-    if(e){
-      e.textContent = '$' + val.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-      if(isAcct) e.className = 'pm-val accent';
-    }
+    if(!e) return;
+    e.textContent = '$' + val.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    if(acct && val >= capital) e.className = 'pm-val accent';
   };
-  const milestones = [30,60,90,120,150];
-  milestones.forEach(m => {
-    const d = data[m];
-    setF('psDay' + m, d.capital, true);
-  });
+  [30,60,90,120,150].forEach(x => { const d = data[x]; setF('psDay' + x, d.capital, true); });
   setF('psDay1', data[0].capital);
+
   const te = document.getElementById('psTotal');
   if(te){ te.textContent = totalGrowth.toFixed(1) + '×'; te.className = 'pm-val ' + (totalGrowth > 1 ? 'green' : ''); }
   const dae = document.getElementById('psDailyAvg');
   if(dae) dae.textContent = '$' + dailyAvg.toFixed(2);
 
-  renderPlanTable(data);
-  renderSmartPlan(data, capital);
+  renderSmartPlan(data, capital, tradeAmts, tradesDay, netMult);
 }
 
-function renderPlanTable(data){
-  const tbody = document.getElementById('planTbody');
-  if(!tbody) return;
-  let html = '';
-  const milestones = new Set([0,30,60,90,120,150]);
-  const step = calcTableMode === 'milestones' ? 5 : 1;
-  for(let i=0; i<data.length; i+=step){
-    const d = data[i];
-    const cls = (i===0 || milestones.has(i)) ? 'milestone' : '';
-    const capStr = '$' + d.capital.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    const pnlStr = (d.pnl >= 0 ? '+' : '') + '$' + d.pnl.toFixed(2);
-    const cumStr = (d.cumPnl >= 0 ? '+' : '') + '$' + d.cumPnl.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    const retStr = d.growth.toFixed(1) + '×';
-    html += `<tr class="${cls}"><td>${d.day}</td><td>${capStr}</td><td style="color:${d.pnl>=0?'var(--positive)':'var(--negative)'}">${pnlStr}</td><td style="color:${d.cumPnl>=0?'var(--positive)':'var(--negative)'}">${cumStr}</td><td style="color:${d.growth>=1?'var(--positive)':'var(--negative)'}">${retStr}</td></tr>`;
-  }
-  tbody.innerHTML = html;
-}
-
-function renderSmartPlan(data, capital){
+function renderSmartPlan(data, capital, tradeAmts, tradesDay, netMult){
   const el = document.getElementById('smartPlan');
   if(!el) return;
   const phases = [
-    { label:'Foundation', days:30, color:'#d4a84b', desc:'$50 → ~$145. Build habits, protect capital, learn to scale.' },
-    { label:'Growth', days:60, color:'#5a8f64', desc:'$145 → ~$420. Position size grows with account.' },
-    { label:'Acceleration', days:90, color:'#3b82f6', desc:'$420 → ~$1,200. Scaling momentum increases.' },
-    { label:'Expansion', days:120, color:'#8b5cf6', desc:'$1,200 → ~$3,500. Scale gradually, protect gains.' },
-    { label:'Mastery', days:150, color:'#ec4899', desc:'$3,500 → $10,000+. Full capital scaled. Elite.' }
+    { label:'Foundation', days:30, color:'#d4a84b' },
+    { label:'Growth', days:60, color:'#5a8f64' },
+    { label:'Acceleration', days:90, color:'#3b82f6' },
+    { label:'Expansion', days:120, color:'#8b5cf6' },
+    { label:'Mastery', days:150, color:'#ec4899' }
   ];
   let html = '';
-  for(const p of phases){
+  for(let i=0; i<phases.length; i++){
+    const p = phases[i];
     const d = data[p.days] || { capital:capital, cumPnl:0, growth:1 };
-    const target = d.capital;
-    const gain = d.cumPnl;
-    const growth = d.growth;
+    const tradeAmt = tradeAmts[i+1];
+    const dailyPnl = tradesDay * tradeAmt * netMult;
     const progress = Math.min(100, Math.max(0, (p.days/150)*100));
     html += `
       <div class="sp-card">
         <div style="display:flex;justify-content:space-between;align-items:center">
-          <span class="sp-phase">${p.label}</span>
+          <span class="sp-phase" style="color:${p.color}">${p.label}</span>
           <span class="sp-days">Day ${p.days}</span>
         </div>
-        <div style="font-size:10px;color:var(--muted);margin-bottom:6px">${p.desc}</div>
         <div class="sp-detail">
-          <span class="sp-stat">$${target.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}<span class="sp-lbl"> Target</span></span>
-          <span class="sp-stat" style="color:${gain>=0?'var(--positive)':'var(--negative)'}">${gain>=0?'+':''}$${gain.toFixed(2)}<span class="sp-lbl"> Gain</span></span>
-          <span class="sp-stat" style="color:${growth>=1?'var(--positive)':'var(--negative)'}">${growth.toFixed(1)}×<span class="sp-lbl"> Growth</span></span>
+          <span class="sp-stat"><span class="sp-lbl">Trade</span> $${tradeAmt.toFixed(2)}</span>
+          <span class="sp-stat"><span class="sp-lbl">Daily</span> $${dailyPnl.toFixed(2)}</span>
+          <span class="sp-stat" style="color:var(--accent)">$${d.capital.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}<span class="sp-lbl"> Balance</span></span>
         </div>
         <div class="sp-bar"><i style="width:${progress}%;background:${p.color}"></i></div>
       </div>`;
@@ -5926,40 +5821,7 @@ function renderSmartPlan(data, capital){
   el.innerHTML = html;
 }
 
-function calcRR(){
-  const balance = parseFloat(document.getElementById('rrBalance')?.value) || 100;
-  const risk = parseFloat(document.getElementById('rrRisk')?.value) || 2;
-  const reward = parseFloat(document.getElementById('rrReward')?.value) || 4;
-  const wr = parseFloat(document.getElementById('rrWr')?.value) || 60;
-  const tradesDay = parseInt(document.getElementById('rrTrades')?.value) || 3;
-  const days = parseInt(document.getElementById('rrDays')?.value) || 30;
-
-  const riskPerTradeBal = (risk/balance)*100;
-  const rrRatio = reward/risk;
-  const expectedVal = (wr/100 * reward) - ((1-wr/100) * risk);
-  const tradesTotal = tradesDay * days;
-  const projectedPnl = expectedVal * tradesTotal;
-  const finalBal = balance + projectedPnl;
-  const projectedRet = (finalBal/balance - 1) * 100;
-  const maxDrawdown = (1-wr/100) * risk * 3; // rough 3-loss streak
-  const sharpeLike = riskPerTradeBal > 0 ? (projectedRet/350) / (riskPerTradeBal * Math.sqrt(1-wr/100)) : 0;
-
-  const el = document.getElementById('rrResult');
-  if(!el) return;
-  el.innerHTML = `
-    <div class="rr-item"><span class="rr-num" style="color:var(--accent)">${rrRatio.toFixed(2)}</span><span class="rr-lbl">R:R Ratio</span></div>
-    <div class="rr-item"><span class="rr-num" style="color:${expectedVal>=0?'var(--positive)':'var(--negative)'}">$${expectedVal.toFixed(2)}</span><span class="rr-lbl">Expected / Trade</span></div>
-    <div class="rr-item"><span class="rr-num" style="color:var(--positive)">$${projectedPnl.toFixed(2)}</span><span class="rr-lbl">Projected P&L</span></div>
-    <div class="rr-item"><span class="rr-num" style="color:var(--accent)">$${finalBal.toFixed(2)}</span><span class="rr-lbl">Final Balance</span></div>
-    <div class="rr-item"><span class="rr-num" style="color:${projectedRet>=0?'var(--positive)':'var(--negative)'}">${projectedRet.toFixed(1)}%</span><span class="rr-lbl">Return</span></div>
-    <div class="rr-item"><span class="rr-num" style="color:var(--negative)">$${maxDrawdown.toFixed(2)}</span><span class="rr-lbl">Est. Max DD</span></div>`;
-}
-
-// Auto-calc on tab switch
-function initPlanTab(){
-  calcProjection();
-  calcRR();
-}
+function initPlanTab(){ calcProjection(); }
 
 // ============================================================
 // SESSION PERSISTENCE (localStorage)
