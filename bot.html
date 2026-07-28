@@ -632,6 +632,47 @@ table tr{border-bottom:1px solid var(--line)}
 
 /* Chart canvas grows in its own tab */
 #tab-chart #liveChart{height:46vh}
+
+/* ── Calculator & Plan ── */
+.calc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-bottom:10px}
+.calc-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px;transition:border-color .25s}
+.calc-card:hover{border-color:var(--accent)}
+.calc-label{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:6px;font-family:var(--font-head)}
+.calc-inp{font-size:14px!important;font-weight:700!important;text-align:center;padding:6px 8px!important;border-radius:var(--radius-sm)!important}
+.plan-summary{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:6px}
+.plan-metric{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px;text-align:center;transition:all .3s}
+.plan-metric:hover{border-color:var(--accent);transform:translateY(-1px)}
+.pm-label{display:block;font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:4px}
+.pm-val{display:block;font-size:18px;font-weight:800;font-family:var(--font-head);color:var(--text)}
+.pm-val.accent{color:var(--accent)}
+.pm-val.green{color:var(--positive)}
+.plan-table{width:100%;border-collapse:collapse;font-size:10px}
+.plan-table th{position:sticky;top:0;background:var(--surface);padding:8px 10px;font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:700;border-bottom:2px solid var(--accent);z-index:2}
+.plan-table td{padding:6px 10px;border-bottom:1px solid var(--line);text-align:center;font-family:var(--font);font-size:10px}
+.plan-table tr:hover td{background:var(--surface-2)}
+.plan-table tr.milestone td{color:var(--accent);font-weight:700;border-bottom:1px solid var(--accent);background:var(--acc-dim)}
+.smart-plan{display:flex;flex-direction:column;gap:8px}
+.smart-plan .sp-card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px;transition:all .3s}
+.smart-plan .sp-card:hover{border-color:var(--accent);transform:translateY(-1px);box-shadow:0 4px 16px rgba(0,0,0,.2)}
+.smart-plan .sp-phase{font-family:var(--font-serif);font-size:12px;font-weight:700;letter-spacing:1px;color:var(--accent);margin-bottom:4px;text-transform:uppercase}
+.smart-plan .sp-days{font-size:8px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+.smart-plan .sp-detail{display:flex;justify-content:space-between;align-items:center;margin-top:6px;flex-wrap:wrap;gap:4px}
+.smart-plan .sp-stat{font-size:10px;font-weight:600}
+.smart-plan .sp-stat .sp-lbl{color:var(--muted);font-weight:400;font-size:8px;text-transform:uppercase;letter-spacing:.5px}
+.smart-plan .sp-bar{height:3px;border-radius:2px;background:var(--surface-2);margin-top:8px;overflow:hidden}
+.smart-plan .sp-bar i{display:block;height:100%;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--positive));transition:width .6s cubic-bezier(.16,1,.3,1)}
+.rr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:6px;margin-bottom:10px}
+.rr-result{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-sm);padding:14px;display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:6px}
+.rr-result .rr-item{text-align:center;padding:6px}
+.rr-result .rr-item .rr-num{font-size:20px;font-weight:800;display:block;font-family:var(--font-head)}
+.rr-result .rr-item .rr-lbl{font-size:7px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-top:2px}
+@media(max-width:767px){
+  .calc-grid{grid-template-columns:repeat(2,1fr)}
+  .plan-summary{grid-template-columns:repeat(2,1fr)}
+  .rr-grid{grid-template-columns:repeat(2,1fr)}
+  .plan-table{font-size:9px}
+  .plan-table td,.plan-table th{padding:4px 6px}
+}
 </style>
 </head>
 <body class="dark" style="margin:0">
@@ -1038,7 +1079,108 @@ table tr{border-bottom:1px solid var(--line)}
     </div>
   </div>
 
-  <!-- TAB 4: SETTINGS -->
+  <!-- TAB 4: PLAN (Calculator + Projection) -->
+  <div class="tab-view" id="tab-plan">
+    <div class="section">
+      <div class="section-title" style="display:flex;align-items:center;gap:8px">
+        <span>📈 GROWTH CALCULATOR</span>
+        <span class="tag tag-blue" style="font-size:7px">COMPOUND</span>
+      </div>
+      <div class="calc-grid">
+        <div class="calc-card">
+          <div class="calc-label">Starting Capital</div>
+          <input class="inp calc-inp" id="calcCapital" type="number" value="50" min="1" step="1" oninput="calcProjection()">
+        </div>
+        <div class="calc-card">
+          <div class="calc-label">Daily Target %</div>
+          <input class="inp calc-inp" id="calcDailyPct" type="number" value="8" min="1" max="50" step="0.5" oninput="calcProjection()">
+        </div>
+        <div class="calc-card">
+          <div class="calc-label">Trading Days / Month</div>
+          <input class="inp calc-inp" id="calcDays" type="number" value="22" min="5" max="30" step="1" oninput="calcProjection()">
+        </div>
+        <div class="calc-card">
+          <div class="calc-label">Risk Per Trade (%)</div>
+          <input class="inp calc-inp" id="calcRisk" type="number" value="2" min="0.5" max="10" step="0.5" oninput="calcProjection()">
+        </div>
+        <div class="calc-card">
+          <div class="calc-label">Win Rate (%)</div>
+          <input class="inp calc-inp" id="calcWr" type="number" value="65" min="30" max="95" step="1" oninput="calcProjection()">
+        </div>
+        <div class="calc-card">
+          <div class="calc-label">Trades / Day</div>
+          <input class="inp calc-inp" id="calcTrades" type="number" value="3" min="1" max="20" step="1" oninput="calcProjection()">
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="plan-summary" id="planSummary">
+        <div class="plan-metric"><span class="pm-label">Day 1</span><span class="pm-val" id="psDay1">$50.00</span></div>
+        <div class="plan-metric"><span class="pm-label">Day 30</span><span class="pm-val accent" id="psDay30">$0</span></div>
+        <div class="plan-metric"><span class="pm-label">Day 60</span><span class="pm-val accent" id="psDay60">$0</span></div>
+        <div class="plan-metric"><span class="pm-label">Day 90</span><span class="pm-val accent" id="psDay90">$0</span></div>
+        <div class="plan-metric"><span class="pm-label">Day 120</span><span class="pm-val accent" id="psDay120">$0</span></div>
+        <div class="plan-metric"><span class="pm-label">Day 150</span><span class="pm-val accent" id="psDay150">$0</span></div>
+        <div class="plan-metric"><span class="pm-label">Total Return</span><span class="pm-val green" id="psTotal">0%</span></div>
+        <div class="plan-metric"><span class="pm-label">Daily Avg</span><span class="pm-val" id="psDailyAvg">$0</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <div class="section-title" style="margin:0">📊 150-DAY PROJECTION</div>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-ghost" onclick="calcTableMode='all';renderPlanTable()" style="padding:3px 8px;font-size:7px">ALL</button>
+          <button class="btn btn-ghost" onclick="calcTableMode='milestones';renderPlanTable()" style="padding:3px 8px;font-size:7px">MILESTONES</button>
+        </div>
+      </div>
+      <div id="planTableWrap" style="max-height:360px;overflow-y:auto;border:1px solid var(--line);border-radius:var(--radius-sm)">
+        <table class="plan-table" id="planTable">
+          <thead><tr><th>Day</th><th>Capital</th><th>Daily P&L</th><th>Cumul. P&L</th><th>Return %</th></tr></thead>
+          <tbody id="planTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">🎯 SMART TRADING PLAN</div>
+      <div id="smartPlan" class="smart-plan"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">⚡ RISK REWARD SIMULATOR</div>
+      <div class="rr-grid">
+        <div class="rr-card">
+          <div class="rr-label">Account Balance</div>
+          <input class="inp calc-inp" id="rrBalance" type="number" value="100" oninput="calcRR()">
+        </div>
+        <div class="rr-card">
+          <div class="rr-label">Risk Per Trade ($)</div>
+          <input class="inp calc-inp" id="rrRisk" type="number" value="2" oninput="calcRR()">
+        </div>
+        <div class="rr-card">
+          <div class="rr-label">Reward Per Trade ($)</div>
+          <input class="inp calc-inp" id="rrReward" type="number" value="4" oninput="calcRR()">
+        </div>
+        <div class="rr-card">
+          <div class="rr-label">Win Rate (%)</div>
+          <input class="inp calc-inp" id="rrWr" type="number" value="60" oninput="calcRR()">
+        </div>
+        <div class="rr-card">
+          <div class="rr-label">Trades / Day</div>
+          <input class="inp calc-inp" id="rrTrades" type="number" value="3" oninput="calcRR()">
+        </div>
+        <div class="rr-card">
+          <div class="rr-label">Trading Days</div>
+          <input class="inp calc-inp" id="rrDays" type="number" value="30" oninput="calcRR()">
+        </div>
+      </div>
+      <div id="rrResult" class="rr-result"></div>
+    </div>
+  </div>
+
+  <!-- TAB 5: SETTINGS -->
   <div class="tab-view" id="tab-settings">
     <div class="section">
       <div id="logBox" class="console-box" style="max-height:100px;margin-bottom:10px"></div>
@@ -1266,6 +1408,9 @@ table tr{border-bottom:1px solid var(--line)}
     </button>
     <button class="nav-btn" data-tab="digits" onclick="switchTab('digits')">
       <span class="nav-lbl">DIGITS</span>
+    </button>
+    <button class="nav-btn" data-tab="plan" onclick="switchTab('plan')">
+      <span class="nav-lbl">PLAN</span>
     </button>
     <button class="nav-btn" data-tab="settings" onclick="switchTab('settings')">
       <span class="nav-lbl">SETTINGS</span>
@@ -4697,6 +4842,7 @@ function switchTab(tab){
   // Keep chart canvas sized correctly when its tab becomes visible
   if(tab==='chart' && typeof drawChart==='function'){ try{ drawChart(); }catch(e){} }
   if(tab==='digits' && !tierCheck('digits')){ showToast('Digits requires Pro — upgrade at btraders.app','warn'); }
+  if(tab==='plan'){ try{ initPlanTab(); }catch(e){} }
   window.scrollTo(0,0);
 }
 // No sidebar anymore — Escape does nothing special
@@ -5649,6 +5795,147 @@ function addRecentTrade(text,cls){
 function clearRecentTrades(){
   const el = document.getElementById('recentTrades');
   if(el){ el.innerHTML='No trades yet'; }
+}
+
+// ============================================================
+// CALCULATOR & TRADING PLAN
+// ============================================================
+let calcTableMode = 'milestones';
+function calcProjection(){
+  const capital = parseFloat(document.getElementById('calcCapital')?.value) || 50;
+  const dailyPct = parseFloat(document.getElementById('calcDailyPct')?.value) || 8;
+  const daysPerMonth = parseInt(document.getElementById('calcDays')?.value) || 22;
+  const riskPct = parseFloat(document.getElementById('calcRisk')?.value) || 2;
+  const wr = parseFloat(document.getElementById('calcWr')?.value) || 65;
+  const tradesPerDay = parseInt(document.getElementById('calcTrades')?.value) || 3;
+
+  const dailyMult = 1 + dailyPct / 100;
+  const totalDays = 150;
+  const data = [{ day:0, capital:capital, pnl:0, cumPnl:0, ret:0 }];
+  let maxCapital = data[0].capital;
+
+  for(let d=1; d<=totalDays; d++){
+    const prev = data[d-1].capital;
+    const dayCapital = prev * dailyMult;
+    const dayPnl = dayCapital - prev;
+    const cumPnl = data[0].capital * (Math.pow(dailyMult, d) - 1);
+    const ret = (dayCapital / data[0].capital - 1) * 100;
+    data.push({ day:d, capital:dayCapital, pnl:dayPnl, cumPnl:cumPnl, ret:ret });
+    maxCapital = Math.max(maxCapital, dayCapital);
+  }
+
+  const totalRet = data[totalDays].ret;
+  const dailyAvg = data[totalDays].cumPnl / totalDays;
+
+  // Update summary
+  const setF = (id, val, isAcct=false) => {
+    const e = document.getElementById(id);
+    if(e){
+      e.textContent = '$' + val.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      if(isAcct) e.className = 'pm-val accent';
+    }
+  };
+  const milestones = [30,60,90,120,150];
+  milestones.forEach(m => {
+    const d = data[m];
+    setF('psDay' + m, d.capital, true);
+  });
+  setF('psDay1', data[0].capital);
+  const te = document.getElementById('psTotal');
+  if(te){ te.textContent = totalRet.toFixed(1) + '%'; te.className = 'pm-val ' + (totalRet > 0 ? 'green' : ''); }
+  const dae = document.getElementById('psDailyAvg');
+  if(dae) dae.textContent = '$' + dailyAvg.toFixed(2);
+
+  renderPlanTable(data);
+  renderSmartPlan(data, capital, dailyPct, daysPerMonth);
+}
+
+function renderPlanTable(data){
+  const tbody = document.getElementById('planTbody');
+  if(!tbody) return;
+  let html = '';
+  const milestones = new Set([0,30,60,90,120,150]);
+  const step = calcTableMode === 'milestones' ? 5 : 1;
+  for(let i=0; i<data.length; i+=step){
+    const d = data[i];
+    const cls = (i===0 || milestones.has(i)) ? 'milestone' : '';
+    const capStr = '$' + d.capital.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const pnlStr = (d.pnl >= 0 ? '+' : '') + '$' + d.pnl.toFixed(2);
+    const cumStr = (d.cumPnl >= 0 ? '+' : '') + '$' + d.cumPnl.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    const retStr = d.ret.toFixed(1) + '%';
+    html += `<tr class="${cls}"><td>${d.day}</td><td>${capStr}</td><td style="color:${d.pnl>=0?'var(--positive)':'var(--negative)'}">${pnlStr}</td><td style="color:${d.cumPnl>=0?'var(--positive)':'var(--negative)'}">${cumStr}</td><td style="color:${d.ret>=0?'var(--positive)':'var(--negative)'}">${retStr}</td></tr>`;
+  }
+  tbody.innerHTML = html;
+}
+
+function renderSmartPlan(data, capital, dailyPct, daysPerMonth){
+  const el = document.getElementById('smartPlan');
+  if(!el) return;
+  const phases = [
+    { label:'Foundation', days:30, color:'#d4a84b', desc:'Build consistency. Low capital, high focus on risk management.' },
+    { label:'Growth', days:60, color:'#5a8f64', desc:'Scaling up. Reinforcing profitable patterns.' },
+    { label:'Acceleration', days:90, color:'#3b82f6', desc:'Compound velocity increases. Strict discipline.' },
+    { label:'Expansion', days:120, color:'#8b5cf6', desc:'Multiple strategies deployed. Risk diversification.' },
+    { label:'Mastery', days:150, color:'#ec4899', desc:'Full capital deployment. Elite execution.' }
+  ];
+  let html = '';
+  for(const p of phases){
+    const d = data[p.days] || { capital:capital, cumPnl:0, ret:0 };
+    const target = d.capital;
+    const gain = d.cumPnl;
+    const ret = d.ret;
+    const progress = Math.min(100, Math.max(0, (p.days/150)*100));
+    html += `
+      <div class="sp-card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span class="sp-phase">${p.label}</span>
+          <span class="sp-days">Day ${p.days}</span>
+        </div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:6px">${p.desc}</div>
+        <div class="sp-detail">
+          <span class="sp-stat">$${target.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}<span class="sp-lbl"> Target</span></span>
+          <span class="sp-stat" style="color:${gain>=0?'var(--positive)':'var(--negative)'}">${gain>=0?'+':''}$${gain.toFixed(2)}<span class="sp-lbl"> Gain</span></span>
+          <span class="sp-stat" style="color:${ret>=0?'var(--positive)':'var(--negative)'}">${ret.toFixed(1)}%<span class="sp-lbl"> Return</span></span>
+        </div>
+        <div class="sp-bar"><i style="width:${progress}%;background:${p.color}"></i></div>
+      </div>`;
+  }
+  el.innerHTML = html;
+}
+
+function calcRR(){
+  const balance = parseFloat(document.getElementById('rrBalance')?.value) || 100;
+  const risk = parseFloat(document.getElementById('rrRisk')?.value) || 2;
+  const reward = parseFloat(document.getElementById('rrReward')?.value) || 4;
+  const wr = parseFloat(document.getElementById('rrWr')?.value) || 60;
+  const tradesDay = parseInt(document.getElementById('rrTrades')?.value) || 3;
+  const days = parseInt(document.getElementById('rrDays')?.value) || 30;
+
+  const riskPerTradeBal = (risk/balance)*100;
+  const rrRatio = reward/risk;
+  const expectedVal = (wr/100 * reward) - ((1-wr/100) * risk);
+  const tradesTotal = tradesDay * days;
+  const projectedPnl = expectedVal * tradesTotal;
+  const finalBal = balance + projectedPnl;
+  const projectedRet = (finalBal/balance - 1) * 100;
+  const maxDrawdown = (1-wr/100) * risk * 3; // rough 3-loss streak
+  const sharpeLike = riskPerTradeBal > 0 ? (projectedRet/350) / (riskPerTradeBal * Math.sqrt(1-wr/100)) : 0;
+
+  const el = document.getElementById('rrResult');
+  if(!el) return;
+  el.innerHTML = `
+    <div class="rr-item"><span class="rr-num" style="color:var(--accent)">${rrRatio.toFixed(2)}</span><span class="rr-lbl">R:R Ratio</span></div>
+    <div class="rr-item"><span class="rr-num" style="color:${expectedVal>=0?'var(--positive)':'var(--negative)'}">$${expectedVal.toFixed(2)}</span><span class="rr-lbl">Expected / Trade</span></div>
+    <div class="rr-item"><span class="rr-num" style="color:var(--positive)">$${projectedPnl.toFixed(2)}</span><span class="rr-lbl">Projected P&L</span></div>
+    <div class="rr-item"><span class="rr-num" style="color:var(--accent)">$${finalBal.toFixed(2)}</span><span class="rr-lbl">Final Balance</span></div>
+    <div class="rr-item"><span class="rr-num" style="color:${projectedRet>=0?'var(--positive)':'var(--negative)'}">${projectedRet.toFixed(1)}%</span><span class="rr-lbl">Return</span></div>
+    <div class="rr-item"><span class="rr-num" style="color:var(--negative)">$${maxDrawdown.toFixed(2)}</span><span class="rr-lbl">Est. Max DD</span></div>`;
+}
+
+// Auto-calc on tab switch
+function initPlanTab(){
+  calcProjection();
+  calcRR();
 }
 
 // ============================================================
