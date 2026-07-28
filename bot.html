@@ -6,9 +6,6 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<meta name="theme-color" content="#0d0c0a">
-<!-- Telegram WebApp SDK -->
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <title>BTraders</title>
 <style>
 :root{
@@ -507,15 +504,15 @@ table tr{border-bottom:1px solid var(--line)}
 <div class="login-overlay" id="loginOverlay">
   <div class="login-card">
     <h1>BTraders</h1>
-    <p id="loginPrompt">Connect to your Deriv account</p>
-    <button class="btn-login" onclick="startOAuthLogin()" id="oauthBtn">Login with Deriv</button>
+    <p id="loginPrompt">Authorize with your Deriv account</p>
+    <button class="btn-login" onclick="oauthLogin()" id="oauthBtn">Login with Deriv</button>
     <div class="login-error" id="loginError"></div>
     <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08)">
       <div style="font-size:9px;color:var(--muted);margin-bottom:6px">Or paste an API token</div>
-      <input type="password" id="loginPat" placeholder="app.deriv.com/account/api-token" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#fff;font-size:11px;outline:none;margin-bottom:6px">
-      <button class="btn btn-accent" onclick="authorizePat()" style="width:100%;padding:6px;border-radius:8px;border:none;font-size:11px;font-weight:600;cursor:pointer">Connect with Token</button>
+      <input type="password" id="loginPat" placeholder="Paste token from app.deriv.com/account/api-token" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#fff;font-size:11px;outline:none;margin-bottom:6px">
+      <button class="btn btn-accent" onclick="authorizePat()" style="width:100%;padding:6px;border-radius:8px;border:none;font-size:11px;font-weight:600;cursor:pointer">Connect</button>
     </div>
-    <div class="login-footer">Requires <strong>Read</strong> + <strong>Trade</strong> scopes · <a href="https://t.me/btraderrsbot" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">Telegram Support</a></div>
+    <div class="login-footer">Requires <strong>Read</strong> + <strong>Trade</strong> scopes · <a href="landing.html" style="color:var(--accent);text-decoration:none">About</a> · <a href="https://t.me/btraderrsbot" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">Telegram</a></div>
     <div style="font-size:8px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap">
       <span style="color:var(--muted);font-size:7px">Plan:</span>
       <button class="tag tag-gray" style="font-size:7px;cursor:pointer;border:none;padding:2px 8px" onclick="selectLoginTier('free')" id="tierBtnFree">FREE</button>
@@ -998,6 +995,7 @@ table tr{border-bottom:1px solid var(--line)}
           <details style="border-bottom:1px solid var(--line);padding-bottom:6px">
             <summary style="font-weight:600;color:var(--text);cursor:pointer;font-size:9px">🔑 1. Authorization & App ID</summary>
             <div style="margin-top:6px;padding-left:8px">
+              <p style="margin-bottom:4px">BTraders connects to your Deriv.com options trading account securely using either <strong>OAuth 2.0 (Login with Deriv)</strong> or a <strong>Personal API Token (PAT)</strong>.</p>
               <p style="margin-bottom:4px"><strong>Required Token Scopes:</strong> To trade, your API Token must have both <strong>Read</strong> and <strong>Trade</strong> checkboxes enabled on the Deriv platform.</p>
               <p><strong>Custom App ID:</strong> For white-label deployment or utilizing custom API limits, input your developer Deriv App ID in the <em>Platform Settings</em> section and click Save. The system will refresh and run under your private brand configuration.</p>
             </div>
@@ -1110,7 +1108,7 @@ const G = {
   SELECTED_STRATEGY: 'AUTO',
   WS:null, CONNECTED:false, AUTH:false, RID:0, TOKEN:'', CLOSING_TRADE_WS:false,
   APP_ID:localStorage.getItem('deriv_app_id') || '33JFxN3sbe2usdFigbMb8',
-  ACCOUNT_ID:null, ACCOUNT_TYPE:'real', BALANCE:0,
+  ACCOUNT_ID:null, ACCOUNT_TYPE:'demo', BALANCE:0,
   RUNNING:false,
   ACTIVE_CONTRACTS:new Map(),
   PROCESSED_CONTRACTS:new Set(),
@@ -1316,6 +1314,7 @@ function sbInit(){
         }),
       };
       return _b;
+    }
   };
   return _sbClient;
 }
@@ -1352,6 +1351,7 @@ async function sbEnsureUser(derivId, token, type, balance, traderId){
       const storedName = localStorage.getItem('btr_username');
       if(storedName){ try { await sb.from('users').update({ username: storedName }).eq('deriv_id', derivId); } catch(e){} }
       return data;
+    }
     const newTraderId = traderId || genTraderId();
     const { data, error } = await sb.from('users').insert({
       deriv_id: derivId, deriv_token: token || '', account_type: type || 'demo',
@@ -1379,6 +1379,7 @@ async function sbUpsertUser(){
         localStorage.setItem('btr_username', name);
         u.username = name;
       }
+    }
     // Load persisted session settings from DB (takes precedence over localStorage)
     try {
       const loaded = await loadSettingsFromDB();
@@ -1578,6 +1579,7 @@ function applySettings(s){
       const toggle = document.getElementById('accToggle'); if(toggle) toggle.checked = s.account_type === 'real';
       const badge = document.getElementById('accBadge'); if(badge){ badge.textContent = s.account_type.toUpperCase(); badge.className = `acc-badge ${s.account_type}`; }
       const al = document.getElementById('accLabel'); if(al) al.textContent = s.account_type.toUpperCase();
+    }
     if(s.trade_mode) G.TRADE_MODE = s.trade_mode;
     if(s.current_market) G.CURRENT_MARKET = s.current_market;
     if(s.trade_duration) G.TRADE_DURATION = s.trade_duration;
@@ -1593,11 +1595,13 @@ function applySettings(s){
       if(s.botstate.baseStake) BotState.baseStake = s.botstate.baseStake;
       if(s.botstate.targetProfit) BotState.targetProfit = s.botstate.targetProfit;
       if(s.botstate.stopLoss) BotState.stopLoss = s.botstate.stopLoss;
+    }
     if(s.martingale){ const m=s.martingale;
       if(typeof m.enabled==='boolean') Martingale.enabled=m.enabled;
       if(m.mult) Martingale.mult=m.mult;
       if(m.baseStake) Martingale.baseStake=m.baseStake;
       if(m.currentStake) Martingale.currentStake=m.currentStake;
+    }
     if(typeof s.ai_trading_enabled==='boolean'){ G.AI_TRADING_ENABLED = s.ai_trading_enabled; syncAiToggleUI(); }
     if(typeof s.copy_trading_enabled==='boolean') G.COPYTRADING_ENABLED = s.copy_trading_enabled;
     if(Array.isArray(s.copy_traders)) G.COPY_TRADERS = s.copy_traders.map(c => ({ ...c, copyOnline: !!c.copyOnline, status: 'offline' }));
@@ -1616,6 +1620,7 @@ function applySettings(s){
       const eao=document.getElementById('settingAO'); if(eao) eao.checked=ChartSettings.ao;
       const ear=document.getElementById('settingAroon'); if(ear) ear.checked=ChartSettings.aroon;
       const e4=document.getElementById('settingBodyRatio'); if(e4) e4.value=ChartSettings.bodyRatio;
+    }
     if(s.token){ G.TOKEN = s.token; const e=document.getElementById('loginPat') || document.getElementById('apiToken'); if(e) e.value=s.token; }
     return true;
   } catch(e){ console.warn('[APPLY SETTINGS]', e.message); return false; }
@@ -1777,6 +1782,7 @@ async function adminUserAction(derivId, action, selEl){
     if(confirm('Reset this user\'s saved settings (copy clients, strategy, etc.)?')){
       const ok = await sbClearUserSettings(derivId);
       if(ok) alert('Settings cleared for ' + derivId);
+    }
     if(selEl) selEl.value='';
     renderAdminUsers(document.getElementById('adminContent'));
     return;
@@ -2215,6 +2221,7 @@ function initStrategies(){
         const dist=d>0?Math.abs(last.close-k.low):Math.abs(last.close-k.high);
         if(dist<gap*0.6&&dist<tol)return{action:d>0?'RISE':'FALL',conf:85,src:'ICT_OB'};
       }
+    }
     return null;
   }});
 
@@ -2225,6 +2232,7 @@ function initStrategies(){
       const a=c[i],b=c[i+1],d=c[i+2];if(!a||!b||!d)continue;
       if(a.high<d.low&&last.close>=a.high&&last.close<=d.low)return{action:'RISE',conf:84,src:'FVG'};
       if(a.low>d.high&&last.close<=a.low&&last.close>=d.high)return{action:'FALL',conf:84,src:'FVG'};
+    }
     return null;
   }});
 
@@ -2295,6 +2303,7 @@ function initStrategies(){
     if((bbU-bbL)<std*2.5){
       if(last.close>bbU&&prev.close<=bbU)return{action:'RISE',conf:87,src:'KELTNER_SQZ'};
       if(last.close<bbL&&prev.close>=bbL)return{action:'FALL',conf:87,src:'KELTNER_SQZ'};
+    }
     return null;
   }});
 
@@ -2513,6 +2522,7 @@ function evaluateDigitStrategy(sym){
     const rowSum = M[i].reduce((a, b) => a + b, 0);
     for (let j = 0; j < 10; j++) {
       M[i][j] /= rowSum;
+    }
   }
 
   // Current last digit
@@ -2537,6 +2547,7 @@ function evaluateDigitStrategy(sym){
       if(isOver ? d > c.barrier : d < c.barrier){
         p_transition += M[nowDigit][d];
       }
+    }
 
     // Calculate empirical frequency of winning in the rolling window
     const winCount = buf.filter(d => isOver ? d > c.barrier : d < c.barrier).length;
@@ -2550,6 +2561,7 @@ function evaluateDigitStrategy(sym){
       if(!best || edge > best.edge){
         best = { ...c, p_transition, p_empirical, p_composite, edge };
       }
+    }
   }
 
   // Log rolling analytics to the console
@@ -2777,6 +2789,7 @@ function checkPriceAction(sym, action) {
     if (action === 'RISE' && engulfing) {
       log(`[PA] ${sym}: Bullish Engulfing confirmed ✓`, 's');
       return true;
+    }
 
     const prevBullish = prev.close > prev.open;
     const currBearish = last.close < last.open;
@@ -2787,6 +2800,7 @@ function checkPriceAction(sym, action) {
     if (action === 'FALL' && bearEngulfing) {
       log(`[PA] ${sym}: Bearish Engulfing confirmed ✓`, 's');
       return true;
+    }
   }
 
   // Check reversal patterns match the signal direction
@@ -2794,10 +2808,12 @@ function checkPriceAction(sym, action) {
     if (isHammer || isInvertedHammer || isDoji || isLongLowerWick) {
       log(`[PA] ${sym}: Bullish rejection pattern confirmed (wick=${(lowerWick/range*100).toFixed(0)}%) ✓`, 's');
       return true;
+    }
   } else if (action === 'FALL') {
     if (isInvertedHammer || isLongUpperWick || isDoji) {
       log(`[PA] ${sym}: Bearish rejection pattern confirmed (wick=${(upperWick/range*100).toFixed(0)}%) ✓`, 's');
       return true;
+    }
   }
 
   log(`[PA] ${sym}: No reversal candle pattern - ${action} signal rejected`, 'w');
@@ -2873,6 +2889,7 @@ function connectMarketWS(){
       log('[MARKET] No data received — click ⟳ to retry or check network','e');
       const reBtn = document.getElementById('reconnMktBtn');
       if(reBtn) reBtn.hidden = false;
+    }
   }, 20000);
 }
 
@@ -2899,6 +2916,7 @@ function startHeartbeat(){
     // Keep trading WS alive
     if(G.WS && G.WS.readyState===WebSocket.OPEN){
       try { G.WS.send(JSON.stringify({ ping:1, req_id:genId() })); } catch(e){}
+    }
     // Keep copy trading client sockets alive
     if (typeof clientSockets !== 'undefined' && clientSockets.size > 0) {
       for (const [token, ws] of clientSockets.entries()) {
@@ -2906,20 +2924,24 @@ function startHeartbeat(){
           try { ws.send(JSON.stringify({ ping:1, req_id:genId() })); } catch(e){}
         }
       }
+    }
     // Keep market WS alive
     if(G.MWS && G.MWS.readyState===WebSocket.OPEN){
       try { G.MWS.send(JSON.stringify({ ping:1, req_id:genId() })); } catch(e){}
+    }
     // Watchdog: market data may come from G.MWS or G.WS
     const lastAnyMsg = Math.max(G.LAST_MARKET_MSG_AT||0, G.LAST_TRADE_MSG_AT||0);
     const silent = Date.now() - lastAnyMsg;
     if(silent > 60000 && G.MWS && !(G.WS && G.WS.readyState===WebSocket.OPEN)){
       log('[WS] No data 60s — reconnecting market WS','w');
       try{ G.MWS.close(); }catch(e){}
+    }
     if(silent > 90000 && G.WS && G.WS.readyState===WebSocket.OPEN){
       log('[WS] No data 90s — reconnecting trading WS','w');
       const token = G.TOKEN;
       try{ G.WS.close(); }catch(e){}
       if(token) setTimeout(() => doRESTFlow(token), 1000);
+    }
     // Re-check this account's status so unban/unsuspend is applied live
     if(G.ACCOUNT_ID && G.AUTH){ recheckAccountStatus(); }
   }, 15000);
@@ -2985,6 +3007,7 @@ function bucketTicks(times, prices, tickSize){
         ticks: bucket.length
       });
       bucket = [];
+    }
   }
   return { candles, bucket };
 }
@@ -3060,6 +3083,7 @@ function handleTick(data){
       const arrow = dir>0?'▲':dir<0?'▼':'·';
       const cls = dir>0?'p':dir<0?'n':'a';
       haxPush(`TICK ${sym} ${arrow} ${price.toFixed(4)}`, cls);
+    }
   }
   // Multimarket digit engine: evaluate the just-arrived market (and any other
   // subscribed market that is ready) whenever a contract slot is free.
@@ -3070,6 +3094,7 @@ function handleTick(data){
         if(m===sym) continue;
         if((G.MARKET.digHist[m]||[]).length >= 90){ evaluateDigitStrategy(m); if(G.ACTIVE_CONTRACTS.size>=1) break; }
       }
+    }
   }
   // ── Multi-timeframe candle building ──
   for(let ti=0;ti<G.TF_LIST.length;ti++){
@@ -3108,6 +3133,7 @@ function handleTick(data){
         evaluateAndTrade(sym);
       }
       if(isSel && G._tradedCandle) G._tradedCandle[sym]=false;
+    }
   }
   if(sym===G.CURRENT_MARKET) {
     const lastEpochKey = '_lastChartEpoch_'+sym;
@@ -3115,6 +3141,7 @@ function handleTick(data){
     if(epoch !== lastEpoch){
       G[lastEpochKey] = epoch;
       drawChart();
+    }
   }
 }
 
@@ -3420,6 +3447,7 @@ function runStrategyAnalysis(sym, candles, liveBuf, tf){
 
       const pd = pickOptimalDuration(finalSrc, finalConf, sym);
       return { action, conf:finalConf, src:finalSrc, dur:pd.dur, durUnit:pd.unit, evidence:{votes:votes.length, riseVotes, fallVotes} };
+    }
   } catch(e) {
     log(`[CRASH] runStrategyAnalysis: ${e.message}`,'e');
     return null;
@@ -3623,6 +3651,7 @@ function handleContract(c){
           log(`[ANTI-MART] Win streak ${winStreak} — reduced stake to $${Martingale.currentStake.toFixed(2)}`,'i');
         }
       }
+    }
     else {
       G.LOSSES++; G.CONS_LOSS++;
       if(G.LAST_SIGNAL?.asset) G._marketLossAt[G.LAST_SIGNAL.asset] = Date.now();
@@ -3647,6 +3676,7 @@ function handleContract(c){
         showToast('Daily loss limit reached!', 'sl');
         return;
       }
+    }
     learnOutcome(G.LAST_SIGNAL?.fp, won);
     G.PNL += c.profit; G.DAILY.pnl += c.profit;
     if(Martingale.enabled && !c.contract_type?.startsWith('DIGIT')){
@@ -3661,6 +3691,7 @@ function handleContract(c){
         Martingale.currentStake = Math.min(maxStake, +(Martingale.currentStake * Martingale.mult).toFixed(2));
       }
       updateMartingaleUI();
+    }
     const tradeRec = {
       time: new Date().toLocaleTimeString(),
       action: G.LAST_SIGNAL?.action || ((c.contract_type||'').startsWith('DIGIT') ? 'DIGIT' : '—'),
@@ -3769,6 +3800,7 @@ async function resetDemo(){
     } else {
       const err = await resp.json();
       log('[RESET] Failed: '+(err.errors?.[0]?.message||resp.statusText),'e');
+    }
   } catch(e){ log('[RESET] Error: '+e.message,'e'); }
 }
 function authorizeToken(){
@@ -3875,6 +3907,7 @@ function drawChart(){
       ctx.fillText('Importing '+tfLabel+' candles… '+raw.length+'/15',12,h/2);
     } else {
       ctx.fillText('Waiting for '+tfLabel+' data...',12,h/2);
+    }
     return;
   }
   if(G.CHART_MODE === 'line'){
@@ -3911,6 +3944,7 @@ function drawChart(){
         close: haClose,
         original: k
       });
+    }
     chartCandles = ha;
   } else if(ChartSettings.type === 'renko'){
     let atrPeriod = 14;
@@ -3921,6 +3955,7 @@ function drawChart(){
       const prevClose = all[i-1].close;
       const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
       trSum += tr;
+    }
     const atr = trSum / (all.length - 1 || 1);
     const last = all[all.length - 1];
     const brickSize = Math.max(atr * 0.75, (last ? last.close : 100) * 0.0001);
@@ -4009,8 +4044,10 @@ function drawChart(){
           }
         }
       }
+    }
     if (renko.length > 0) {
       chartCandles = renko;
+    }
   }
 
   // ── Candlestick panel (top 80%) ──
@@ -4029,6 +4066,7 @@ function drawChart(){
     ctx.strokeStyle=up?POS:NEG; ctx.lineWidth=1;
     if (ChartSettings.type !== 'renko') {
       ctx.beginPath();ctx.moveTo(x,ny(k.high));ctx.lineTo(x,ny(k.low));ctx.stroke();
+    }
     ctx.fillStyle=up?POS:NEG;
     const bw=Math.max(1, cw * (ChartSettings.bodyRatio || 0.6));
     const yo=ny(Math.max(k.open,k.close)), yc=ny(Math.min(k.open,k.close));
@@ -4049,6 +4087,7 @@ function drawChart(){
         currentEma = closes[i] * kFactor + currentEma * (1 - kFactor);
         emaVals.push(currentEma);
       }
+    }
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([]);
@@ -4063,6 +4102,7 @@ function drawChart(){
       } else {
         ctx.lineTo(x, y);
       }
+    }
     ctx.stroke();
   }
   if (ChartSettings.ema20) drawEMALine(20, 'rgba(223, 186, 115, 0.7)');
@@ -4095,6 +4135,7 @@ function drawChart(){
         ctx.lineTo(x+4, ny(c.low)+9);
         ctx.closePath(); ctx.fill();
       }
+    }
   }
   if (ChartSettings.fractals) drawFractals();
 
@@ -4130,6 +4171,7 @@ function drawChart(){
         ctx.fillText(label, x, up ? ny(k.low)+12 : ny(k.high)-12);
         ctx.textAlign = 'left';
       }
+    }
   }
   if (ChartSettings.haPatterns) drawHAPatterns();
 
@@ -4150,6 +4192,7 @@ function drawChart(){
       ctx.fillStyle = v >= 0 ? 'rgba(54,225,255,0.55)' : 'rgba(255,138,76,0.55)';
       if(v >= 0) ctx.fillRect(x-bw/2, baseY-barH, bw, barH);
       else ctx.fillRect(x-bw/2, baseY, bw, barH);
+    }
     // zero line
     ctx.strokeStyle='rgba(128,128,128,0.25)'; ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(0,baseY); ctx.lineTo(w,baseY); ctx.stroke();
@@ -4178,6 +4221,7 @@ function drawChart(){
         upperVals.push(mean + 2.0 * sd);
         lowerVals.push(mean - 2.0 * sd);
       }
+    }
 
     // Draw Upper Band
     ctx.strokeStyle = 'rgba(54, 225, 255, 0.4)';
@@ -4188,6 +4232,7 @@ function drawChart(){
       const x = i * cw + cw / 2;
       const y = ny(upperVals[i]);
       if (i === 19) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
     ctx.stroke();
 
     // Draw Lower Band
@@ -4196,6 +4241,7 @@ function drawChart(){
       const x = i * cw + cw / 2;
       const y = ny(lowerVals[i]);
       if (i === 19) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
     ctx.stroke();
 
     // Draw Middle Band (SMA 20)
@@ -4205,6 +4251,7 @@ function drawChart(){
       const x = i * cw + cw / 2;
       const y = ny(smaVals[i]);
       if (i === 19) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -4238,6 +4285,7 @@ function drawChart(){
       const slice = chartCandles.slice(i-25,i+1);
       const v = aroon(slice,25);
       aArr.push({ up: v.up, down: v.down });
+    }
     if(aArr.length < 2) return;
     const start = chartCandles.length - aArr.length;
     ctx.strokeStyle = 'rgba(54,225,255,0.8)'; ctx.lineWidth = 1.5;
@@ -4288,6 +4336,7 @@ function drawChart(){
       ctx.moveTo(x, sy); ctx.lineTo(x-hw, sy+hh); ctx.lineTo(x+hw, sy+hh);
     } else {
       ctx.moveTo(x, sy); ctx.lineTo(x-hw, sy-hh); ctx.lineTo(x+hw, sy-hh);
+    }
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
@@ -4314,6 +4363,7 @@ function drawChart(){
       ctx.fillStyle='rgba(0,0,0,0.75)'; ctx.fillRect(cx+6, Math.max(0,cy-12), 80, 18);
       ctx.fillStyle='#fff'; ctx.font='10px monospace'; ctx.textAlign='left'; ctx.textBaseline='middle';
       ctx.fillText(crossPrice.toFixed(3), cx+10, cy);
+    }
     // Candle info tooltip
     if(ci >= 0 && ci < all.length && cy >= 0 && cy <= cdlH){
       const k = all[ci];
@@ -4325,6 +4375,7 @@ function drawChart(){
       ctx.fillText('C: '+k.close.toFixed(3), 70, 18);
       ctx.fillStyle=(k.close>=k.open?POS:NEG);
       ctx.fillText(k.close>=k.open?'RISE':'FALL', 8, 32);
+    }
     ctx.restore();
   }
 }
@@ -4438,6 +4489,7 @@ function updateModeUI(){
       indicator.innerHTML = `<span class="dot g"></span>Manual: ${G.SELECTED_MARKET}`;
     } else {
       indicator.innerHTML = `<span class="dot y"></span>Auto mode`;
+    }
   }
 }
 function toggleMarketMode(){
@@ -4498,6 +4550,7 @@ function updateDigitsUI(){
     if(cells.length<5){
       viz.innerHTML = '<span class="dg-tick"></span>'.repeat(5);
       cells = viz.querySelectorAll('.dg-tick');
+    }
     for(let i=0;i<5;i++){
       const d = i < q.length ? q[q.length-1-i] : null;
       const el = cells[4-i];
@@ -4508,6 +4561,7 @@ function updateDigitsUI(){
         el.textContent = '—';
         el.className = 'dg-tick';
       }
+    }
   }
   // Session PnL
   const pnlEl = document.getElementById('dgSessionPnL');
@@ -4579,6 +4633,7 @@ function updateDigitsUI(){
           + '<span class="pct">'+pctStr+'%</span>'
           + '</div>';
       }).join('');
+    }
     // Always update NOW indicator without full rebuild
     const nowEl = get('dgNowDigit');
     if(nowEl) nowEl.textContent = now>=0 ? String(now) : '—';
@@ -4663,6 +4718,7 @@ function updateDigitsUI(){
       } else {
         rows.push(`<div onclick="selectMarket('${sym}')" style="display:flex;justify-content:space-between;align-items:center;font-size:8px;padding:2px 4px;border:1px solid var(--line);opacity:0.6;cursor:pointer${sel?';outline:1px solid var(--accent)':''}"><span style="color:var(--muted)">${sym}</span><span style="color:var(--muted)">—</span></div>`);
       }
+    }
     watch.innerHTML = rows.join('');
   }
   // Live-window Entropy already computed above (ent); show a short note.
@@ -4699,6 +4755,21 @@ function updateDash(){
   set('dashLoss', fmt$(G.DAILY.pnl<0?-G.DAILY.pnl:0));
   set('dashConsLoss', String(G.CONS_LOSS || 0));
   updateAnalysisPanel();
+  // Sync state for Telegram Mini App
+  try {
+    const tierFeat = G.TIER_FEATURES[getTier()];
+    const lastHax = _haxTape && _haxTape.length ? _haxTape[_haxTape.length-1] : '';
+    const logText = lastHax ? lastHax.replace(/<[^>]+>/g,'').trim() : '';
+    const state = {
+      balance: G.BALANCE, accountType: G.ACCOUNT_TYPE, tier: tierFeat?.label||'FREE',
+      market: G.CURRENT_MARKET, strategy: G.SELECTED_STRATEGY, mode: G.TRADE_MODE,
+      stake: parseFloat(document.getElementById('rfStake')?.value||1),
+      activeContracts: G.ACTIVE_CONTRACTS.size,
+      pnl: G.PNL, wins: G.WINS, losses: G.LOSSES, trades: G.TRADES,
+      streak: G.CONS_LOSS, wr: total?Math.round(G.WINS/total*100):0, running: G.RUNNING,
+      lastLog: logText
+    };
+    localStorage.setItem('btr_miniapp_state', JSON.stringify(state));
   } catch(e){}
 }
 let _haxTape=[];
@@ -4739,6 +4810,7 @@ function updateAnalysisPanel(){
         if(e) e.style.color = hot?'var(--negative)':cold?'var(--positive)':'var(--accent)';
         if(b){ b.style.width=Math.max(2,r)+'%'; b.className=hot?'hot':cold?'cold':''; }
       }
+    }
     // Direction bias from RSI: >55 lean RISE, <45 lean FALL, else NEUTRAL
     let bias='—', biasCls='', biasPct=50;
     if(r!=null){
@@ -4746,6 +4818,7 @@ function updateAnalysisPanel(){
       if(r>55){ bias='RISE ▲'; biasCls='rise'; }
       else if(r<45){ bias='FALL ▼'; biasCls='fall'; }
       else { bias='NEUTRAL'; biasCls=''; }
+    }
     set('haxBias', bias);
     const be=document.getElementById('haxBias'); if(be) be.className='mv '+(biasCls==='rise'?'rise':biasCls==='fall'?'fall':'');
     const bb=document.getElementById('haxBiasBar');
@@ -4779,6 +4852,7 @@ function updateAnalysisPanel(){
       set('haxConfTxt', liveConf+'%');
       set('haxSrc','bias');
       set('haxStake','$0.00');
+    }
     set('haxMode', G.TRADE_MODE||'—');
     set('haxWL', `${G.WINS||0} / ${G.LOSSES||0}`);
     const focus=document.getElementById('haxFocus'); if(focus) focus.textContent=sym;
@@ -4797,6 +4871,7 @@ function updateAnalysisPanel(){
     if(!G.RUNNING && !BotState.isTrading){
       G._haxScan=(G._haxScan||0)+1;
       if(G._haxScan>=5){ G._haxScan=0; haxPush(`scan ${sym} · rsi=${r?r.toFixed(0):'--'} bias=${bias} · watching`, 'a'); }
+    }
     renderHaxMatrix();
   } catch(e){ /* never let the panel blank the app */ }
 }
@@ -4931,7 +5006,7 @@ function sendSessionSummary(final) {
 // ── Telegram Button Trading Engine ──
 G.TELEGRAM_OFFSET = 0;
 G._tgPollTimer = null;
-const TG_BOT_URL = window.location.origin;
+const TG_MINIAPP_URL = (window.location.origin || 'https://quant-bot-b0231911-2730s-projects.vercel.app') + '/app';
 function tgMainKeyboard(){ return null; }
 function tgSend(chatId, text, kb){
   const token = document.getElementById('tgToken')?.value || G.TELEGRAM_BOT_TOKEN;
@@ -4988,6 +5063,7 @@ async function pollTelegram(){
         if(text.startsWith('/')){ handleTgCommand(text, chatId); }
         else { handleTgChat(chatId, text); }
       }
+    }
   } catch(e){
     if(e.name !== 'AbortError') console.log('[TG] Poll error:', e);
   }
@@ -5082,6 +5158,7 @@ async function handleTgChat(chatId, text){
     if(!key){
       tgSend(chatId, `🤖 I need a Groq API key to chat intelligently. Set it in the bot config.`);
       return;
+    }
     if(!groqOk()){ tgSend(chatId, `⏳ I'm rate-limited (30 req/min). Wait a moment or use /status, /pnl etc.`); return; }
     const info = tgTradeInfo();
     const today = new Date().toDateString();
@@ -5118,6 +5195,7 @@ Keep responses under 2-3 sentences unless asked. Use markdown. Be encouraging.`;
         const data = await res.json();
         if(data.choices?.[0]?.message?.content){ reply = data.choices[0].message.content; break; }
       } catch(e){ console.log('[GROQ]', model, e.message); }
+    }
     if(reply) tgSend(chatId, reply);
     else tgSend(chatId, `🤖 Groq is unavailable. Use /status, /pnl, /help etc.`);
   } catch(e){
@@ -5134,11 +5212,13 @@ function processTgAction(action, chatId, msgId){
       G._tgTradeChat = chatId;
       execTrade({ action:'RISE', conf:100, src:'TG', sym:info.symName, lastPrice:0 });
       tgSend(chatId, `🟢 *CALL* $${info.curStake.toFixed(2)} on ${info.marketName}\n⏳ Waiting for result...`); break;
+    }
     case 'put':{
       if(G.ACTIVE_CONTRACTS.size>=1){ tgSend(chatId, `⏳ Contract active — wait`); break; }
       G._tgTradeChat = chatId;
       execTrade({ action:'FALL', conf:100, src:'TG', sym:info.symName, lastPrice:0 });
       tgSend(chatId, `🔴 *PUT* $${info.curStake.toFixed(2)} on ${info.marketName}\n⏳ Waiting for result...`); break;
+    }
     case 'start':
       if(G.TRADE_MODE!=='RISEFALL') switchMode('RISEFALL');
       startBot();
@@ -5168,20 +5248,25 @@ function processTgAction(action, chatId, msgId){
       const mn = info.hist.length ? Math.min(...info.hist.map(t=>+t.profit||0)) : 0;
       tgSend(chatId,
         `📈 *PnL*\nTotal: ${info.pnl>=0?'+':''}$${info.pnl.toFixed(2)}\nBest: +$${mx.toFixed(2)}\nWorst: $${mn.toFixed(2)}\nBalance: $${G.BALANCE.toFixed(2)}`); break;
+    }
     case 'stats':{
       const w=info.hist.filter(t=>t.won).length, l=info.hist.length-w;
       const aw=w?info.hist.filter(t=>t.won).reduce((s,t)=>s+(+t.profit||0),0)/w:0;
       const al=l?info.hist.filter(t=>!t.won).reduce((s,t)=>s+(+t.profit||0),0)/l:0;
       tgSend(chatId,
         `📋 *Stats*\n📊 ${info.total} ✅ ${G.WINS} ❌ ${G.LOSSES}\n📈 WR: ${info.wr}%\n💰 ${info.pnl>=0?'+':''}$${info.pnl.toFixed(2)}\n📈 Avg Win: +$${aw.toFixed(2)}\n📉 Avg Loss: -$${Math.abs(al).toFixed(2)}\n🔥 ${G.CONS_LOSS||0}L\n💡 ${G.SELECTED_STRATEGY||'—'}\n${G.RUNNING?'🟢 Running':'⏸ Stopped'}`); break;
+    }
+    case 'miniapp':
+      tgSend(chatId,
+        `📱 *BTraders Mini App*\n\n📎 \`${TG_MINIAPP_URL}\``); break;
     case 'help':
       tgSend(chatId,
         `🤖 *BTraders Bot*\n\n`+
         `/start — Welcome\n/help — Help\n/status — Status\n/balance — Balance\n`+
         `/pnl — P&L\n/stats — Details\n/daily — Today\n/market — Switch\n`+
         `/stake — Change\n/ai — AI Trading\n/settings — Config\n/tier — Plan\n`+
-        `\n/reset — Demo\n\n`+
-        `💬 Chat naturally — I'll answer with AI!\n📱 \`${TG_BOT_URL}\``); break;
+        `/miniapp — Open\n/reset — Demo\n\n`+
+        `💬 Chat naturally — I'll answer with AI!\n📱 \`${TG_MINIAPP_URL}\``); break;
   }
 }
 
@@ -5201,15 +5286,15 @@ function handleTgCommand(text, chatId){
   const losses = hist.length-wins;
   const tierFeat = G.TIER_FEATURES[getTier()];
   const tierName = tierFeat?.label || 'FREE';
-  if(cmd==='/start'){ tgSend(chatId, `🚀 *BTraders Bot Ready*\n\nCommands: /status /balance /pnl /market /stake /ai /help\n📱 Mini App: ${TG_BOT_URL}`); return; }
+  if(cmd==='/start'){ tgSend(chatId, `🚀 *BTraders Bot Ready*\n\nCommands: /status /balance /pnl /market /stake /ai /help\n📱 Mini App: ${TG_MINIAPP_URL}`); return; }
   if(cmd==='/help'){ tgSend(chatId,
     `🤖 *BTraders Commands*\n\n`+
     `/start — Welcome\n/help — Help\n/status — Status\n/balance — Balance\n`+
     `/pnl — PnL report\n/stats — Detailed stats\n/daily — Daily perf\n`+
     `/market R_100 — Switch market\n/stake 2.0 — Change stake\n`+
     `/ai — Toggle AI trading\n/settings — Bot config\n/tier — Plan info\n`+
-    `/reset — Reset demo\n Mini App\n\n`+
-    `💬 Chat naturally and I'll answer with Groq AI!\n📱 ${TG_BOT_URL}`); return; }
+    `/reset — Reset demo\n/miniapp — Open Mini App\n\n`+
+    `💬 Chat naturally and I'll answer with Groq AI!\n📱 ${TG_MINIAPP_URL}`); return; }
   if(cmd==='/status'){
     const cc = G.ACTIVE_CONTRACTS.size;
     tgSend(chatId,
@@ -5282,6 +5367,11 @@ function handleTgCommand(text, chatId){
       `📡 Copy Trading: ${copy}\n`+
       `🎯 Daily Target: $${dTarget.toFixed(2)}\n🛑 Daily Stop: $${dStop.toFixed(2)}`); return;
   }
+  if(cmd==='/miniapp'){
+    tgSend(chatId,
+      `📱 *BTraders Mini App*\n\n`+
+      `Monitor, control, and analyze your bot inside Telegram.\n\n`+
+      `📎 ${TG_MINIAPP_URL}`); return;
   }
   if(cmd==='/reset'){
     if(G.ACCOUNT_TYPE!=='demo'){ tgSend(chatId, `❌ Reset only works on demo accounts`); return; }
@@ -5304,7 +5394,23 @@ function handleTgCommand(text, chatId){
     tgSend(chatId, `✅ Stake set to $${s.toFixed(2)}`);
     return;
   }
-  	  tgSend(chatId, `🤖 *BTraders*\nUse /help to see commands, or chat with me naturally!`);
+  tgSend(chatId, `🤖 *BTraders*\nUse /help to see commands, or chat with me naturally!`);
+}
+
+function checkMiniappAction(){
+  try {
+    const raw = localStorage.getItem('btr_miniapp_action');
+    if(!raw) return;
+    const data = JSON.parse(raw);
+    localStorage.removeItem('btr_miniapp_action');
+    if(!data || !data.action) return;
+    const action = data.action;
+    if(action === 'start'){ if(G.TRADE_MODE!=='RISEFALL') switchMode('RISEFALL'); startBot(); return; }
+    if(action === 'stop'){ stopBot(); return; }
+    if(action === 'reset'){ resetDemo(); return; }
+    if(action === 'call'){ execTrade({ action:'RISE', conf:100, src:'MINIAPP', sym:G.CURRENT_MARKET, lastPrice:0 }); return; }
+    if(action === 'put'){ execTrade({ action:'FALL', conf:100, src:'MINIAPP', sym:G.CURRENT_MARKET, lastPrice:0 }); return; }
+  } catch(e){}
 }
 
 function toggleStrat(idx){ /* no-op — autorotation active */ }
@@ -5472,6 +5578,7 @@ function restoreState(){
         const elAroon = document.getElementById('settingAroon'); if(elAroon) elAroon.checked = ChartSettings.aroon;
         const elRatio = document.getElementById('settingBodyRatio'); if(elRatio) elRatio.value = ChartSettings.bodyRatio;
       } catch(ex){ console.log('[RESTORE CHART SETTINGS]', ex.message); }
+    }
     const t = localStorage.getItem('deriv_token');
     if(t){ G.TOKEN = t; const elT=document.getElementById('loginPat') || document.getElementById('apiToken'); if(elT) elT.value = t; }
     const savedAppId = localStorage.getItem('deriv_app_id');
@@ -5481,6 +5588,7 @@ function restoreState(){
     if(sk){
       const elR = document.getElementById('rfStake'); if(elR) elR.value = sk;
       const elD = document.getElementById('dgBaseStake'); if(elD) elD.value = sk;
+    }
     const a = localStorage.getItem('deriv_account_type');
     if(a === 'real' || a === 'demo'){ G.ACCOUNT_TYPE = a;
       const toggle = document.getElementById('accToggle');
@@ -5489,6 +5597,7 @@ function restoreState(){
       if(badge){ badge.textContent = a.toUpperCase(); badge.className = `acc-badge ${a}`; }
       const al = document.getElementById('accLabel');
       if(al) al.textContent = a.toUpperCase();
+    }
     G.TELEGRAM_BOT_TOKEN='8903146940:AAHDEPeUaw_ihF9dTme3Hi0eS7Cv2MbzRyg'; G.TELEGRAM_CHAT_ID='8363983871';
     sbLinkTelegram();
     // Autorotation uses all 10 elite strategies
@@ -5501,6 +5610,7 @@ function restoreState(){
       if(d.baseStake) BotState.baseStake = d.baseStake;
       if(d.targetProfit) BotState.targetProfit = d.targetProfit;
       if(d.stopLoss) BotState.stopLoss = d.stopLoss;
+    }
     // Restore trade mode, market, duration, martingale
     const tm = localStorage.getItem('deriv_trade_mode');
     if(tm) G.TRADE_MODE = tm;
@@ -5651,8 +5761,8 @@ async function fetchClientProfile(token, preferredType) {
         balance: parseFloat(a.balance || 0)
       }));
       if (accounts.length > 0) {
-        let matched = accounts.find(a => (preferredType === 'real' ? !a.isDemo : a.isDemo));
-        if (!matched) matched = accounts[0];
+        let matched = accounts.find(a => (preferredType === 'demo' ? a.isDemo : !a.isDemo));
+        if (!matched) matched = accounts.find(a => a.isDemo) || accounts[0];
         return {
           accountId: matched.account,
           balance: matched.balance,
@@ -5661,6 +5771,7 @@ async function fetchClientProfile(token, preferredType) {
           token: token
         };
       }
+    }
   } catch(e) {
     console.warn('[COPY] REST profile fetch failed, trying WS...', e);
   }
@@ -5668,7 +5779,7 @@ async function fetchClientProfile(token, preferredType) {
   // Fallback to WS Authorize
   const wsAuthList = await wsAuthorize(token);
   if (wsAuthList && wsAuthList.length > 0) {
-    let matched = wsAuthList.find(a => (preferredType === 'real' ? !a.isDemo : a.isDemo));
+    let matched = wsAuthList.find(a => (preferredType === 'demo' ? a.isDemo : !a.isDemo));
     if (!matched) matched = wsAuthList[0];
     return {
       accountId: matched.account,
@@ -5710,6 +5821,7 @@ async function addNewCopyClient() {
     if(userStatus !== 'active'){
       log(`[COPY] Cannot add ${name}: account ${profile.accountId} is ${userStatus}`,'e');
       return;
+    }
     // Generate or use existing trader ID for copy client
     const clientTraderId = `COPY-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     await sbEnsureUser(profile.accountId, token, accountType, profile.balance, clientTraderId);
@@ -5753,6 +5865,7 @@ function removeCopyClient(idx) {
     if (ws) {
       try { ws.close(); } catch(e){}
       clientSockets.delete(client.token);
+    }
     log(`[COPY] Removed client ${client.name}`, 'w');
     G.COPY_TRADERS.splice(idx, 1);
     saveState();
@@ -5856,6 +5969,7 @@ function connectClientWS(client) {
       }
     } catch (ex) {
       console.error('[COPY] parse error:', ex);
+    }
   };
 
   ws.onerror = (err) => {
@@ -5873,6 +5987,7 @@ function connectClientWS(client) {
           connectClientWS(client);
         }
       }, 5000);
+    }
   };
 }
 
@@ -5914,6 +6029,7 @@ function copyProposalToClients(masterProposal) {
     if (st !== 'active') {
       log(`[COPY] Skipping ${client.name}: ${st}`,'w');
       continue;
+    }
     const mult = (+client.stakeMult > 0) ? +client.stakeMult : 1;
     const type = (client.accountType === 'real') ? 'real' : 'demo';
     groups[mult] = groups[mult] || { demo: [], real: [] };
@@ -5957,379 +6073,85 @@ async function bulkPurchaseCopy(accounts, type, clientRefs, mult) {
     log(`[COPY] bulk-purchase error: ${e.message}`, 'e');
   }
 }
-// ── OAuth 2.0 PKCE Login with Deriv ──
-const DERIV_APP_ID = '33JFxN3sbe2usdFigbMb8';
 
-function base64UrlEncode(buffer) {
-  return btoa(String.fromCharCode(...new Uint8Array(buffer)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-async function createPkce() {
-  const verifierBytes = crypto.getRandomValues(new Uint8Array(32));
-  const code_verifier = base64UrlEncode(verifierBytes);
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code_verifier));
-  const code_challenge = base64UrlEncode(digest);
-  return { code_verifier, code_challenge };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// MCP API - DERIV TRADING INTEGRATION
-// All trades go through the MCP API for REAL trading
-// ═══════════════════════════════════════════════════════════════════════════════
-
-let G_SESSION_TOKEN = '';
-let G_MCP_WS = null;
-let G_MCP_CONNECTED = false;
-
-// MCP WebSocket connection
-function connectMCP() {
-  return new Promise((resolve, reject) => {
-    log('[MCP] Connecting to Deriv MCP API...', 'i');
-    
-    const ws = new WebSocket(MCP_API_URL);
-    G_MCP_WS = ws;
-    
-    const timeout = setTimeout(() => {
-      ws.close();
-      reject(new Error('MCP connection timeout'));
-    }, 15000);
-    
-    ws.onopen = () => {
-      clearTimeout(timeout);
-      log('[MCP] WebSocket connected!', 's');
-      G_MCP_CONNECTED = true;
-      
-      // Send authorize request
-      if (G_SESSION_TOKEN) {
-        ws.send(JSON.stringify({
-          authorize: G_SESSION_TOKEN
-        }));
-      }
-      
-      resolve();
-    };
-    
-    ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        
-        // Handle authorize response
-        if (msg.authorize || msg.msg_type === 'authorize') {
-          const auth = msg.authorize || msg;
-          if (auth.loginid) {
-            log('[MCP] AUTHORIZED: ' + auth.loginid, 's');
-            G.ACCOUNT_ID = auth.loginid;
-            G.ACCOUNT_TYPE = (auth.loginid.startsWith('VR') || auth.is_virtual) ? 'demo' : 'real';
-            G.BALANCE = parseFloat(auth.balance || 0);
-            G.AUTH = true;
-            G.CONNECTED = true;
-            
-            if (G.ACCOUNT_TYPE === 'demo') {
-              log('[MCP] WARNING: Connected to DEMO account!', 'w');
-            } else {
-              log('[MCP] SUCCESS: Connected to REAL account!', 's');
-            }
-            
-            showApp();
-            updateDash();
-            subscribeMCP();
-            startHeartbeat();
-          }
-        }
-        
-        // Handle balance
-        if (msg.msg_type === 'balance' && msg.balance) {
-          G.BALANCE = parseFloat(msg.balance.balance || 0);
-          updateDash();
-        }
-        
-        // Handle proposals
-        if (msg.proposal) {
-          handleMCPProposal(msg.proposal);
-        }
-        
-        // Handle buy confirmations
-        if (msg.buy) {
-          handleMCPBuy(msg.buy);
-        }
-        
-        // Handle contract updates
-        if (msg.proposal_open_contract) {
-          handleMCPContract(msg.proposal_open_contract);
-        }
-        
-        // Handle ticks
-        if (msg.msg_type === 'tick' || msg.msg_type === 'candles') {
-          handleMsg(msg, 'market');
-        }
-        
-        // Handle errors
-        if (msg.error) {
-          log('[MCP] Error: ' + JSON.stringify(msg.error), 'e');
-        }
-        
-      } catch (e) {
-        console.error('[MCP] Parse error:', e);
-      }
-    };
-    
-    ws.onerror = (e) => {
-      clearTimeout(timeout);
-      log('[MCP] WebSocket error', 'e');
-      reject(e);
-    };
-    
-    ws.onclose = () => {
-      clearTimeout(timeout);
-      G_MCP_CONNECTED = false;
-      G.CONNECTED = false;
-      G.AUTH = false;
-      log('[MCP] Connection closed', 'w');
-      document.getElementById('connDot').className = 'conn r';
-      document.getElementById('engineStatus').textContent = 'OFFLINE';
-      
-      // Attempt reconnect
-      if (G.ACCOUNT_ID) {
-        setTimeout(() => {
-          if (G.ACCOUNT_ID) connectMCP();
-        }, 5000);
-      }
-    };
-  });
-}
-
-function subscribeMCP() {
-  if (!G_MCP_WS || !G_MCP_CONNECTED) return;
-  
-  // Subscribe to balance
-  G_MCP_WS.send(JSON.stringify({ balance: 1, subscribe: 1 }));
-  
-  // Subscribe to market data
-  SYMBOLS.forEach(s => {
-    G_MCP_WS.send(JSON.stringify({
-      ticks_history: s.sym,
-      end: 'latest',
-      count: 1100,
-      style: 'ticks',
-      subscribe: 1
-    }));
-  });
-  
-  log('[MCP] Subscribed to balance and markets', 'i');
-}
-
-function sendMCP(payload) {
-  if (G_MCP_WS && G_MCP_CONNECTED) {
-    G_MCP_WS.send(JSON.stringify(payload));
-    return true;
-  }
-  log('[MCP] Not connected!', 'e');
-  return false;
-}
-
-function handleMCPProposal(p) {
-  log('[PROP] ' + p.id + ' ask=' + p.ask_price, 'i');
-  G.ACTIVE_CONTRACTS.delete('sending');
-  G.ACTIVE_CONTRACTS.set('pending', { id: p.id, price: p.ask_price });
-  
-  // Auto-buy the proposal
-  sendMCP({ buy: p.id, price: p.ask_price, subscribe: 1 });
-}
-
-function handleMCPBuy(b) {
-  if (G.SENDING_TIMEOUT) {
-    clearTimeout(G.SENDING_TIMEOUT);
-    G.SENDING_TIMEOUT = null;
-  }
-  
-  G.ACTIVE_CONTRACTS.delete('pending');
-  G.ACTIVE_CONTRACTS.delete('sending');
-  
-  if (b.contract_id) {
-    G.ACTIVE_CONTRACTS.set(b.contract_id, {
-      id: b.contract_id,
-      price: b.buy_price,
-      time: Date.now()
-    });
-    G.TRADES++;
-    G.BALANCE -= b.buy_price;
-    updateDash();
-    log('[BUY] #' + b.contract_id + ' $' + b.buy_price.toFixed(2), 's');
-  }
-  
-  if (b.error) {
-    log('[BUY] ' + b.error.message, 'e');
-  }
-}
-
-function handleMCPContract(c) {
-  if (c.status === 'won' || c.status === 'lost') {
-    const profit = parseFloat(c.profit || 0);
-    G.BALANCE += Math.abs(profit) + (c.status === 'won' ? 0 : c.buy_price || 0);
-    G.ACTIVE_CONTRACTS.delete(c.contract_id);
-    
-    if (c.status === 'won') {
-      G.WINS++;
-      log('[WIN] +$' + profit.toFixed(2), 's');
-    } else {
-      G.LOSSES++;
-      log('[LOSS] -$' + Math.abs(profit).toFixed(2), 'e');
-    }
-    
-    updateDash();
-  }
-}
-
-// Override execTrade to use MCP
-const originalExecTrade = execTrade;
-execTrade = function(asset, ct, stake, dur, durUnit, signal) {
-  if (!G.AUTH || !G.ACCOUNT_ID) {
-    log('[TRADE] Please authenticate first!', 'e');
-    return;
-  }
-  
-  if (G.ACCOUNT_TYPE === 'demo') {
-    log('[TRADE] WARNING: Trading on DEMO account!', 'w');
-  }
-  
-  log('[TRADE] EXEC ' + asset + ' ' + ct + ' $' + stake.toFixed(2), 'i');
-  
-  G.ACTIVE_CONTRACTS.set('sending', { id: null, price: null, time: Date.now() });
-  
-  if (G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
-  G.SENDING_TIMEOUT = setTimeout(() => {
-    G.ACTIVE_CONTRACTS.delete('sending');
-    log('[TRADE] Proposal timed out', 'w');
-  }, 15000);
-  
-  // Send proposal request via MCP
-  sendMCP({
-    proposal: 1,
-    subscribe: 1,
-    amount: +stake.toFixed(2),
-    basis: 'stake',
-    contract_type: ct,
-    currency: 'USD',
-    duration: dur,
-    duration_unit: durUnit,
-    underlying_symbol: asset
-  });
-};
-
-// OAuth Login - Start
-async function startOAuthLogin() {
-  const btn = document.getElementById('oauthBtn');
+// ── Login Screen (Deriv OAuth2.0 PKCE flow) ──
+async function oauthLogin(){
   const err = document.getElementById('loginError');
-  err.textContent = '';
-  btn.textContent = 'Redirecting...';
-  btn.disabled = true;
-  
-  // Clear old data
-  localStorage.removeItem('deriv_token');
-  localStorage.removeItem('deriv_session');
-  sessionStorage.clear();
-  
+  err.textContent='';
   try {
-    log('[AUTH] Starting Deriv OAuth...', 'i');
-    
-    // Use PKCE flow
-    const { code_verifier, code_challenge } = await createPkce();
-    const state = base64UrlEncode(crypto.getRandomValues(new Uint8Array(16)));
+    // 1. Generate PKCE code_verifier
+    const array = crypto.getRandomValues(new Uint8Array(64));
+    const codeVerifier = Array.from(array).map(v =>
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'[v % 66]
+    ).join('');
+    // 2. Derive SHA-256 code_challenge
+    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier));
+    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    // 3. Generate random state for CSRF
+    const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map(v => v.toString(16).padStart(2,'0')).join('');
+    // 4. Store PKCE params so they survive the redirect back
     const redirectUri = window.location.origin;
-    
-    sessionStorage.setItem('oauth_code_verifier', code_verifier);
+    sessionStorage.setItem('oauth_code_verifier', codeVerifier);
     sessionStorage.setItem('oauth_state', state);
     sessionStorage.setItem('oauth_redirect_uri', redirectUri);
-    
-    const params = new URLSearchParams({
+    // 5. Build authorization URL per Deriv OAuth2.0 spec
+    const authUrl = 'https://auth.deriv.com/oauth2/auth?' + new URLSearchParams({
       response_type: 'code',
-      client_id: DERIV_APP_ID,
+      client_id: G.APP_ID,
       redirect_uri: redirectUri,
       scope: 'trade',
       state: state,
-      code_challenge: code_challenge,
+      code_challenge: codeChallenge,
       code_challenge_method: 'S256'
-    });
-    
-    window.location.href = 'https://auth.deriv.com/oauth2/auth?' + params.toString();
-    
-  } catch (e) {
-    err.textContent = 'Login failed: ' + e.message;
-    btn.textContent = 'Login with Deriv';
-    btn.disabled = false;
-    log('[AUTH] OAuth failed: ' + e.message, 'e');
-  }
+    }).toString();
+    // 6. Full-page redirect
+    window.location.href = authUrl;
+  } catch(e){ err.textContent='OAuth error: '+e.message; }
 }
-
-// Handle OAuth callback
-async function handleOAuthCallback() {
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get('code');
-  const state = params.get('state');
-  const error = params.get('error');
-  
-  if (error) {
-    document.getElementById('loginError').textContent = 'OAuth error: ' + error;
-    return;
-  }
-  
-  if (!code) return;
-  
-  // Verify state
-  const savedState = sessionStorage.getItem('oauth_state');
-  if (state !== savedState) {
-    document.getElementById('loginError').textContent = 'Invalid OAuth state';
-    return;
-  }
-  
+function legacyLogin(){
+  const redirectUri = window.location.origin;
+  sessionStorage.setItem('oauth_redirect_uri', redirectUri);
+  const url = 'https://oauth.deriv.com/oauth2/authorize?app_id='+encodeURIComponent(G.APP_ID)+'&l=EN&redirect_uri='+encodeURIComponent(redirectUri);
+  window.location.href = url;
+}
+async function exchangeOAuthCode(code){
+  const err = document.getElementById('loginError');
+  const codeVerifier = sessionStorage.getItem('oauth_code_verifier');
+  const redirectUri = sessionStorage.getItem('oauth_redirect_uri');
+  sessionStorage.removeItem('oauth_code_verifier');
+  sessionStorage.removeItem('oauth_redirect_uri');
   try {
-    log('[AUTH] Exchanging code for token...', 'i');
-    
-    const code_verifier = sessionStorage.getItem('oauth_code_verifier');
-    const redirect_uri = sessionStorage.getItem('oauth_redirect_uri');
-    
     const resp = await fetch('https://auth.deriv.com/oauth2/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      method:'POST',
+      headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
-        grant_type: 'authorization_code',
-        client_id: DERIV_APP_ID,
+        grant_type:'authorization_code',
+        client_id: G.APP_ID,
         code: code,
-        redirect_uri: redirect_uri,
-        code_verifier: code_verifier
+        code_verifier: codeVerifier,
+        redirect_uri: redirectUri
       })
     });
-    
     const data = await resp.json();
-    
-    if (data.error) {
-      throw new Error(data.error_description || data.error);
+    if(data.access_token){
+      // If this is the popup (window.opener exists), pass token to main window
+      if(window.opener && !window.opener.closed){
+        window.opener.document.getElementById('loginPat').value = data.access_token;
+        window.opener.document.getElementById('loginError').textContent='';
+        window.opener.authorizePat();
+        setTimeout(()=>window.close(), 500);
+      } else {
+        document.getElementById('loginPat').value = data.access_token;
+        err.textContent='';
+        authorizePat();
+      }
+    } else {
+      err.textContent='Token exchange failed: '+(data.error_description||data.error||'unknown');
     }
-    
-    log('[AUTH] Got access token!', 's');
-    
-    // Store token and connect
-    G_SESSION_TOKEN = data.access_token;
-    localStorage.setItem('deriv_token', data.access_token);
-    
-    // Clean URL
-    window.history.replaceState({}, document.title, window.location.pathname);
-    
-    // Connect to MCP
-    await connectMCP();
-    
-  } catch (e) {
-    document.getElementById('loginError').textContent = 'Auth failed: ' + e.message;
-    document.getElementById('oauthBtn').disabled = false;
-    document.getElementById('oauthBtn').textContent = 'Login with Deriv';
-    log('[AUTH] Token exchange failed: ' + e.message, 'e');
-  }
+  } catch(e){ err.textContent='Token exchange error: '+e.message; }
 }
-
-// PAT Login
 async function authorizePat(){
   const inp = document.getElementById('loginPat');
   const err = document.getElementById('loginError');
@@ -6337,18 +6159,162 @@ async function authorizePat(){
   if(!token){ err.textContent='Paste an API token from app.deriv.com/account/api-token'; return; }
   err.textContent='';
   inp.disabled=true;
-  
-  // Clear old auth state
-  G.AUTH = false;
-  G.CONNECTED = false;
-  G.ACCOUNT_ID = null;
-  G.BALANCE = 0;
-  G.TOKEN = '';
-  localStorage.removeItem('deriv_token');
-  localStorage.removeItem('deriv_account_type');
-  
-  log('[AUTH] authorizePat called, token length: ' + (token?.length || 0), 'i');
+  document.getElementById('oauthBtn').textContent='Connecting...';
   await doRESTFlow(token);
+}
+async function doRESTFlow(token){
+  let accounts = G._oauthAccounts;
+  // Step 1: Try REST API first
+  try {
+    if(!accounts || !accounts.length){
+      const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID };
+      const resp = await fetch('https://api.derivws.com/trading/v1/options/accounts', { method:'GET', headers:hdrs });
+      if(resp.ok){
+        const data = await resp.json();
+        accounts = (data.data || []).map(a => ({ account:a.account_id, token:token, currency:a.currency||'USD', isDemo:a.account_type==='demo'||a.is_virtual, balance:parseFloat(a.balance||0) }));
+        G._oauthAccounts = accounts;
+      }
+    }
+  } catch(e){ log('[AUTH] REST accounts failed, trying WS...','w'); }
+  // Step 2: Fallback — WS authorize (works with PAT and legacy tokens)
+  if(!accounts || !accounts.length){
+    try {
+      const wsAuth = await wsAuthorize(token);
+      if(wsAuth && wsAuth.length){
+        accounts = wsAuth;
+        G._oauthAccounts = accounts;
+      }
+    } catch(e){ log('[AUTH] WS authorize also failed','e'); }
+  }
+  if(!accounts || !accounts.length){
+    document.getElementById('loginError').textContent = 'Could not fetch Deriv accounts — check your token';
+    document.getElementById('loginPat').disabled=false;
+    document.getElementById('oauthBtn').textContent='Login with Deriv';
+    return;
+  }
+  // Step 3: Pick preferred account
+  const preferred = G.ACCOUNT_TYPE || 'demo';
+  const isDemo = (a) => a.account.startsWith('VR') || a.isDemo === true || a.is_virtual === true;
+  let account = accounts.find(a => (preferred==='demo' ? isDemo(a) : !isDemo(a)));
+  if(!account) account = accounts.find(a => isDemo(a)) || accounts[0];
+  G.ACCOUNT_ID = account.account;
+  G.ACCOUNT_TYPE = isDemo(account) ? 'demo' : 'real';
+  G.BALANCE = account.balance || 0;
+  G.TOKEN = token;
+  // Step 4: Connect via OTP or direct WS
+  try {
+    const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID };
+    const otpResp = await fetch('https://api.derivws.com/trading/v1/options/accounts/'+account.account+'/otp', { method:'POST', headers:hdrs, body:'{}' });
+    if(otpResp.ok){
+      const otpData = await otpResp.json();
+      const wsUrl = otpData.data?.url || otpData.url;
+      if(wsUrl){ connectOTP(wsUrl); return; }
+    }
+  } catch(e){ log('[AUTH] OTP failed, trying direct WS...','w'); }
+  // Step 5: Fallback — direct WS with token in URL
+  connectDirectWS(token);
+}
+function wsAuthorize(token){
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id='+G.APP_ID);
+    let done = false;
+    const t = setTimeout(() => { if(!done){ done=true; ws.close(); reject(new Error('timeout')); } }, 8000);
+    ws.onmessage = (e) => {
+      let msg;
+      try{ msg = JSON.parse(e.data); }catch(er){ return; }
+      if(msg.msg_type === 'authorize'){
+        if(!done && msg.authorize){
+          done = true;
+          clearTimeout(t);
+          ws.close();
+          const acc = msg.authorize;
+          const loginId = acc.loginid;
+          const currency = acc.currency || 'USD';
+          const isVirtual = acc.is_virtual === 1 || acc.is_virtual === true || loginId?.startsWith('VR');
+          const balance = parseFloat(acc.balance || 0);
+          resolve([{ account:loginId, token:token, currency:currency, isDemo:isVirtual, balance:balance }]);
+        }
+      } else if(msg.error && msg.error.code === 'AuthorizationFailed'){
+        if(!done){ done=true; clearTimeout(t); ws.close(); reject(new Error(msg.error.message)); }
+      }
+    };
+    ws.onopen = () => ws.send(JSON.stringify({ authorize:token }));
+    ws.onerror = () => { if(!done){ done=true; clearTimeout(t); reject(new Error('ws error')); } };
+  });
+}
+function connectDirectWS(token){
+  const url = 'wss://ws.derivws.com/websockets/v3?app_id='+G.APP_ID+'&token='+token+'&l=EN';
+  const ws = new WebSocket(url);
+  ws.onopen = () => {
+    G.WS = ws;
+    wrapMasterSocket(ws);
+    G.AUTH = true;
+    G.CONNECTED = true;
+    sbUpsertUser();
+    saveState();
+    showApp();
+    document.getElementById('loginPat').disabled=false;
+    document.getElementById('oauthBtn').textContent='Login with Deriv';
+    document.getElementById('loginError').textContent='';
+    document.getElementById('connDot').className='conn g';
+    document.getElementById('engineStatus').textContent='ONLINE';
+    log('[AUTH] Authorized via direct WS','s');
+    updateDash();
+    startHeartbeat();
+    setTimeout(subscribeAll, 200);
+  };
+  ws.onmessage = (e) => {
+    try{ handleMsg(JSON.parse(e.data)); }catch(ex){ log(`[WS] Parse: ${ex.message}`,'e'); }
+  };
+  ws.onerror = () => {
+    document.getElementById('loginError').textContent = 'WebSocket connection failed';
+    document.getElementById('loginPat').disabled=false;
+    document.getElementById('oauthBtn').textContent='Login with Deriv';
+  };
+  ws.onclose = () => { 
+    if(G.WS === ws){ 
+      G.AUTH = false; 
+      G.CONNECTED = false;
+      document.getElementById('connDot').className='conn r';
+      document.getElementById('engineStatus').textContent='OFFLINE';
+    } 
+  };
+}
+function connectOTP(url){
+  G.TOKEN = document.getElementById('loginPat')?.value?.trim() || '';
+  if(G.WS && (G.WS.readyState===WebSocket.OPEN || G.WS.readyState===WebSocket.CONNECTING)){
+    G.CLOSING_TRADE_WS = true;
+    try{ G.WS.close(); }catch(e){}
+  }
+  G.RECONN_ACTIVE = G.RUNNING;
+  const ws = new WebSocket(url);
+  G.WS = ws;
+  const to = setTimeout(() => { log('[WS] OTP connection timeout','e'); try{ ws.close(); }catch(e){} }, 15000);
+  ws.onopen = () => {
+    clearTimeout(to);
+    wrapMasterSocket(ws);
+    G.CONNECTED=true; G.AUTH=true; G.RECONN_ATT=0; G.BOOT_AT = Date.now();
+    sbUpsertUser();
+    G.ACTIVE_CONTRACTS.clear();
+    document.getElementById('connDot').className='conn g';
+    document.getElementById('engineStatus').textContent='ONLINE';
+    syncFab();
+    log(`[AUTH] ${G.ACCOUNT_ID} $${G.BALANCE.toFixed(2)}`,'s');
+    saveState(); showApp();
+    startHeartbeat();
+    setTimeout(subscribeAll, 200);
+  };
+  ws.onmessage = (e) => { try{ handleMsg(JSON.parse(e.data)); }catch(ex){ log(`Parse: ${ex.message}`,'e'); } };
+  ws.onerror = () => { G.CONNECTED=false; document.getElementById('connDot').className='conn r'; };
+  ws.onclose = () => {
+    clearTimeout(to);
+    const intentional = G.CLOSING_TRADE_WS;
+    G.CLOSING_TRADE_WS = false;
+    G.CONNECTED=false; G.AUTH=false;
+    document.getElementById('connDot').className='conn r';
+    document.getElementById('engineStatus').textContent='OFFLINE';
+    if(!intentional){ log('[WS] Disconnected — reconnecting...','w'); scheduleRecon(); }
+  };
 }
 function showApp(){
   document.getElementById('loginOverlay').classList.add('hidden');
@@ -6406,60 +6372,32 @@ document.addEventListener('DOMContentLoaded', () => {
   if(themeBtn) themeBtn.textContent = document.documentElement.classList.contains('dark') ? '☀️' : '🌙';
   G.BOOT_AT = Date.now();
   
-  // Initialize Telegram WebApp
-  if (window.Telegram && window.Telegram.WebApp) {
-    const tg = window.Telegram.WebApp;
-    tg.ready();
-    tg.expand();
-    tg.enableClosingConfirmation();
-    // Apply Telegram theme colors if available
-    if (tg.themeParams) {
-      if (tg.themeParams.bg_color) document.documentElement.style.setProperty('--bg', tg.themeParams.bg_color);
-      if (tg.themeParams.button_color) document.documentElement.style.setProperty('--accent', tg.themeParams.button_color);
-    console.log('[TELEGRAM] WebApp initialized');
-  }
-  
   // Initialize trader ID
   initTraderId();
   console.log('%c[ADMIN] Default password: 13571 — change it in Admin → Settings','color:#d4a84b;font-weight:bold');
-  
-  
-  // Check for OAuth callback
-  (async () => {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
-    const state = params.get('state');
-    const error = params.get('error');
-    
-    if (error) {
-      document.getElementById('loginError').textContent = 'OAuth error: ' + (params.get('error_description') || error);
-      console.warn('[OAUTH] Error:', error);
-    } else if (code && state) {
-      if (state !== sessionStorage.getItem('oauth_state')) {
-        document.getElementById('loginError').textContent = 'OAuth state mismatch - possible CSRF';
-        console.warn('[OAUTH] State mismatch');
-      } else {
-        try {
-          document.getElementById('oauthBtn').textContent = 'Connecting...';
-          const token = await exchangeOAuthToken(code);
-          sessionStorage.removeItem('oauth_code_verifier');
-          sessionStorage.removeItem('oauth_state');
-          sessionStorage.removeItem('oauth_redirect_uri');
-          document.getElementById('loginPat').value = token;
-          await authorizePat();
-          return;
-        } catch (e) {
-          document.getElementById('loginError').textContent = 'Token exchange failed: ' + e.message;
-          console.error('[OAUTH] Token exchange failed:', e);
-        }
-      }
-    }
-    
-    // Clear URL params
-    if (params.toString()) {
-      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
-    }
-  })();
+  // Check for OAuth redirect back (PKCE code or legacy token1)
+  const params = new URLSearchParams(window.location.search);
+  const urlCode = params.get('code');
+  const urlState = params.get('state');
+  const urlToken = params.get('token1');
+  if(urlCode && urlState === sessionStorage.getItem('oauth_state')){
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    sessionStorage.removeItem('oauth_state');
+    exchangeOAuthCode(urlCode);
+  } else if(urlToken){
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    document.getElementById('loginPat').value = urlToken;
+    setTimeout(() => authorizePat(), 100);
+  } else if(urlCode && !urlState){
+    // Code received but no state — can't verify, show error
+    window.history.replaceState({}, document.title, window.location.pathname);
+    document.getElementById('loginError').textContent = 'OAuth code received but state parameter missing — try again';
+  } else if(params.get('error')){
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    const desc = params.get('error_description') || params.get('error');
+    document.getElementById('loginError').textContent = 'OAuth error: '+desc;
+    console.warn('[OAUTH] Error:', {error:params.get('error'), description:desc, state:params.get('state')});
+  }
   // Login Enter key
   document.getElementById('loginPat')?.addEventListener('keydown', e => { if(e.key==='Enter') authorizePat(); });
   initStrategies();
@@ -6469,6 +6407,7 @@ document.addEventListener('DOMContentLoaded', () => {
     for(const tk of G.TF_LIST){
       if(!G.TF[tk].candles[s.sym]) G.TF[tk].candles[s.sym] = [];
       if(!G.TF[tk].prices[s.sym])  G.TF[tk].prices[s.sym] = [];
+    }
   });
   restoreState();
   syncAiToggleUI();
@@ -6505,6 +6444,7 @@ document.addEventListener('DOMContentLoaded', () => {
       BotState.isTrading = false;
       const btn = document.getElementById('dgEngineBtn');
       if(btn) btn.textContent = 'AUTO';
+    }
     if(G.WS) try{ G.WS.close(); }catch(e){}
     flushState();
     if(G.ACCOUNT_ID) saveSettingsToDB();
@@ -6522,6 +6462,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   updateWatchlist();
   setInterval(updateDash, 2000);
+  setInterval(checkMiniappAction, 1000);
   setInterval(updateAnalysisPanel, 1000);
   updateAnalysisPanel();
   setInterval(updateWatchlist, 3000);
