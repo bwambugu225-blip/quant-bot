@@ -6081,6 +6081,10 @@ async function bulkPurchaseCopy(accounts, type, clientRefs, mult) {
 // ── Login Screen (Deriv OAuth2.0 PKCE flow) ──
 async function oauthLogin(){
   console.log('[OAUTH] Starting OAuth login...');
+  // Clear any previous OAuth state to prevent code_verifier reuse
+  sessionStorage.removeItem('oauth_code_verifier');
+  sessionStorage.removeItem('oauth_state');
+  sessionStorage.removeItem('oauth_redirect_uri');
   const err = document.getElementById('loginError');
   err.textContent='';
   try {
@@ -6161,6 +6165,9 @@ async function exchangeOAuthCode(code){
 }
 async function authorizePat(){
   console.log('[AUTH] PAT login starting...');
+  // Clear OAuth state to prevent issues
+  sessionStorage.removeItem('oauth_code_verifier');
+  sessionStorage.removeItem('oauth_state');
   const inp = document.getElementById('loginPat');
   const err = document.getElementById('loginError');
   const token = inp?.value?.trim();
