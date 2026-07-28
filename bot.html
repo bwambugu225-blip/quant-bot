@@ -6080,44 +6080,57 @@ async function bulkPurchaseCopy(accounts, type, clientRefs, mult) {
 
 // ── Login Screen (Deriv OAuth2.0 PKCE flow) ──
 async function oauthLogin(){
-  console.log('[OAUTH] Starting OAuth login...');
-  // Clear any previous OAuth state to prevent code_verifier reuse
+  console.log('[OAUTH] Starting OAuth login via popup...');
+  // Clear any previous OAuth state
   sessionStorage.removeItem('oauth_code_verifier');
   sessionStorage.removeItem('oauth_state');
   sessionStorage.removeItem('oauth_redirect_uri');
-  const err = document.getElementById('loginError');
-  err.textContent='';
-  try {
-    // 1. Generate PKCE code_verifier
-    const array = crypto.getRandomValues(new Uint8Array(64));
-    const codeVerifier = Array.from(array).map(v =>
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'[v % 66]
-    ).join('');
-    // 2. Derive SHA-256 code_challenge
-    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier));
-    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
-      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    // 3. Generate random state for CSRF
-    const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-      .map(v => v.toString(16).padStart(2,'0')).join('');
-    // 4. Store PKCE params so they survive the redirect back
-    sessionStorage.setItem('oauth_code_verifier', codeVerifier);
-    sessionStorage.setItem('oauth_state', state);
-    sessionStorage.setItem('oauth_redirect_uri', OAUTH_REDIRECT_URI);
-    // 5. Build authorization URL per Deriv OAuth2.0 spec
-    const authUrl = 'https://auth.deriv.com/oauth2/auth?' + new URLSearchParams({
-      response_type: 'code',
-      client_id: G.APP_ID,
-      redirect_uri: OAUTH_REDIRECT_URI,
-      scope: 'trade',
-      state: state,
-      code_challenge: codeChallenge,
-      code_challenge_method: 'S256'
-    }).toString();
-    // 6. Full-page redirect
-    console.log('[OAUTH] Redirecting to:', authUrl);
-    window.location.href = authUrl;
-  } catch(e){ err.textContent='OAuth error: '+e.message; }
+  
+  // Use popup window for OAuth
+  const oauthWindow = window.open(
+    'https://oauth.deriv.com/oauth2/authorize?app_id=' + G.APP_ID + '&l=EN&redirect_uri=' + encodeURIComponent(OAUTH_REDIRECT_URI),
+    'deriv_oauth',
+    'width=500,height=600,scrollbars=yes'
+  );
+  
+  if (!oauthWindow) {
+    console.error('[OAUTH] Popup blocked!');
+    document.getElementById('loginError').textContent = 'Please allow popups for OAuth login';
+    return;
+  }
+  
+  // Poll for OAuth callback
+  const pollInterval = setInterval(() => {
+    try {
+      if (oauthWindow.closed) {
+        clearInterval(pollInterval);
+        return;
+      }
+      
+      const url = oauthWindow.location.href;
+      console.log('[OAUTH] Popup URL:', url);
+      
+      if (url.includes('code=')) {
+        clearInterval(pollInterval);
+        const params = new URLSearchParams(url.split('?')[1]);
+        const code = params.get('code');
+        console.log('[OAUTH] Got code:', code);
+        oauthWindow.close();
+        exchangeOAuthCode(code);
+      }
+      
+      if (url.includes('error=')) {
+        clearInterval(pollInterval);
+        const params = new URLSearchParams(url.split('?')[1]);
+        const error = params.get('error_description') || params.get('error');
+        console.error('[OAUTH] Error:', error);
+        oauthWindow.close();
+        document.getElementById('loginError').textContent = 'OAuth error: ' + error;
+      }
+    } catch(e) {
+      // Cross-origin error - ignore
+    }
+  }, 500);
 }
 function legacyLogin(){
   console.log('[OAUTH] Using legacy login...');
@@ -6127,11 +6140,6 @@ function legacyLogin(){
 }
 async function exchangeOAuthCode(code){
   console.log('[OAUTH] Exchanging code:', code);
-  const err = document.getElementById('loginError');
-  const codeVerifier = sessionStorage.getItem('oauth_code_verifier');
-  const redirectUri = OAUTH_REDIRECT_URI;
-  sessionStorage.removeItem('oauth_code_verifier');
-  sessionStorage.removeItem('oauth_redirect_uri');
   try {
     const resp = await fetch('https://auth.deriv.com/oauth2/token', {
       method:'POST',
@@ -6140,28 +6148,23 @@ async function exchangeOAuthCode(code){
         grant_type:'authorization_code',
         client_id: G.APP_ID,
         code: code,
-        code_verifier: codeVerifier,
         redirect_uri: OAUTH_REDIRECT_URI
       })
     });
     const data = await resp.json();
     console.log('[OAUTH] Token response:', data);
+    
     if(data.access_token){
-      // If this is the popup (window.opener exists), pass token to main window
-      if(window.opener && !window.opener.closed){
-        window.opener.document.getElementById('loginPat').value = data.access_token;
-        window.opener.document.getElementById('loginError').textContent='';
-        window.opener.authorizePat();
-        setTimeout(()=>window.close(), 500);
-      } else {
-        document.getElementById('loginPat').value = data.access_token;
-        err.textContent='';
-        authorizePat();
-      }
+      console.log('[OAUTH] Got access token, length:', data.access_token.length);
+      document.getElementById('loginPat').value = data.access_token;
+      authorizePat();
     } else {
-      err.textContent='Token exchange failed: '+(data.error_description||data.error||'unknown');
+      document.getElementById('loginError').textContent='Token exchange failed: '+(data.error_description||data.error||'unknown');
     }
-  } catch(e){ err.textContent='Token exchange error: '+e.message; }
+  } catch(e){ 
+    console.error('[OAUTH] Token exchange error:', e);
+    document.getElementById('loginError').textContent='Token exchange error: '+e.message;
+  }
 }
 async function authorizePat(){
   console.log('[AUTH] PAT login starting...');
@@ -6464,28 +6467,24 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initialize trader ID
   initTraderId();
   console.log('%c[ADMIN] Default password: 13571 — change it in Admin → Settings','color:#d4a84b;font-weight:bold');
-  // Check for OAuth redirect back (PKCE code or legacy token1)
+  
+  // Check for OAuth redirect back
   const params = new URLSearchParams(window.location.search);
   const urlCode = params.get('code');
-  const urlState = params.get('state');
+  const urlError = params.get('error');
   const urlToken = params.get('token1');
-  if(urlCode && urlState === sessionStorage.getItem('oauth_state')){
+  
+  if(urlCode){
+    console.log('[OAUTH] Code in URL:', urlCode);
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
-    sessionStorage.removeItem('oauth_state');
     exchangeOAuthCode(urlCode);
-  } else if(urlToken){
+  } else if(urlError){
+    console.error('[OAUTH] Error in URL:', urlError);
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    document.getElementById('loginError').textContent = 'OAuth error: ' + urlError;
+  } else if(urlToken){
     document.getElementById('loginPat').value = urlToken;
     setTimeout(() => authorizePat(), 100);
-  } else if(urlCode && !urlState){
-    // Code received but no state — can't verify, show error
-    window.history.replaceState({}, document.title, window.location.pathname);
-    document.getElementById('loginError').textContent = 'OAuth code received but state parameter missing — try again';
-  } else if(params.get('error')){
-    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
-    const desc = params.get('error_description') || params.get('error');
-    document.getElementById('loginError').textContent = 'OAuth error: '+desc;
-    console.warn('[OAUTH] Error:', {error:params.get('error'), description:desc, state:params.get('state')});
   }
   // Login Enter key
   document.getElementById('loginPat')?.addEventListener('keydown', e => { if(e.key==='Enter') authorizePat(); });
