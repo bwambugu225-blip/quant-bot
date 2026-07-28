@@ -2,9 +2,7 @@
   "version": 2,
   "rewrites": [
     { "source": "/", "destination": "/index.html" },
-    { "source": "/bot(/?|\\?.*)", "destination": "/bot.html" },
-    { "source": "/app(/?|\\?.*)", "destination": "/miniapp.html" },
-    { "source": "/miniapp(/?|\\?.*)", "destination": "/miniapp.html" }
+    { "source": "/bot(/?|\\?.*)", "destination": "/bot.html" }
   ],
   "headers": [
     {
