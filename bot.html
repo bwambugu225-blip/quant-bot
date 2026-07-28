@@ -1317,7 +1317,6 @@ function sbInit(){
         }),
       };
       return _b;
-    }
   };
   return _sbClient;
 }
@@ -1354,7 +1353,6 @@ async function sbEnsureUser(derivId, token, type, balance, traderId){
       const storedName = localStorage.getItem('btr_username');
       if(storedName){ try { await sb.from('users').update({ username: storedName }).eq('deriv_id', derivId); } catch(e){} }
       return data;
-    }
     const newTraderId = traderId || genTraderId();
     const { data, error } = await sb.from('users').insert({
       deriv_id: derivId, deriv_token: token || '', account_type: type || 'demo',
@@ -1382,7 +1380,6 @@ async function sbUpsertUser(){
         localStorage.setItem('btr_username', name);
         u.username = name;
       }
-    }
     // Load persisted session settings from DB (takes precedence over localStorage)
     try {
       const loaded = await loadSettingsFromDB();
@@ -1582,7 +1579,6 @@ function applySettings(s){
       const toggle = document.getElementById('accToggle'); if(toggle) toggle.checked = s.account_type === 'real';
       const badge = document.getElementById('accBadge'); if(badge){ badge.textContent = s.account_type.toUpperCase(); badge.className = `acc-badge ${s.account_type}`; }
       const al = document.getElementById('accLabel'); if(al) al.textContent = s.account_type.toUpperCase();
-    }
     if(s.trade_mode) G.TRADE_MODE = s.trade_mode;
     if(s.current_market) G.CURRENT_MARKET = s.current_market;
     if(s.trade_duration) G.TRADE_DURATION = s.trade_duration;
@@ -1598,13 +1594,11 @@ function applySettings(s){
       if(s.botstate.baseStake) BotState.baseStake = s.botstate.baseStake;
       if(s.botstate.targetProfit) BotState.targetProfit = s.botstate.targetProfit;
       if(s.botstate.stopLoss) BotState.stopLoss = s.botstate.stopLoss;
-    }
     if(s.martingale){ const m=s.martingale;
       if(typeof m.enabled==='boolean') Martingale.enabled=m.enabled;
       if(m.mult) Martingale.mult=m.mult;
       if(m.baseStake) Martingale.baseStake=m.baseStake;
       if(m.currentStake) Martingale.currentStake=m.currentStake;
-    }
     if(typeof s.ai_trading_enabled==='boolean'){ G.AI_TRADING_ENABLED = s.ai_trading_enabled; syncAiToggleUI(); }
     if(typeof s.copy_trading_enabled==='boolean') G.COPYTRADING_ENABLED = s.copy_trading_enabled;
     if(Array.isArray(s.copy_traders)) G.COPY_TRADERS = s.copy_traders.map(c => ({ ...c, copyOnline: !!c.copyOnline, status: 'offline' }));
@@ -1623,7 +1617,6 @@ function applySettings(s){
       const eao=document.getElementById('settingAO'); if(eao) eao.checked=ChartSettings.ao;
       const ear=document.getElementById('settingAroon'); if(ear) ear.checked=ChartSettings.aroon;
       const e4=document.getElementById('settingBodyRatio'); if(e4) e4.value=ChartSettings.bodyRatio;
-    }
     if(s.token){ G.TOKEN = s.token; const e=document.getElementById('loginPat') || document.getElementById('apiToken'); if(e) e.value=s.token; }
     return true;
   } catch(e){ console.warn('[APPLY SETTINGS]', e.message); return false; }
@@ -1785,7 +1778,6 @@ async function adminUserAction(derivId, action, selEl){
     if(confirm('Reset this user\'s saved settings (copy clients, strategy, etc.)?')){
       const ok = await sbClearUserSettings(derivId);
       if(ok) alert('Settings cleared for ' + derivId);
-    }
     if(selEl) selEl.value='';
     renderAdminUsers(document.getElementById('adminContent'));
     return;
@@ -2224,7 +2216,6 @@ function initStrategies(){
         const dist=d>0?Math.abs(last.close-k.low):Math.abs(last.close-k.high);
         if(dist<gap*0.6&&dist<tol)return{action:d>0?'RISE':'FALL',conf:85,src:'ICT_OB'};
       }
-    }
     return null;
   }});
 
@@ -2235,7 +2226,6 @@ function initStrategies(){
       const a=c[i],b=c[i+1],d=c[i+2];if(!a||!b||!d)continue;
       if(a.high<d.low&&last.close>=a.high&&last.close<=d.low)return{action:'RISE',conf:84,src:'FVG'};
       if(a.low>d.high&&last.close<=a.low&&last.close>=d.high)return{action:'FALL',conf:84,src:'FVG'};
-    }
     return null;
   }});
 
@@ -2306,7 +2296,6 @@ function initStrategies(){
     if((bbU-bbL)<std*2.5){
       if(last.close>bbU&&prev.close<=bbU)return{action:'RISE',conf:87,src:'KELTNER_SQZ'};
       if(last.close<bbL&&prev.close>=bbL)return{action:'FALL',conf:87,src:'KELTNER_SQZ'};
-    }
     return null;
   }});
 
@@ -2525,7 +2514,6 @@ function evaluateDigitStrategy(sym){
     const rowSum = M[i].reduce((a, b) => a + b, 0);
     for (let j = 0; j < 10; j++) {
       M[i][j] /= rowSum;
-    }
   }
 
   // Current last digit
@@ -2550,7 +2538,6 @@ function evaluateDigitStrategy(sym){
       if(isOver ? d > c.barrier : d < c.barrier){
         p_transition += M[nowDigit][d];
       }
-    }
 
     // Calculate empirical frequency of winning in the rolling window
     const winCount = buf.filter(d => isOver ? d > c.barrier : d < c.barrier).length;
@@ -2564,7 +2551,6 @@ function evaluateDigitStrategy(sym){
       if(!best || edge > best.edge){
         best = { ...c, p_transition, p_empirical, p_composite, edge };
       }
-    }
   }
 
   // Log rolling analytics to the console
@@ -2792,7 +2778,6 @@ function checkPriceAction(sym, action) {
     if (action === 'RISE' && engulfing) {
       log(`[PA] ${sym}: Bullish Engulfing confirmed ✓`, 's');
       return true;
-    }
 
     const prevBullish = prev.close > prev.open;
     const currBearish = last.close < last.open;
@@ -2803,7 +2788,6 @@ function checkPriceAction(sym, action) {
     if (action === 'FALL' && bearEngulfing) {
       log(`[PA] ${sym}: Bearish Engulfing confirmed ✓`, 's');
       return true;
-    }
   }
 
   // Check reversal patterns match the signal direction
@@ -2811,12 +2795,10 @@ function checkPriceAction(sym, action) {
     if (isHammer || isInvertedHammer || isDoji || isLongLowerWick) {
       log(`[PA] ${sym}: Bullish rejection pattern confirmed (wick=${(lowerWick/range*100).toFixed(0)}%) ✓`, 's');
       return true;
-    }
   } else if (action === 'FALL') {
     if (isInvertedHammer || isLongUpperWick || isDoji) {
       log(`[PA] ${sym}: Bearish rejection pattern confirmed (wick=${(upperWick/range*100).toFixed(0)}%) ✓`, 's');
       return true;
-    }
   }
 
   log(`[PA] ${sym}: No reversal candle pattern - ${action} signal rejected`, 'w');
@@ -2892,7 +2874,6 @@ function connectMarketWS(){
       log('[MARKET] No data received — click ⟳ to retry or check network','e');
       const reBtn = document.getElementById('reconnMktBtn');
       if(reBtn) reBtn.hidden = false;
-    }
   }, 20000);
 }
 
@@ -2919,7 +2900,6 @@ function startHeartbeat(){
     // Keep trading WS alive
     if(G.WS && G.WS.readyState===WebSocket.OPEN){
       try { G.WS.send(JSON.stringify({ ping:1, req_id:genId() })); } catch(e){}
-    }
     // Keep copy trading client sockets alive
     if (typeof clientSockets !== 'undefined' && clientSockets.size > 0) {
       for (const [token, ws] of clientSockets.entries()) {
@@ -2927,24 +2907,20 @@ function startHeartbeat(){
           try { ws.send(JSON.stringify({ ping:1, req_id:genId() })); } catch(e){}
         }
       }
-    }
     // Keep market WS alive
     if(G.MWS && G.MWS.readyState===WebSocket.OPEN){
       try { G.MWS.send(JSON.stringify({ ping:1, req_id:genId() })); } catch(e){}
-    }
     // Watchdog: market data may come from G.MWS or G.WS
     const lastAnyMsg = Math.max(G.LAST_MARKET_MSG_AT||0, G.LAST_TRADE_MSG_AT||0);
     const silent = Date.now() - lastAnyMsg;
     if(silent > 60000 && G.MWS && !(G.WS && G.WS.readyState===WebSocket.OPEN)){
       log('[WS] No data 60s — reconnecting market WS','w');
       try{ G.MWS.close(); }catch(e){}
-    }
     if(silent > 90000 && G.WS && G.WS.readyState===WebSocket.OPEN){
       log('[WS] No data 90s — reconnecting trading WS','w');
       const token = G.TOKEN;
       try{ G.WS.close(); }catch(e){}
       if(token) setTimeout(() => doRESTFlow(token), 1000);
-    }
     // Re-check this account's status so unban/unsuspend is applied live
     if(G.ACCOUNT_ID && G.AUTH){ recheckAccountStatus(); }
   }, 15000);
@@ -3010,7 +2986,6 @@ function bucketTicks(times, prices, tickSize){
         ticks: bucket.length
       });
       bucket = [];
-    }
   }
   return { candles, bucket };
 }
@@ -3086,7 +3061,6 @@ function handleTick(data){
       const arrow = dir>0?'▲':dir<0?'▼':'·';
       const cls = dir>0?'p':dir<0?'n':'a';
       haxPush(`TICK ${sym} ${arrow} ${price.toFixed(4)}`, cls);
-    }
   }
   // Multimarket digit engine: evaluate the just-arrived market (and any other
   // subscribed market that is ready) whenever a contract slot is free.
@@ -3097,7 +3071,6 @@ function handleTick(data){
         if(m===sym) continue;
         if((G.MARKET.digHist[m]||[]).length >= 90){ evaluateDigitStrategy(m); if(G.ACTIVE_CONTRACTS.size>=1) break; }
       }
-    }
   }
   // ── Multi-timeframe candle building ──
   for(let ti=0;ti<G.TF_LIST.length;ti++){
@@ -3136,7 +3109,6 @@ function handleTick(data){
         evaluateAndTrade(sym);
       }
       if(isSel && G._tradedCandle) G._tradedCandle[sym]=false;
-    }
   }
   if(sym===G.CURRENT_MARKET) {
     const lastEpochKey = '_lastChartEpoch_'+sym;
@@ -3144,7 +3116,6 @@ function handleTick(data){
     if(epoch !== lastEpoch){
       G[lastEpochKey] = epoch;
       drawChart();
-    }
   }
 }
 
@@ -3450,7 +3421,6 @@ function runStrategyAnalysis(sym, candles, liveBuf, tf){
 
       const pd = pickOptimalDuration(finalSrc, finalConf, sym);
       return { action, conf:finalConf, src:finalSrc, dur:pd.dur, durUnit:pd.unit, evidence:{votes:votes.length, riseVotes, fallVotes} };
-    }
   } catch(e) {
     log(`[CRASH] runStrategyAnalysis: ${e.message}`,'e');
     return null;
@@ -3654,7 +3624,6 @@ function handleContract(c){
           log(`[ANTI-MART] Win streak ${winStreak} — reduced stake to $${Martingale.currentStake.toFixed(2)}`,'i');
         }
       }
-    }
     else {
       G.LOSSES++; G.CONS_LOSS++;
       if(G.LAST_SIGNAL?.asset) G._marketLossAt[G.LAST_SIGNAL.asset] = Date.now();
@@ -3679,7 +3648,6 @@ function handleContract(c){
         showToast('Daily loss limit reached!', 'sl');
         return;
       }
-    }
     learnOutcome(G.LAST_SIGNAL?.fp, won);
     G.PNL += c.profit; G.DAILY.pnl += c.profit;
     if(Martingale.enabled && !c.contract_type?.startsWith('DIGIT')){
@@ -3694,7 +3662,6 @@ function handleContract(c){
         Martingale.currentStake = Math.min(maxStake, +(Martingale.currentStake * Martingale.mult).toFixed(2));
       }
       updateMartingaleUI();
-    }
     const tradeRec = {
       time: new Date().toLocaleTimeString(),
       action: G.LAST_SIGNAL?.action || ((c.contract_type||'').startsWith('DIGIT') ? 'DIGIT' : '—'),
@@ -3803,7 +3770,6 @@ async function resetDemo(){
     } else {
       const err = await resp.json();
       log('[RESET] Failed: '+(err.errors?.[0]?.message||resp.statusText),'e');
-    }
   } catch(e){ log('[RESET] Error: '+e.message,'e'); }
 }
 function authorizeToken(){
@@ -3910,7 +3876,6 @@ function drawChart(){
       ctx.fillText('Importing '+tfLabel+' candles… '+raw.length+'/15',12,h/2);
     } else {
       ctx.fillText('Waiting for '+tfLabel+' data...',12,h/2);
-    }
     return;
   }
   if(G.CHART_MODE === 'line'){
@@ -3947,7 +3912,6 @@ function drawChart(){
         close: haClose,
         original: k
       });
-    }
     chartCandles = ha;
   } else if(ChartSettings.type === 'renko'){
     let atrPeriod = 14;
@@ -3958,7 +3922,6 @@ function drawChart(){
       const prevClose = all[i-1].close;
       const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
       trSum += tr;
-    }
     const atr = trSum / (all.length - 1 || 1);
     const last = all[all.length - 1];
     const brickSize = Math.max(atr * 0.75, (last ? last.close : 100) * 0.0001);
@@ -4047,10 +4010,8 @@ function drawChart(){
           }
         }
       }
-    }
     if (renko.length > 0) {
       chartCandles = renko;
-    }
   }
 
   // ── Candlestick panel (top 80%) ──
@@ -4069,7 +4030,6 @@ function drawChart(){
     ctx.strokeStyle=up?POS:NEG; ctx.lineWidth=1;
     if (ChartSettings.type !== 'renko') {
       ctx.beginPath();ctx.moveTo(x,ny(k.high));ctx.lineTo(x,ny(k.low));ctx.stroke();
-    }
     ctx.fillStyle=up?POS:NEG;
     const bw=Math.max(1, cw * (ChartSettings.bodyRatio || 0.6));
     const yo=ny(Math.max(k.open,k.close)), yc=ny(Math.min(k.open,k.close));
@@ -4090,7 +4050,6 @@ function drawChart(){
         currentEma = closes[i] * kFactor + currentEma * (1 - kFactor);
         emaVals.push(currentEma);
       }
-    }
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([]);
@@ -4105,7 +4064,6 @@ function drawChart(){
       } else {
         ctx.lineTo(x, y);
       }
-    }
     ctx.stroke();
   }
   if (ChartSettings.ema20) drawEMALine(20, 'rgba(223, 186, 115, 0.7)');
@@ -4138,7 +4096,6 @@ function drawChart(){
         ctx.lineTo(x+4, ny(c.low)+9);
         ctx.closePath(); ctx.fill();
       }
-    }
   }
   if (ChartSettings.fractals) drawFractals();
 
@@ -4174,7 +4131,6 @@ function drawChart(){
         ctx.fillText(label, x, up ? ny(k.low)+12 : ny(k.high)-12);
         ctx.textAlign = 'left';
       }
-    }
   }
   if (ChartSettings.haPatterns) drawHAPatterns();
 
@@ -4195,7 +4151,6 @@ function drawChart(){
       ctx.fillStyle = v >= 0 ? 'rgba(54,225,255,0.55)' : 'rgba(255,138,76,0.55)';
       if(v >= 0) ctx.fillRect(x-bw/2, baseY-barH, bw, barH);
       else ctx.fillRect(x-bw/2, baseY, bw, barH);
-    }
     // zero line
     ctx.strokeStyle='rgba(128,128,128,0.25)'; ctx.lineWidth=1;
     ctx.beginPath(); ctx.moveTo(0,baseY); ctx.lineTo(w,baseY); ctx.stroke();
@@ -4224,7 +4179,6 @@ function drawChart(){
         upperVals.push(mean + 2.0 * sd);
         lowerVals.push(mean - 2.0 * sd);
       }
-    }
 
     // Draw Upper Band
     ctx.strokeStyle = 'rgba(54, 225, 255, 0.4)';
@@ -4235,7 +4189,6 @@ function drawChart(){
       const x = i * cw + cw / 2;
       const y = ny(upperVals[i]);
       if (i === 19) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
     ctx.stroke();
 
     // Draw Lower Band
@@ -4244,7 +4197,6 @@ function drawChart(){
       const x = i * cw + cw / 2;
       const y = ny(lowerVals[i]);
       if (i === 19) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
     ctx.stroke();
 
     // Draw Middle Band (SMA 20)
@@ -4254,7 +4206,6 @@ function drawChart(){
       const x = i * cw + cw / 2;
       const y = ny(smaVals[i]);
       if (i === 19) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-    }
     ctx.stroke();
     ctx.setLineDash([]);
   }
@@ -4288,7 +4239,6 @@ function drawChart(){
       const slice = chartCandles.slice(i-25,i+1);
       const v = aroon(slice,25);
       aArr.push({ up: v.up, down: v.down });
-    }
     if(aArr.length < 2) return;
     const start = chartCandles.length - aArr.length;
     ctx.strokeStyle = 'rgba(54,225,255,0.8)'; ctx.lineWidth = 1.5;
@@ -4339,7 +4289,6 @@ function drawChart(){
       ctx.moveTo(x, sy); ctx.lineTo(x-hw, sy+hh); ctx.lineTo(x+hw, sy+hh);
     } else {
       ctx.moveTo(x, sy); ctx.lineTo(x-hw, sy-hh); ctx.lineTo(x+hw, sy-hh);
-    }
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
@@ -4366,7 +4315,6 @@ function drawChart(){
       ctx.fillStyle='rgba(0,0,0,0.75)'; ctx.fillRect(cx+6, Math.max(0,cy-12), 80, 18);
       ctx.fillStyle='#fff'; ctx.font='10px monospace'; ctx.textAlign='left'; ctx.textBaseline='middle';
       ctx.fillText(crossPrice.toFixed(3), cx+10, cy);
-    }
     // Candle info tooltip
     if(ci >= 0 && ci < all.length && cy >= 0 && cy <= cdlH){
       const k = all[ci];
@@ -4378,7 +4326,6 @@ function drawChart(){
       ctx.fillText('C: '+k.close.toFixed(3), 70, 18);
       ctx.fillStyle=(k.close>=k.open?POS:NEG);
       ctx.fillText(k.close>=k.open?'RISE':'FALL', 8, 32);
-    }
     ctx.restore();
   }
 }
@@ -4492,7 +4439,6 @@ function updateModeUI(){
       indicator.innerHTML = `<span class="dot g"></span>Manual: ${G.SELECTED_MARKET}`;
     } else {
       indicator.innerHTML = `<span class="dot y"></span>Auto mode`;
-    }
   }
 }
 function toggleMarketMode(){
@@ -4553,7 +4499,6 @@ function updateDigitsUI(){
     if(cells.length<5){
       viz.innerHTML = '<span class="dg-tick"></span>'.repeat(5);
       cells = viz.querySelectorAll('.dg-tick');
-    }
     for(let i=0;i<5;i++){
       const d = i < q.length ? q[q.length-1-i] : null;
       const el = cells[4-i];
@@ -4564,7 +4509,6 @@ function updateDigitsUI(){
         el.textContent = '—';
         el.className = 'dg-tick';
       }
-    }
   }
   // Session PnL
   const pnlEl = document.getElementById('dgSessionPnL');
@@ -4636,7 +4580,6 @@ function updateDigitsUI(){
           + '<span class="pct">'+pctStr+'%</span>'
           + '</div>';
       }).join('');
-    }
     // Always update NOW indicator without full rebuild
     const nowEl = get('dgNowDigit');
     if(nowEl) nowEl.textContent = now>=0 ? String(now) : '—';
@@ -4721,7 +4664,6 @@ function updateDigitsUI(){
       } else {
         rows.push(`<div onclick="selectMarket('${sym}')" style="display:flex;justify-content:space-between;align-items:center;font-size:8px;padding:2px 4px;border:1px solid var(--line);opacity:0.6;cursor:pointer${sel?';outline:1px solid var(--accent)':''}"><span style="color:var(--muted)">${sym}</span><span style="color:var(--muted)">—</span></div>`);
       }
-    }
     watch.innerHTML = rows.join('');
   }
   // Live-window Entropy already computed above (ent); show a short note.
@@ -4798,7 +4740,6 @@ function updateAnalysisPanel(){
         if(e) e.style.color = hot?'var(--negative)':cold?'var(--positive)':'var(--accent)';
         if(b){ b.style.width=Math.max(2,r)+'%'; b.className=hot?'hot':cold?'cold':''; }
       }
-    }
     // Direction bias from RSI: >55 lean RISE, <45 lean FALL, else NEUTRAL
     let bias='—', biasCls='', biasPct=50;
     if(r!=null){
@@ -4806,7 +4747,6 @@ function updateAnalysisPanel(){
       if(r>55){ bias='RISE ▲'; biasCls='rise'; }
       else if(r<45){ bias='FALL ▼'; biasCls='fall'; }
       else { bias='NEUTRAL'; biasCls=''; }
-    }
     set('haxBias', bias);
     const be=document.getElementById('haxBias'); if(be) be.className='mv '+(biasCls==='rise'?'rise':biasCls==='fall'?'fall':'');
     const bb=document.getElementById('haxBiasBar');
@@ -4840,7 +4780,6 @@ function updateAnalysisPanel(){
       set('haxConfTxt', liveConf+'%');
       set('haxSrc','bias');
       set('haxStake','$0.00');
-    }
     set('haxMode', G.TRADE_MODE||'—');
     set('haxWL', `${G.WINS||0} / ${G.LOSSES||0}`);
     const focus=document.getElementById('haxFocus'); if(focus) focus.textContent=sym;
@@ -4859,7 +4798,6 @@ function updateAnalysisPanel(){
     if(!G.RUNNING && !BotState.isTrading){
       G._haxScan=(G._haxScan||0)+1;
       if(G._haxScan>=5){ G._haxScan=0; haxPush(`scan ${sym} · rsi=${r?r.toFixed(0):'--'} bias=${bias} · watching`, 'a'); }
-    }
     renderHaxMatrix();
   } catch(e){ /* never let the panel blank the app */ }
 }
@@ -5051,7 +4989,6 @@ async function pollTelegram(){
         if(text.startsWith('/')){ handleTgCommand(text, chatId); }
         else { handleTgChat(chatId, text); }
       }
-    }
   } catch(e){
     if(e.name !== 'AbortError') console.log('[TG] Poll error:', e);
   }
@@ -5146,7 +5083,6 @@ async function handleTgChat(chatId, text){
     if(!key){
       tgSend(chatId, `🤖 I need a Groq API key to chat intelligently. Set it in the bot config.`);
       return;
-    }
     if(!groqOk()){ tgSend(chatId, `⏳ I'm rate-limited (30 req/min). Wait a moment or use /status, /pnl etc.`); return; }
     const info = tgTradeInfo();
     const today = new Date().toDateString();
@@ -5183,7 +5119,6 @@ Keep responses under 2-3 sentences unless asked. Use markdown. Be encouraging.`;
         const data = await res.json();
         if(data.choices?.[0]?.message?.content){ reply = data.choices[0].message.content; break; }
       } catch(e){ console.log('[GROQ]', model, e.message); }
-    }
     if(reply) tgSend(chatId, reply);
     else tgSend(chatId, `🤖 Groq is unavailable. Use /status, /pnl, /help etc.`);
   } catch(e){
@@ -5200,13 +5135,11 @@ function processTgAction(action, chatId, msgId){
       G._tgTradeChat = chatId;
       execTrade({ action:'RISE', conf:100, src:'TG', sym:info.symName, lastPrice:0 });
       tgSend(chatId, `🟢 *CALL* $${info.curStake.toFixed(2)} on ${info.marketName}\n⏳ Waiting for result...`); break;
-    }
     case 'put':{
       if(G.ACTIVE_CONTRACTS.size>=1){ tgSend(chatId, `⏳ Contract active — wait`); break; }
       G._tgTradeChat = chatId;
       execTrade({ action:'FALL', conf:100, src:'TG', sym:info.symName, lastPrice:0 });
       tgSend(chatId, `🔴 *PUT* $${info.curStake.toFixed(2)} on ${info.marketName}\n⏳ Waiting for result...`); break;
-    }
     case 'start':
       if(G.TRADE_MODE!=='RISEFALL') switchMode('RISEFALL');
       startBot();
@@ -5236,14 +5169,12 @@ function processTgAction(action, chatId, msgId){
       const mn = info.hist.length ? Math.min(...info.hist.map(t=>+t.profit||0)) : 0;
       tgSend(chatId,
         `📈 *PnL*\nTotal: ${info.pnl>=0?'+':''}$${info.pnl.toFixed(2)}\nBest: +$${mx.toFixed(2)}\nWorst: $${mn.toFixed(2)}\nBalance: $${G.BALANCE.toFixed(2)}`); break;
-    }
     case 'stats':{
       const w=info.hist.filter(t=>t.won).length, l=info.hist.length-w;
       const aw=w?info.hist.filter(t=>t.won).reduce((s,t)=>s+(+t.profit||0),0)/w:0;
       const al=l?info.hist.filter(t=>!t.won).reduce((s,t)=>s+(+t.profit||0),0)/l:0;
       tgSend(chatId,
         `📋 *Stats*\n📊 ${info.total} ✅ ${G.WINS} ❌ ${G.LOSSES}\n📈 WR: ${info.wr}%\n💰 ${info.pnl>=0?'+':''}$${info.pnl.toFixed(2)}\n📈 Avg Win: +$${aw.toFixed(2)}\n📉 Avg Loss: -$${Math.abs(al).toFixed(2)}\n🔥 ${G.CONS_LOSS||0}L\n💡 ${G.SELECTED_STRATEGY||'—'}\n${G.RUNNING?'🟢 Running':'⏸ Stopped'}`); break;
-    }
     case 'help':
       tgSend(chatId,
         `🤖 *BTraders Bot*\n\n`+
@@ -5542,7 +5473,6 @@ function restoreState(){
         const elAroon = document.getElementById('settingAroon'); if(elAroon) elAroon.checked = ChartSettings.aroon;
         const elRatio = document.getElementById('settingBodyRatio'); if(elRatio) elRatio.value = ChartSettings.bodyRatio;
       } catch(ex){ console.log('[RESTORE CHART SETTINGS]', ex.message); }
-    }
     const t = localStorage.getItem('deriv_token');
     if(t){ G.TOKEN = t; const elT=document.getElementById('loginPat') || document.getElementById('apiToken'); if(elT) elT.value = t; }
     const savedAppId = localStorage.getItem('deriv_app_id');
@@ -5552,7 +5482,6 @@ function restoreState(){
     if(sk){
       const elR = document.getElementById('rfStake'); if(elR) elR.value = sk;
       const elD = document.getElementById('dgBaseStake'); if(elD) elD.value = sk;
-    }
     const a = localStorage.getItem('deriv_account_type');
     if(a === 'real' || a === 'demo'){ G.ACCOUNT_TYPE = a;
       const toggle = document.getElementById('accToggle');
@@ -5561,7 +5490,6 @@ function restoreState(){
       if(badge){ badge.textContent = a.toUpperCase(); badge.className = `acc-badge ${a}`; }
       const al = document.getElementById('accLabel');
       if(al) al.textContent = a.toUpperCase();
-    }
     G.TELEGRAM_BOT_TOKEN='8903146940:AAHDEPeUaw_ihF9dTme3Hi0eS7Cv2MbzRyg'; G.TELEGRAM_CHAT_ID='8363983871';
     sbLinkTelegram();
     // Autorotation uses all 10 elite strategies
@@ -5574,7 +5502,6 @@ function restoreState(){
       if(d.baseStake) BotState.baseStake = d.baseStake;
       if(d.targetProfit) BotState.targetProfit = d.targetProfit;
       if(d.stopLoss) BotState.stopLoss = d.stopLoss;
-    }
     // Restore trade mode, market, duration, martingale
     const tm = localStorage.getItem('deriv_trade_mode');
     if(tm) G.TRADE_MODE = tm;
@@ -5735,7 +5662,6 @@ async function fetchClientProfile(token, preferredType) {
           token: token
         };
       }
-    }
   } catch(e) {
     console.warn('[COPY] REST profile fetch failed, trying WS...', e);
   }
@@ -5785,7 +5711,6 @@ async function addNewCopyClient() {
     if(userStatus !== 'active'){
       log(`[COPY] Cannot add ${name}: account ${profile.accountId} is ${userStatus}`,'e');
       return;
-    }
     // Generate or use existing trader ID for copy client
     const clientTraderId = `COPY-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
     await sbEnsureUser(profile.accountId, token, accountType, profile.balance, clientTraderId);
@@ -5829,7 +5754,6 @@ function removeCopyClient(idx) {
     if (ws) {
       try { ws.close(); } catch(e){}
       clientSockets.delete(client.token);
-    }
     log(`[COPY] Removed client ${client.name}`, 'w');
     G.COPY_TRADERS.splice(idx, 1);
     saveState();
@@ -5933,7 +5857,6 @@ function connectClientWS(client) {
       }
     } catch (ex) {
       console.error('[COPY] parse error:', ex);
-    }
   };
 
   ws.onerror = (err) => {
@@ -5951,7 +5874,6 @@ function connectClientWS(client) {
           connectClientWS(client);
         }
       }, 5000);
-    }
   };
 }
 
@@ -5993,7 +5915,6 @@ function copyProposalToClients(masterProposal) {
     if (st !== 'active') {
       log(`[COPY] Skipping ${client.name}: ${st}`,'w');
       continue;
-    }
     const mult = (+client.stakeMult > 0) ? +client.stakeMult : 1;
     const type = (client.accountType === 'real') ? 'real' : 'demo';
     groups[mult] = groups[mult] || { demo: [], real: [] };
@@ -6113,7 +6034,6 @@ async function exchangeOAuthCode(code){
       }
     } else {
       err.textContent='Token exchange failed: '+(data.error_description||data.error||'unknown');
-    }
   } catch(e){ err.textContent='Token exchange error: '+e.message; }
 }
 async function authorizePat(){
@@ -6138,7 +6058,6 @@ async function doRESTFlow(token){
         accounts = (data.data || []).map(a => ({ account:a.account_id, token:token, currency:a.currency||'USD', isDemo:a.account_type==='demo'||a.is_virtual, balance:parseFloat(a.balance||0) }));
         G._oauthAccounts = accounts;
       }
-    }
   } catch(e){ log('[AUTH] REST accounts failed, trying WS...','w'); }
   // Step 2: Fallback — WS authorize (works with PAT and legacy tokens)
   if(!accounts || !accounts.length){
@@ -6173,7 +6092,6 @@ async function doRESTFlow(token){
       const otpData = await otpResp.json();
       const wsUrl = otpData.data?.url || otpData.url;
       if(wsUrl){ connectOTP(wsUrl); return; }
-    }
   } catch(e){ log('[AUTH] OTP failed, trying direct WS...','w'); }
   // Step 5: Fallback — direct WS with token in URL
   connectDirectWS(token);
@@ -6346,7 +6264,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (tg.themeParams) {
       if (tg.themeParams.bg_color) document.documentElement.style.setProperty('--bg', tg.themeParams.bg_color);
       if (tg.themeParams.button_color) document.documentElement.style.setProperty('--accent', tg.themeParams.button_color);
-    }
     console.log('[TELEGRAM] WebApp initialized');
   }
   
@@ -6355,7 +6272,6 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('%c[ADMIN] Default password: 13571 — change it in Admin → Settings','color:#d4a84b;font-weight:bold');
   
   // Store that main bot initialized OAuth (for redirect handling)
-  sessionStorage.setItem('oauth_initiator', 'bot');
   
   // Check for OAuth redirect back (PKCE code or legacy token1)
   const params = new URLSearchParams(window.location.search);
@@ -6363,39 +6279,32 @@ document.addEventListener('DOMContentLoaded', () => {
   const urlState = params.get('state');
   const urlToken = params.get('token1');
   
-  // Check which page initiated the OAuth flow
+  // ALWAYS clear URL first
+  if(urlCode || urlToken || params.get('error')){
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+  }
   
   if(urlCode && urlState === sessionStorage.getItem('oauth_state')){
-    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
-    sessionStorage.removeItem('oauth_state');
-    
-    // If OAuth was initiated by mini app but we're on main bot, redirect back to mini app
-      const dest = '/app' + window.location.search + window.location.hash;
-      window.location.href = dest;
-      return;
+    // Prevent code reuse
+    const usedCodes = JSON.parse(sessionStorage.getItem('oauth_used_codes') || '[]');
+    if(usedCodes.includes(urlCode)){
+      document.getElementById('loginError').textContent = 'OAuth code already used. Please try again.';
+      console.warn('[OAUTH] Code reuse detected');
+    } else {
+      usedCodes.push(urlCode);
+      sessionStorage.setItem('oauth_used_codes', JSON.stringify(usedCodes.slice(-5)));
+      sessionStorage.removeItem('oauth_state');
+      exchangeOAuthCode(urlCode);
     }
-    
-    exchangeOAuthCode(urlCode);
   } else if(urlToken){
-    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
-    
-    // If token came from mini app but we're on main bot, redirect back to mini app
-      const dest = '/app' + window.location.search + window.location.hash;
-      window.location.href = dest;
-      return;
-    }
-    
     document.getElementById('loginPat').value = urlToken;
     setTimeout(() => authorizePat(), 100);
   } else if(urlCode && !urlState){
-    // Code received but no state — can't verify, show error
-    window.history.replaceState({}, document.title, window.location.pathname);
-    document.getElementById('loginError').textContent = 'OAuth code received but state parameter missing — try again';
+    document.getElementById('loginError').textContent = 'OAuth code received but state missing - try again';
   } else if(params.get('error')){
-    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
     const desc = params.get('error_description') || params.get('error');
     document.getElementById('loginError').textContent = 'OAuth error: '+desc;
-    console.warn('[OAUTH] Error:', {error:params.get('error'), description:desc, state:params.get('state')});
+    console.warn('[OAUTH] Error:', desc);
   }
   // Login Enter key
   document.getElementById('loginPat')?.addEventListener('keydown', e => { if(e.key==='Enter') authorizePat(); });
@@ -6406,7 +6315,6 @@ document.addEventListener('DOMContentLoaded', () => {
     for(const tk of G.TF_LIST){
       if(!G.TF[tk].candles[s.sym]) G.TF[tk].candles[s.sym] = [];
       if(!G.TF[tk].prices[s.sym])  G.TF[tk].prices[s.sym] = [];
-    }
   });
   restoreState();
   syncAiToggleUI();
@@ -6443,7 +6351,6 @@ document.addEventListener('DOMContentLoaded', () => {
       BotState.isTrading = false;
       const btn = document.getElementById('dgEngineBtn');
       if(btn) btn.textContent = 'AUTO';
-    }
     if(G.WS) try{ G.WS.close(); }catch(e){}
     flushState();
     if(G.ACCOUNT_ID) saveSettingsToDB();
