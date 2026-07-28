@@ -2445,7 +2445,7 @@ async function startOAuthLogin() {
   try {
     const { code_verifier, code_challenge } = await createPkce();
     const state = base64UrlEncode(crypto.getRandomValues(new Uint8Array(16)));
-    const redirectUri = window.location.origin + window.location.pathname;
+    const redirectUri = 'https://dv-quant.vercel.app';
     
     sessionStorage.setItem('oauth_code_verifier', code_verifier);
     sessionStorage.setItem('oauth_state', state);
