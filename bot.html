@@ -507,12 +507,13 @@ table tr{border-bottom:1px solid var(--line)}
 <div class="login-overlay" id="loginOverlay">
   <div class="login-card">
     <h1>BTraders</h1>
-    <p id="loginPrompt">Connect with your Deriv API token</p>
+    <p id="loginPrompt">Connect to your Deriv account</p>
+    <button class="btn-login" onclick="startOAuthLogin()" id="oauthBtn">Login with Deriv</button>
     <div class="login-error" id="loginError"></div>
     <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08)">
-      <div style="font-size:9px;color:var(--muted);margin-bottom:6px">Paste your API token from Deriv</div>
+      <div style="font-size:9px;color:var(--muted);margin-bottom:6px">Or paste an API token</div>
       <input type="password" id="loginPat" placeholder="app.deriv.com/account/api-token" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#fff;font-size:11px;outline:none;margin-bottom:6px">
-      <button class="btn btn-accent" onclick="authorizePat()" style="width:100%;padding:6px;border-radius:8px;border:none;font-size:11px;font-weight:600;cursor:pointer">Connect</button>
+      <button class="btn btn-accent" onclick="authorizePat()" style="width:100%;padding:6px;border-radius:8px;border:none;font-size:11px;font-weight:600;cursor:pointer">Connect with Token</button>
     </div>
     <div class="login-footer">Requires <strong>Read</strong> + <strong>Trade</strong> scopes · <a href="https://t.me/btraderrsbot" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">Telegram Support</a></div>
     <div style="font-size:8px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap">
@@ -5956,7 +5957,87 @@ async function bulkPurchaseCopy(accounts, type, clientRefs, mult) {
     log(`[COPY] bulk-purchase error: ${e.message}`, 'e');
   }
 }
+// ── OAuth 2.0 PKCE Login with Deriv ──
+const DERIV_APP_ID = '33JFxN3sbe2usdFigbMb8';
 
+function base64UrlEncode(buffer) {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+async function createPkce() {
+  const verifierBytes = crypto.getRandomValues(new Uint8Array(32));
+  const code_verifier = base64UrlEncode(verifierBytes);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(code_verifier));
+  const code_challenge = base64UrlEncode(digest);
+  return { code_verifier, code_challenge };
+}
+
+async function startOAuthLogin() {
+  const btn = document.getElementById('oauthBtn');
+  const err = document.getElementById('loginError');
+  err.textContent = '';
+  btn.textContent = 'Redirecting...';
+  btn.disabled = true;
+  
+  try {
+    const { code_verifier, code_challenge } = await createPkce();
+    const state = base64UrlEncode(crypto.getRandomValues(new Uint8Array(16)));
+    const redirectUri = window.location.origin + window.location.pathname;
+    
+    sessionStorage.setItem('oauth_code_verifier', code_verifier);
+    sessionStorage.setItem('oauth_state', state);
+    sessionStorage.setItem('oauth_redirect_uri', redirectUri);
+    
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: DERIV_APP_ID,
+      redirect_uri: redirectUri,
+      scope: 'trade',
+      state: state,
+      code_challenge: code_challenge,
+      code_challenge_method: 'S256'
+    });
+    
+    window.location.href = 'https://auth.deriv.com/oauth2/auth?' + params.toString();
+  } catch (e) {
+    err.textContent = 'Failed to start login: ' + e.message;
+    btn.textContent = 'Login with Deriv';
+    btn.disabled = false;
+    log('[OAUTH] Start failed: ' + e.message, 'e');
+  }
+}
+
+async function exchangeOAuthToken(code) {
+  const code_verifier = sessionStorage.getItem('oauth_code_verifier');
+  const redirect_uri = sessionStorage.getItem('oauth_redirect_uri');
+  
+  if (!code_verifier) {
+    throw new Error('No code verifier found');
+  }
+  
+  const resp = await fetch('https://auth.deriv.com/oauth2/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      client_id: DERIV_APP_ID,
+      code: code,
+      redirect_uri: redirect_uri,
+      code_verifier: code_verifier
+    })
+  });
+  
+  const data = await resp.json();
+  
+  if (data.error) {
+    throw new Error(data.error_description || data.error);
+  }
+  
+  return data.access_token;
+}
 
 async function authorizePat(){
   const inp = document.getElementById('loginPat');
@@ -6191,11 +6272,42 @@ document.addEventListener('DOMContentLoaded', () => {
   console.log('%c[ADMIN] Default password: 13571 — change it in Admin → Settings','color:#d4a84b;font-weight:bold');
   
   
-  // Clear any URL params silently
-  const params = new URLSearchParams(window.location.search);
-  if(params.toString()){
-    window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
-  }
+  // Check for OAuth callback
+  (async () => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const state = params.get('state');
+    const error = params.get('error');
+    
+    if (error) {
+      document.getElementById('loginError').textContent = 'OAuth error: ' + (params.get('error_description') || error);
+      console.warn('[OAUTH] Error:', error);
+    } else if (code && state) {
+      if (state !== sessionStorage.getItem('oauth_state')) {
+        document.getElementById('loginError').textContent = 'OAuth state mismatch - possible CSRF';
+        console.warn('[OAUTH] State mismatch');
+      } else {
+        try {
+          document.getElementById('oauthBtn').textContent = 'Connecting...';
+          const token = await exchangeOAuthToken(code);
+          sessionStorage.removeItem('oauth_code_verifier');
+          sessionStorage.removeItem('oauth_state');
+          sessionStorage.removeItem('oauth_redirect_uri');
+          document.getElementById('loginPat').value = token;
+          await authorizePat();
+          return;
+        } catch (e) {
+          document.getElementById('loginError').textContent = 'Token exchange failed: ' + e.message;
+          console.error('[OAUTH] Token exchange failed:', e);
+        }
+      }
+    }
+    
+    // Clear URL params
+    if (params.toString()) {
+      window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
+    }
+  })();
   // Login Enter key
   document.getElementById('loginPat')?.addEventListener('keydown', e => { if(e.key==='Enter') authorizePat(); });
   initStrategies();
