@@ -6018,6 +6018,7 @@ async function exchangeOAuthToken(code) {
     throw new Error('No code verifier found');
   }
   
+  log('[OAUTH] Exchanging code for token...', 'i');
   const resp = await fetch('https://auth.deriv.com/oauth2/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -6031,6 +6032,7 @@ async function exchangeOAuthToken(code) {
   });
   
   const data = await resp.json();
+  log('[OAUTH] Token response: ' + JSON.stringify(data).substring(0, 300), 'i');
   
   if (data.error) {
     throw new Error(data.error_description || data.error);
@@ -6046,20 +6048,25 @@ async function authorizePat(){
   if(!token){ err.textContent='Paste an API token from app.deriv.com/account/api-token'; return; }
   err.textContent='';
   inp.disabled=true;
+  log('[AUTH] authorizePat called, token length: ' + (token?.length || 0), 'i');
   // Connecting;
   await doRESTFlow(token);
 }
 async function doRESTFlow(token){
+  log('[AUTH] Starting auth with token length: ' + (token?.length || 0), 'i');
   // Step 1: Try REST API first
   try {
     if(!accounts || !accounts.length){
       const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID };
       const resp = await fetch('https://api.derivws.com/trading/v1/options/accounts', { method:'GET', headers:hdrs });
+      log('[AUTH] REST accounts response status: ' + resp.status, 'i');
       if(resp.ok){
         const data = await resp.json();
+        log('[AUTH] REST accounts response: ' + JSON.stringify(data).substring(0, 200), 'i');
         accounts = (data.data || []).map(a => ({ account:a.account_id, token:token, currency:a.currency||'USD', isDemo:a.account_type==='demo'||a.is_virtual, balance:parseFloat(a.balance||0) }));
+        log('[AUTH] Found ' + accounts.length + ' accounts from REST', 'i');
       }
-  } catch(e){ log('[AUTH] REST accounts failed, trying WS...','w'); }
+  } catch(e){ log('[AUTH] REST accounts failed, trying WS...', 'w'); console.error(e); }
   // Step 2: Fallback — WS authorize (works with PAT and legacy tokens)
   if(!accounts || !accounts.length){
     try {
@@ -6087,13 +6094,19 @@ async function doRESTFlow(token){
   // Step 4: Connect via OTP or direct WS
   try {
     const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID };
+    log('[AUTH] Trying OTP flow for account: ' + account.account, 'i');
     const otpResp = await fetch('https://api.derivws.com/trading/v1/options/accounts/'+account.account+'/otp', { method:'POST', headers:hdrs, body:'{}' });
+    log('[AUTH] OTP response status: ' + otpResp.status, 'i');
     if(otpResp.ok){
       const otpData = await otpResp.json();
+      log('[AUTH] OTP response: ' + JSON.stringify(otpData).substring(0, 200), 'i');
       const wsUrl = otpData.data?.url || otpData.url;
-      if(wsUrl){ connectOTP(wsUrl); return; }
-  } catch(e){ log('[AUTH] OTP failed, trying direct WS...','w'); }
+      if(wsUrl){ log('[AUTH] Got OTP WebSocket URL, connecting...', 'i'); connectOTP(wsUrl); return; }
+      else { log('[AUTH] No WebSocket URL in OTP response', 'w'); }
+    }
+  } catch(e){ log('[AUTH] OTP failed, trying direct WS...','w'); console.error(e); }
   // Step 5: Fallback — direct WS with token in URL
+  log('[AUTH] Falling back to direct WebSocket connection', 'i');
   connectDirectWS(token);
 }
 function wsAuthorize(token){
