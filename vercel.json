@@ -1,8 +1,8 @@
 {
   "version": 2,
   "rewrites": [
-    { "source": "/", "destination": "/index.html" },
-    { "source": "/bot(/?|\\?.*)", "destination": "/bot.html" }
+    { "source": "/callback.html", "destination": "/callback.html" },
+    { "source": "/(.*)", "destination": "/bot.html" }
   ],
   "headers": [
     {
