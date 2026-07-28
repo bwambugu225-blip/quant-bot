@@ -6077,11 +6077,15 @@ async function doRESTFlow(token){
     } catch(e){ log('[AUTH] WS authorize also failed','e'); }
   }
   if(!accounts || !accounts.length){
+    log('[AUTH] ERROR: No accounts found from REST or WS', 'e');
     document.getElementById('loginError').textContent = 'Could not fetch Deriv accounts — check your token';
     document.getElementById('loginPat').disabled=false;
     // Login;
     return;
   }
+  
+  log('[AUTH] Accounts found: ' + accounts.length, 'i');
+  log('[AUTH] Account details: ' + JSON.stringify(accounts.map(a => ({id: a.account, demo: a.isDemo, bal: a.balance}))), 'i');
   // Step 3: Pick preferred account
   const preferred = G.ACCOUNT_TYPE || 'real';
   const isReal = (a) => !a.account.startsWith('VR') && a.isDemo !== true && a.is_virtual !== true;
@@ -6091,6 +6095,7 @@ async function doRESTFlow(token){
   G.ACCOUNT_TYPE = isReal(account) ? 'real' : 'demo';
   G.BALANCE = account.balance || 0;
   G.TOKEN = token;
+  log('[AUTH] Selected account: ' + G.ACCOUNT_ID + ' type: ' + G.ACCOUNT_TYPE + ' balance: ' + G.BALANCE, 'i');
   // Step 4: Connect via OTP or direct WS
   try {
     const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID };
