@@ -8,6 +8,141 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>BTraders</title>
 <style>
+/* ── Particle Background ── */
+@keyframes floatUp{0%{transform:translateY(100vh) scale(0);opacity:0}10%{opacity:0.6}90%{opacity:0.4}100%{transform:translateY(-10vh) scale(1);opacity:0}}
+@keyframes drift{0%{transform:translateX(0)}50%{transform:translateX(30px)}100%{transform:translateX(0)}}
+@keyframes shimmer{0%{background-position:-200% center}100%{background-position:200% center}}
+@keyframes pulseGlow{0%,100%{box-shadow:0 0 20px rgba(212,168,75,0.15),0 0 40px rgba(212,168,75,0.05)}50%{box-shadow:0 0 30px rgba(212,168,75,0.3),0 0 60px rgba(212,168,75,0.1)}}
+@keyframes gradientRotate{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@keyframes typewriter{from{width:0}to{width:100%}}
+@keyframes fadeSlideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes scaleIn{from{opacity:0;transform:scale(0.9)}to{opacity:1;transform:scale(1)}}
+@keyframes borderDance{0%{border-color:var(--accent)}33%{border-color:var(--positive)}66%{border-color:var(--negative)}100%{border-color:var(--accent)}}
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.02)}}
+@keyframes slideInLeft{from{opacity:0;transform:translateX(-30px)}to{opacity:1;transform:translateX(0)}}
+@keyframes slideInRight{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+@keyframes glowPulse{0%,100%{text-shadow:0 0 10px rgba(212,168,75,0.5)}50%{text-shadow:0 0 20px rgba(212,168,75,0.8),0 0 40px rgba(212,168,75,0.3)}}
+
+/* Floating particles */
+.particles{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
+.particle{position:absolute;width:4px;height:4px;background:var(--accent);border-radius:50%;opacity:0;animation:floatUp var(--dur,12s) ease-in infinite;left:var(--x,50%)}
+.particle:nth-child(odd){width:3px;height:3px;background:var(--positive)}
+.particle:nth-child(3n){width:6px;height:6px;background:var(--negative);animation-duration:var(--dur,18s)}
+.particle:nth-child(5n){width:2px;height:2px;background:#fff;animation-duration:var(--dur,15s)}
+
+/* Gradient mesh background */
+.gradient-mesh{position:fixed;inset:0;pointer-events:none;z-index:0;opacity:0.4}
+.gradient-mesh::before{content:'';position:absolute;width:600px;height:600px;border-radius:50%;background:radial-gradient(circle,rgba(212,168,75,0.08),transparent 70%);top:-100px;left:-100px;animation:drift 20s ease-in-out infinite}
+.gradient-mesh::after{content:'';position:absolute;width:500px;height:500px;border-radius:50%;background:radial-gradient(circle,rgba(90,143,100,0.06),transparent 70%);bottom:-80px;right:-80px;animation:drift 25s ease-in-out infinite reverse}
+
+/* Mouse glow */
+.mouse-glow{position:fixed;pointer-events:none;z-index:0;width:300px;height:300px;border-radius:50%;background:radial-gradient(circle,rgba(212,168,75,0.04),transparent 70%);transform:translate(-50%,-50%);transition:left 0.3s ease,top 0.3s ease}
+
+/* Hero section */
+.hero-section{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;padding:60px 24px 40px;text-align:center;overflow:hidden}
+.hero-section::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 50% at 50% 40%,rgba(212,168,75,0.05),transparent);pointer-events:none}
+.hero-badge{display:inline-flex;align-items:center;gap:8px;padding:6px 16px;border:1px solid rgba(212,168,75,0.2);border-radius:20px;font-size:10px;color:var(--accent);letter-spacing:2px;text-transform:uppercase;font-weight:600;margin-bottom:24px;animation:fadeSlideUp 0.8s ease both;animation-delay:0.2s;background:rgba(212,168,75,0.05)}
+.hero-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--positive);animation:pulse 1.2s infinite;box-shadow:0 0 8px var(--positive)}
+.hero-title{font-family:'Cinzel',serif;font-size:clamp(32px,6vw,68px);font-weight:800;letter-spacing:3px;line-height:1.1;margin-bottom:16px;animation:fadeSlideUp 0.8s ease both;animation-delay:0.4s}
+.hero-title .accent{background:linear-gradient(135deg,#d4a84b,#f0d080,#d4a84b);background-size:200% auto;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;animation:gradientRotate 4s ease infinite}
+.hero-title .glow{animation:glowPulse 3s ease-in-out infinite;display:inline-block}
+.hero-sub{font-size:clamp(13px,2vw,18px);color:var(--muted);max-width:600px;line-height:1.6;margin-bottom:32px;animation:fadeSlideUp 0.8s ease both;animation-delay:0.6s}
+.hero-actions{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;animation:fadeSlideUp 0.8s ease both;animation-delay:0.8s}
+.hero-btn{position:relative;padding:14px 32px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;border:none;letter-spacing:1.5px;text-transform:uppercase;transition:all 0.3s cubic-bezier(0.16,1,0.3,1);overflow:hidden}
+.hero-btn-primary{background:linear-gradient(135deg,#c49a3a,#d4a84b);color:#0d0c0a;box-shadow:0 4px 20px rgba(212,168,75,0.25)}
+.hero-btn-primary:hover{transform:translateY(-2px);box-shadow:0 8px 32px rgba(212,168,75,0.4)}
+.hero-btn-primary::after{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:linear-gradient(45deg,transparent,rgba(255,255,255,0.1),transparent);transform:rotate(45deg) translateX(-100%);transition:0.5s}
+.hero-btn-primary:hover::after{transform:rotate(45deg) translateX(100%)}
+.hero-btn-secondary{background:transparent;color:var(--text);border:1px solid var(--line);box-shadow:none}
+.hero-btn-secondary:hover{background:var(--surface-2);border-color:var(--accent);color:var(--accent);transform:translateY(-2px)}
+.hero-stats{display:flex;gap:40px;margin-top:40px;padding-top:32px;border-top:1px solid rgba(255,255,255,0.06);animation:fadeSlideUp 0.8s ease both;animation-delay:1s}
+.hero-stat{text-align:center}
+.hero-stat .num{font-size:28px;font-weight:800;background:linear-gradient(135deg,#d4a84b,#f0d080);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-stat .lbl{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px;margin-top:4px;font-weight:600}
+
+/* Animated scroll indicator */
+.scroll-indicator{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;animation:fadeSlideUp 1s ease both;animation-delay:1.5s;opacity:0.4}
+.scroll-indicator span{font-size:7px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase}
+.scroll-indicator .mouse{width:20px;height:32px;border:1.5px solid var(--line);border-radius:10px;position:relative}
+.scroll-indicator .mouse::after{content:'';position:absolute;top:5px;left:50%;transform:translateX(-50%);width:3px;height:8px;background:var(--accent);border-radius:2px;animation:scrollMove 1.5s ease-in-out infinite}
+@keyframes scrollMove{0%{opacity:1;transform:translateX(-50%) translateY(0)}100%{opacity:0;transform:translateX(-50%) translateY(14px)}}
+
+/* Enhanced card animations */
+.kpi{animation:scaleIn 0.5s ease both;transition:all 0.3s cubic-bezier(0.16,1,0.3,1)}
+.kpi:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(0,0,0,0.3);border-color:var(--accent)}
+.kpi:nth-child(1){animation-delay:0.1s}
+.kpi:nth-child(2){animation-delay:0.2s}
+.kpi:nth-child(3){animation-delay:0.3s}
+.kpi:nth-child(4){animation-delay:0.4s}
+.kpi:nth-child(5){animation-delay:0.5s}
+
+/* Shimmer buttons */
+.btn{position:relative;overflow:hidden}
+.btn::after{content:'';position:absolute;top:0;left:-75%;width:50%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,0.06),transparent);transform:skewX(-20deg);transition:left 0.5s}
+.btn:hover::after{left:125%}
+
+/* Card pulse borders */
+.hax-mx{transition:all 0.3s cubic-bezier(0.16,1,0.3,1)}
+.hax-mx:hover{transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,0.3);border-color:var(--accent)!important}
+
+/* Section animate in */
+.section{animation:fadeSlideUp 0.6s ease both}
+.section:nth-child(1){animation-delay:0.05s}
+.section:nth-child(2){animation-delay:0.1s}
+.section:nth-child(3){animation-delay:0.15s}
+
+/* Sidebar items */
+.sidebar .sidebar-body .section{animation:slideInLeft 0.4s ease both}
+.sidebar .sidebar-body .section:nth-child(1){animation-delay:0.05s}
+.sidebar .sidebar-body .section:nth-child(2){animation-delay:0.1s}
+
+/* FAB enhanced glow */
+.fab{animation:fabPulse 2.4s ease-in-out infinite,breathe 4s ease-in-out infinite!important}
+
+/* Toast animations */
+@keyframes toastIn{from{opacity:0;transform:translateX(40px) scale(0.9)}to{opacity:1;transform:translateX(0) scale(1)}}
+@keyframes toastOut{from{opacity:1;transform:translateX(0) scale(1)}to{opacity:0;transform:translateX(40px) scale(0.9)}}
+.toast{animation:toastIn 0.3s cubic-bezier(0.16,1,0.3,1) both}
+
+/* Bottom nav active indicator */
+.bottomnav .nav-btn.active::before{content:'';position:absolute;top:0;left:20%;right:20%;height:2px;background:var(--accent);border-radius:0 0 2px 2px;animation:scaleIn 0.3s ease}
+
+/* Login card entrance */
+.login-card{animation:scaleIn 0.6s cubic-bezier(0.16,1,0.3,1) both}
+
+/* Sidebar toggle rotate */
+.sidebar-toggle{transition:all 0.3s cubic-bezier(0.16,1,0.3,1)}
+.sidebar-open .sidebar-toggle{transform:rotate(90deg)}
+
+/* Mode tabs glow */
+.mode-tab.active{animation:pulseGlow 2s ease-in-out infinite}
+
+/* Loading skeleton pulse for charts */
+@keyframes skeletonPulse{0%,100%{opacity:0.6}50%{opacity:0.3}}
+.loading-pulse{animation:skeletonPulse 1.5s ease-in-out infinite}
+
+/* Watchlist items */
+.watch-item{animation:slideInRight 0.4s ease both;transition:all 0.3s cubic-bezier(0.16,1,0.3,1)}
+.watch-item:nth-child(1){animation-delay:0.05s}
+.watch-item:nth-child(2){animation-delay:0.1s}
+.watch-item:nth-child(3){animation-delay:0.15s}
+.watch-item:nth-child(4){animation-delay:0.2s}
+
+/* Log entry fade */
+.console-box div{animation:fadeSlideUp 0.3s ease both}
+
+/* Hax matrix entrance */
+.hax-matrix .hax-mx{animation:scaleIn 0.3s ease both}
+.hax-matrix .hax-mx:nth-child(1){animation-delay:0.02s}
+.hax-matrix .hax-mx:nth-child(2){animation-delay:0.04s}
+.hax-matrix .hax-mx:nth-child(3){animation-delay:0.06s}
+
+/* Trade history slide */
+.recent-trade{animation:slideInRight 0.3s ease both}
+
+/* Settings details open */
+details[open] summary{color:var(--accent)!important}
+
 :root{
   --bg:#0d0c0a;
   --surface:#141210;
@@ -500,19 +635,70 @@ table tr{border-bottom:1px solid var(--line)}
 </style>
 </head>
 <body class="dark" style="margin:0">
+<!-- Particle Background -->
+<div class="particles" aria-hidden="true">
+  <div class="particle" style="--x:10%;--dur:14s"></div>
+  <div class="particle" style="--x:25%;--dur:18s"></div>
+  <div class="particle" style="--x:40%;--dur:12s"></div>
+  <div class="particle" style="--x:55%;--dur:16s"></div>
+  <div class="particle" style="--x:70%;--dur:20s"></div>
+  <div class="particle" style="--x:85%;--dur:13s"></div>
+  <div class="particle" style="--x:15%;--dur:22s"></div>
+  <div class="particle" style="--x:50%;--dur:11s"></div>
+  <div class="particle" style="--x:80%;--dur:17s"></div>
+  <div class="particle" style="--x:35%;--dur:19s"></div>
+  <div class="particle" style="--x:90%;--dur:15s"></div>
+  <div class="particle" style="--x:5%;--dur:21s"></div>
+</div>
+<div class="gradient-mesh" aria-hidden="true"></div>
+<div class="mouse-glow" id="mouseGlow" aria-hidden="true"></div>
+
+<!-- Hero Landing Section -->
+<section class="hero-section" id="heroSection">
+  <div class="hero-badge">
+    <span class="dot"></span>
+    LIVE TRADING PLATFORM
+  </div>
+  <h1 class="hero-title">
+    <span class="accent">BT</span><span class="glow">raders</span>
+  </h1>
+  <p class="hero-sub">
+    Professional-grade binary options trading engine powered by ensemble strategies,<br>
+    real-time market analysis, and institutional-grade risk management.
+  </p>
+  <div class="hero-actions">
+    <button class="hero-btn hero-btn-primary" onclick="document.getElementById('loginOverlay').classList.remove('hidden'); document.getElementById('heroSection').style.display='none'">
+      ENTER TRADING DASHBOARD
+    </button>
+    <button class="hero-btn hero-btn-secondary" onclick="document.getElementById('loginOverlay').classList.remove('hidden'); document.getElementById('heroSection').style.display='none';">
+      EXPLORE FEATURES
+    </button>
+  </div>
+  <div class="hero-stats">
+    <div class="hero-stat"><div class="num">13</div><div class="lbl">Markets</div></div>
+    <div class="hero-stat"><div class="num">10</div><div class="lbl">Strategies</div></div>
+    <div class="hero-stat"><div class="num">99+</div><div class="lbl">Indicators</div></div>
+    <div class="hero-stat"><div class="num">24/7</div><div class="lbl">Uptime</div></div>
+  </div>
+  <div class="scroll-indicator">
+    <div class="mouse"></div>
+    <span>Scroll to login</span>
+  </div>
+</section>
+
 <!-- Login Overlay -->
-<div class="login-overlay" id="loginOverlay">
+<div class="login-overlay hidden" id="loginOverlay">
   <div class="login-card">
     <h1>BTraders</h1>
     <p id="loginPrompt">Authorize with your Deriv account</p>
-    <button class="btn-login" onclick="oauthLogin()" id="oauthBtn">Login with Deriv</button>
+    <button class="btn-login" onclick="document.getElementById('heroSection')&&(document.getElementById('heroSection').style.display='none');oauthLogin()" id="oauthBtn">Login with Deriv</button>
     <div class="login-error" id="loginError"></div>
     <div style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.08)">
       <div style="font-size:9px;color:var(--muted);margin-bottom:6px">Or paste an API token</div>
       <input type="password" id="loginPat" placeholder="Paste token from app.deriv.com/account/api-token" style="width:100%;box-sizing:border-box;padding:8px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#fff;font-size:11px;outline:none;margin-bottom:6px">
-      <button class="btn btn-accent" onclick="authorizePat()" style="width:100%;padding:6px;border-radius:8px;border:none;font-size:11px;font-weight:600;cursor:pointer">Connect</button>
+      <button class="btn btn-accent" onclick="document.getElementById('heroSection')&&(document.getElementById('heroSection').style.display='none');authorizePat()" style="width:100%;padding:6px;border-radius:8px;border:none;font-size:11px;font-weight:600;cursor:pointer">Connect</button>
     </div>
-    <div class="login-footer">Requires <strong>Read</strong> + <strong>Trade</strong> scopes · <a href="landing.html" style="color:var(--accent);text-decoration:none">About</a> · <a href="https://t.me/btraderrsbot" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">Telegram</a></div>
+    <div class="login-footer">Requires <strong>Read</strong> + <strong>Trade</strong> scopes · <a href="https://t.me/btraderrsbot" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">Telegram</a></div>
     <div style="font-size:8px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap">
       <span style="color:var(--muted);font-size:7px">Plan:</span>
       <button class="tag tag-gray" style="font-size:7px;cursor:pointer;border:none;padding:2px 8px" onclick="selectLoginTier('free')" id="tierBtnFree">FREE</button>
@@ -4755,23 +4941,7 @@ function updateDash(){
   set('dashLoss', fmt$(G.DAILY.pnl<0?-G.DAILY.pnl:0));
   set('dashConsLoss', String(G.CONS_LOSS || 0));
   updateAnalysisPanel();
-  // Sync state for Telegram Mini App
-  try {
-    const tierFeat = G.TIER_FEATURES[getTier()];
-    const lastHax = _haxTape && _haxTape.length ? _haxTape[_haxTape.length-1] : '';
-    const logText = lastHax ? lastHax.replace(/<[^>]+>/g,'').trim() : '';
-    const state = {
-      balance: G.BALANCE, accountType: G.ACCOUNT_TYPE, tier: tierFeat?.label||'FREE',
-      market: G.CURRENT_MARKET, strategy: G.SELECTED_STRATEGY, mode: G.TRADE_MODE,
-      stake: parseFloat(document.getElementById('rfStake')?.value||1),
-      activeContracts: G.ACTIVE_CONTRACTS.size,
-      pnl: G.PNL, wins: G.WINS, losses: G.LOSSES, trades: G.TRADES,
-      streak: G.CONS_LOSS, wr: total?Math.round(G.WINS/total*100):0, running: G.RUNNING,
-      lastLog: logText
-    };
-    localStorage.setItem('btr_miniapp_state', JSON.stringify(state));
-  } catch(e){}
-}
+  }
 let _haxTape=[];
 function haxPush(msg, cls){
   const d=new Date();
@@ -5006,7 +5176,7 @@ function sendSessionSummary(final) {
 // ── Telegram Button Trading Engine ──
 G.TELEGRAM_OFFSET = 0;
 G._tgPollTimer = null;
-const TG_MINIAPP_URL = (window.location.origin || 'https://quant-bot-b0231911-2730s-projects.vercel.app') + '/app';
+const TG_MINIAPP_URL = null;
 function tgMainKeyboard(){ return null; }
 function tgSend(chatId, text, kb){
   const token = document.getElementById('tgToken')?.value || G.TELEGRAM_BOT_TOKEN;
@@ -5256,17 +5426,14 @@ function processTgAction(action, chatId, msgId){
       tgSend(chatId,
         `📋 *Stats*\n📊 ${info.total} ✅ ${G.WINS} ❌ ${G.LOSSES}\n📈 WR: ${info.wr}%\n💰 ${info.pnl>=0?'+':''}$${info.pnl.toFixed(2)}\n📈 Avg Win: +$${aw.toFixed(2)}\n📉 Avg Loss: -$${Math.abs(al).toFixed(2)}\n🔥 ${G.CONS_LOSS||0}L\n💡 ${G.SELECTED_STRATEGY||'—'}\n${G.RUNNING?'🟢 Running':'⏸ Stopped'}`); break;
     }
-    case 'miniapp':
-      tgSend(chatId,
-        `📱 *BTraders Mini App*\n\n📎 \`${TG_MINIAPP_URL}\``); break;
     case 'help':
       tgSend(chatId,
         `🤖 *BTraders Bot*\n\n`+
         `/start — Welcome\n/help — Help\n/status — Status\n/balance — Balance\n`+
         `/pnl — P&L\n/stats — Details\n/daily — Today\n/market — Switch\n`+
         `/stake — Change\n/ai — AI Trading\n/settings — Config\n/tier — Plan\n`+
-        `/miniapp — Open\n/reset — Demo\n\n`+
-        `💬 Chat naturally — I'll answer with AI!\n📱 \`${TG_MINIAPP_URL}\``); break;
+        `/reset — Demo\n\n`+
+        `💬 Chat naturally — I'll answer with AI!\n📱 BTraders Web`); break;
   }
 }
 
@@ -5286,15 +5453,15 @@ function handleTgCommand(text, chatId){
   const losses = hist.length-wins;
   const tierFeat = G.TIER_FEATURES[getTier()];
   const tierName = tierFeat?.label || 'FREE';
-  if(cmd==='/start'){ tgSend(chatId, `🚀 *BTraders Bot Ready*\n\nCommands: /status /balance /pnl /market /stake /ai /help\n📱 Mini App: ${TG_MINIAPP_URL}`); return; }
+  if(cmd==='/start'){ tgSend(chatId, `🚀 *BTraders Bot Ready*\n\nCommands: /status /balance /pnl /market /stake /ai /help\n📱 Open BTraders in browser to trade`); return; }
   if(cmd==='/help'){ tgSend(chatId,
     `🤖 *BTraders Commands*\n\n`+
     `/start — Welcome\n/help — Help\n/status — Status\n/balance — Balance\n`+
     `/pnl — PnL report\n/stats — Detailed stats\n/daily — Daily perf\n`+
     `/market R_100 — Switch market\n/stake 2.0 — Change stake\n`+
     `/ai — Toggle AI trading\n/settings — Bot config\n/tier — Plan info\n`+
-    `/reset — Reset demo\n/miniapp — Open Mini App\n\n`+
-    `💬 Chat naturally and I'll answer with Groq AI!\n📱 ${TG_MINIAPP_URL}`); return; }
+    `/reset — Reset demo\n\n`+
+    `💬 Chat naturally and I'll answer with Groq AI!`); return; }
   if(cmd==='/status'){
     const cc = G.ACTIVE_CONTRACTS.size;
     tgSend(chatId,
@@ -5367,12 +5534,6 @@ function handleTgCommand(text, chatId){
       `📡 Copy Trading: ${copy}\n`+
       `🎯 Daily Target: $${dTarget.toFixed(2)}\n🛑 Daily Stop: $${dStop.toFixed(2)}`); return;
   }
-  if(cmd==='/miniapp'){
-    tgSend(chatId,
-      `📱 *BTraders Mini App*\n\n`+
-      `Monitor, control, and analyze your bot inside Telegram.\n\n`+
-      `📎 ${TG_MINIAPP_URL}`); return;
-  }
   if(cmd==='/reset'){
     if(G.ACCOUNT_TYPE!=='demo'){ tgSend(chatId, `❌ Reset only works on demo accounts`); return; }
     resetDemo();
@@ -5395,22 +5556,6 @@ function handleTgCommand(text, chatId){
     return;
   }
   tgSend(chatId, `🤖 *BTraders*\nUse /help to see commands, or chat with me naturally!`);
-}
-
-function checkMiniappAction(){
-  try {
-    const raw = localStorage.getItem('btr_miniapp_action');
-    if(!raw) return;
-    const data = JSON.parse(raw);
-    localStorage.removeItem('btr_miniapp_action');
-    if(!data || !data.action) return;
-    const action = data.action;
-    if(action === 'start'){ if(G.TRADE_MODE!=='RISEFALL') switchMode('RISEFALL'); startBot(); return; }
-    if(action === 'stop'){ stopBot(); return; }
-    if(action === 'reset'){ resetDemo(); return; }
-    if(action === 'call'){ execTrade({ action:'RISE', conf:100, src:'MINIAPP', sym:G.CURRENT_MARKET, lastPrice:0 }); return; }
-    if(action === 'put'){ execTrade({ action:'FALL', conf:100, src:'MINIAPP', sym:G.CURRENT_MARKET, lastPrice:0 }); return; }
-  } catch(e){}
 }
 
 function toggleStrat(idx){ /* no-op — autorotation active */ }
@@ -6319,6 +6464,8 @@ function connectOTP(url){
 function showApp(){
   document.getElementById('loginOverlay').classList.add('hidden');
   document.getElementById('app').style.display='block';
+  const hero = document.getElementById('heroSection');
+  if(hero) hero.style.display = 'none';
   // Init tier from storage or URL
   const savedTier = localStorage.getItem('btr_tier');
   const urlTier = new URLSearchParams(window.location.search).get('tier');
@@ -6335,7 +6482,9 @@ function logout(){
     saveSettingsToDB();
   } catch(e){}
   document.getElementById('app').style.display='none';
-  document.getElementById('loginOverlay').classList.remove('hidden');
+  document.getElementById('loginOverlay').classList.add('hidden');
+  const hero = document.getElementById('heroSection');
+  if(hero) hero.style.display = '';
   log('[SYSTEM] Logged out — settings saved to database', 'i');
 }
 
@@ -6366,6 +6515,14 @@ function initTraderId() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Mouse glow effect
+  const glow = document.getElementById('mouseGlow');
+  if(glow){
+    document.addEventListener('mousemove', e => {
+      glow.style.left = e.clientX + 'px';
+      glow.style.top = e.clientY + 'px';
+    });
+  }
   // Theme init
   if(localStorage.getItem('btr_theme') !== 'dark') document.documentElement.classList.remove('dark');
   const themeBtn = document.getElementById('themeBtn');
@@ -6399,7 +6556,7 @@ document.addEventListener('DOMContentLoaded', () => {
     console.warn('[OAUTH] Error:', {error:params.get('error'), description:desc, state:params.get('state')});
   }
   // Login Enter key
-  document.getElementById('loginPat')?.addEventListener('keydown', e => { if(e.key==='Enter') authorizePat(); });
+  document.getElementById('loginPat')?.addEventListener('keydown', e => { if(e.key==='Enter'){ document.getElementById('heroSection')&&(document.getElementById('heroSection').style.display='none'); authorizePat(); } });
   initStrategies();
   SYMBOLS.forEach(s => {
     G.MARKET.candles[s.sym] = [];
@@ -6424,8 +6581,12 @@ document.addEventListener('DOMContentLoaded', () => {
   updateDash();
   initCopytrading();
   connectMarketWS();
-  // Auto-authorize if saved token exists
-  if(G.TOKEN) setTimeout(() => doRESTFlow(G.TOKEN), 500);
+  // Auto-authorize if saved token exists — hides hero and shows login
+  if(G.TOKEN){
+    const hero = document.getElementById('heroSection');
+    if(hero) hero.style.display = 'none';
+    setTimeout(() => doRESTFlow(G.TOKEN), 500);
+  }
   // Init trade mode
   switchMode(G.TRADE_MODE);
   BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
@@ -6462,7 +6623,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   updateWatchlist();
   setInterval(updateDash, 2000);
-  setInterval(checkMiniappAction, 1000);
   setInterval(updateAnalysisPanel, 1000);
   updateAnalysisPanel();
   setInterval(updateWatchlist, 3000);
