@@ -5755,6 +5755,7 @@ async function fetchClientProfile(token, preferredType) {
     const resp = await fetch('https://api.derivws.com/trading/v1/options/accounts', { method:'GET', headers:hdrs });
     if(resp.ok){
       const data = await resp.json();
+    console.log('[OAUTH] Token response:', data);
       const accounts = (data.data || []).map(a => ({
         account: a.account_id,
         token: token,
@@ -6058,6 +6059,7 @@ async function bulkPurchaseCopy(accounts, type, clientRefs, mult) {
       body: JSON.stringify({ contract_parameters: params, accounts })
     });
     const data = await resp.json();
+    console.log('[OAUTH] Token response:', data);
     const txns = (data && data.data && data.data.transactions) || [];
     txns.forEach((tx, i) => {
       const client = clientRefs[i];
@@ -6078,6 +6080,7 @@ async function bulkPurchaseCopy(accounts, type, clientRefs, mult) {
 
 // ── Login Screen (Deriv OAuth2.0 PKCE flow) ──
 async function oauthLogin(){
+  console.log('[OAUTH] Starting OAuth login...');
   const err = document.getElementById('loginError');
   err.textContent='';
   try {
@@ -6108,15 +6111,18 @@ async function oauthLogin(){
       code_challenge_method: 'S256'
     }).toString();
     // 6. Full-page redirect
+    console.log('[OAUTH] Redirecting to:', authUrl);
     window.location.href = authUrl;
   } catch(e){ err.textContent='OAuth error: '+e.message; }
 }
 function legacyLogin(){
+  console.log('[OAUTH] Using legacy login...');
   sessionStorage.setItem('oauth_redirect_uri', OAUTH_REDIRECT_URI);
   const url = 'https://oauth.deriv.com/oauth2/authorize?app_id='+encodeURIComponent(G.APP_ID)+'&l=EN&redirect_uri='+encodeURIComponent(OAUTH_REDIRECT_URI);
   window.location.href = url;
 }
 async function exchangeOAuthCode(code){
+  console.log('[OAUTH] Exchanging code:', code);
   const err = document.getElementById('loginError');
   const codeVerifier = sessionStorage.getItem('oauth_code_verifier');
   const redirectUri = OAUTH_REDIRECT_URI;
@@ -6135,6 +6141,7 @@ async function exchangeOAuthCode(code){
       })
     });
     const data = await resp.json();
+    console.log('[OAUTH] Token response:', data);
     if(data.access_token){
       // If this is the popup (window.opener exists), pass token to main window
       if(window.opener && !window.opener.closed){
@@ -6153,6 +6160,7 @@ async function exchangeOAuthCode(code){
   } catch(e){ err.textContent='Token exchange error: '+e.message; }
 }
 async function authorizePat(){
+  console.log('[AUTH] PAT login starting...');
   const inp = document.getElementById('loginPat');
   const err = document.getElementById('loginError');
   const token = inp?.value?.trim();
@@ -6160,17 +6168,21 @@ async function authorizePat(){
   err.textContent='';
   inp.disabled=true;
   document.getElementById('oauthBtn').textContent='Connecting...';
+  console.log('[AUTH] Token length:', token?.length);
   await doRESTFlow(token);
 }
 async function doRESTFlow(token){
+  console.log('[AUTH] doRESTFlow called, token length:', token?.length);
   let accounts = G._oauthAccounts;
   // Step 1: Try REST API first
   try {
     if(!accounts || !accounts.length){
       const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID };
       const resp = await fetch('https://api.derivws.com/trading/v1/options/accounts', { method:'GET', headers:hdrs });
+      console.log('[AUTH] REST accounts response status:', resp.status);
       if(resp.ok){
         const data = await resp.json();
+    console.log('[OAUTH] Token response:', data);
         accounts = (data.data || []).map(a => ({ account:a.account_id, token:token, currency:a.currency||'USD', isDemo:a.account_type==='demo'||a.is_virtual, balance:parseFloat(a.balance||0) }));
         G._oauthAccounts = accounts;
       }
@@ -6260,7 +6272,9 @@ function wsAuthorize(token){
   });
 }
 function connectDirectWS(token){
+  console.log('[AUTH] connectDirectWS - token length:', token?.length);
   const url = 'wss://ws.derivws.com/websockets/v3?app_id='+G.APP_ID+'&token='+token+'&l=EN';
+  console.log('[AUTH] WebSocket URL:', url.replace(token, '***TOKEN***'));
   const ws = new WebSocket(url);
   let authorized = false;
   
@@ -6277,11 +6291,13 @@ function connectDirectWS(token){
   };
   
   ws.onmessage = (e) => {
+    console.log('[WS] Raw message:', e.data);
     try {
       const msg = JSON.parse(e.data);
       
       // Handle authorize response
       if(msg.msg_type === 'authorize' && msg.authorize){
+        console.log('[AUTH] ✅ AUTHORIZED!', msg.authorize);
         authorized = true;
         clearTimeout(timeout);
         
