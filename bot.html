@@ -6053,66 +6053,204 @@ async function authorizePat(){
   await doRESTFlow(token);
 }
 async function doRESTFlow(token){
-  log('[AUTH] Starting auth with token length: ' + (token?.length || 0), 'i');
-  // Step 1: Try REST API first
-  try {
-    if(!accounts || !accounts.length){
-      const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID };
-      const resp = await fetch('https://api.derivws.com/trading/v1/options/accounts', { method:'GET', headers:hdrs });
-      log('[AUTH] REST accounts response status: ' + resp.status, 'i');
-      if(resp.ok){
-        const data = await resp.json();
-        log('[AUTH] REST accounts response: ' + JSON.stringify(data).substring(0, 200), 'i');
-        accounts = (data.data || []).map(a => ({ account:a.account_id, token:token, currency:a.currency||'USD', isDemo:a.account_type==='demo'||a.is_virtual, balance:parseFloat(a.balance||0) }));
-        log('[AUTH] Found ' + accounts.length + ' accounts from REST', 'i');
-      }
-  } catch(e){ log('[AUTH] REST accounts failed, trying WS...', 'w'); console.error(e); }
-  // Step 2: Fallback — WS authorize (works with PAT and legacy tokens)
-  if(!accounts || !accounts.length){
-    try {
-      const wsAuth = await wsAuthorize(token);
-      if(wsAuth && wsAuth.length){
-        accounts = wsAuth;
-      }
-    } catch(e){ log('[AUTH] WS authorize also failed','e'); }
-  }
-  if(!accounts || !accounts.length){
-    log('[AUTH] ERROR: No accounts found from REST or WS', 'e');
-    document.getElementById('loginError').textContent = 'Could not fetch Deriv accounts — check your token';
-    document.getElementById('loginPat').disabled=false;
-    // Login;
+  log('[AUTH] Starting auth with token (length: ' + (token?.length || 0) + ')', 'i');
+  G.TOKEN = token;
+  
+  // Step 1: Connect directly to WebSocket with token for REAL trading
+  // OAuth tokens and PATs work with WebSocket via authorize message
+  const wsConnected = await connectTradingWS(token);
+  
+  if(wsConnected) {
+    log('[AUTH] WebSocket connected successfully - REAL trading active', 's');
     return;
   }
   
-  log('[AUTH] Accounts found: ' + accounts.length, 'i');
-  log('[AUTH] Account details: ' + JSON.stringify(accounts.map(a => ({id: a.account, demo: a.isDemo, bal: a.balance}))), 'i');
-  // Step 3: Pick preferred account
-  const preferred = G.ACCOUNT_TYPE || 'real';
-  const isReal = (a) => !a.account.startsWith('VR') && a.isDemo !== true && a.is_virtual !== true;
-  let account = accounts.find(a => (preferred==='real' ? isReal(a) : !isReal(a)));
-  if(!account) account = accounts.find(a => isReal(a)) || accounts[0];
-  G.ACCOUNT_ID = account.account;
-  G.ACCOUNT_TYPE = isReal(account) ? 'real' : 'demo';
-  G.BALANCE = account.balance || 0;
-  G.TOKEN = token;
-  log('[AUTH] Selected account: ' + G.ACCOUNT_ID + ' type: ' + G.ACCOUNT_TYPE + ' balance: ' + G.BALANCE, 'i');
-  // Step 4: Connect via OTP or direct WS
+  // Step 2: If direct WS failed, try REST API to get accounts then OTP
+  log('[AUTH] Direct WS failed, trying REST API...', 'w');
   try {
     const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID };
-    log('[AUTH] Trying OTP flow for account: ' + account.account, 'i');
-    const otpResp = await fetch('https://api.derivws.com/trading/v1/options/accounts/'+account.account+'/otp', { method:'POST', headers:hdrs, body:'{}' });
-    log('[AUTH] OTP response status: ' + otpResp.status, 'i');
-    if(otpResp.ok){
-      const otpData = await otpResp.json();
-      log('[AUTH] OTP response: ' + JSON.stringify(otpData).substring(0, 200), 'i');
-      const wsUrl = otpData.data?.url || otpData.url;
-      if(wsUrl){ log('[AUTH] Got OTP WebSocket URL, connecting...', 'i'); connectOTP(wsUrl); return; }
-      else { log('[AUTH] No WebSocket URL in OTP response', 'w'); }
+    const resp = await fetch('https://api.derivws.com/trading/v1/options/accounts', { headers:hdrs });
+    log('[AUTH] REST accounts status: ' + resp.status, 'i');
+    
+    if(resp.ok){
+      const data = await resp.json();
+      log('[AUTH] REST accounts: ' + JSON.stringify(data).substring(0, 300), 'i');
+      
+      if(data.data && data.data.length > 0){
+        accounts = data.data.map(a => ({ 
+          account: a.account_id, 
+          token: token, 
+          currency: a.currency || 'USD', 
+          isDemo: a.account_type === 'demo' || a.is_virtual,
+          balance: parseFloat(a.balance || 0) 
+        }));
+        
+        log('[AUTH] Found ' + accounts.length + ' accounts via REST', 'i');
+        
+        // Pick real account first
+        const preferred = G.ACCOUNT_TYPE || 'real';
+        const isReal = (a) => !a.account.startsWith('VR') && !a.isDemo;
+        let account = accounts.find(a => (preferred === 'real' ? isReal(a) : !isReal(a)));
+        if(!account) account = accounts.find(a => isReal(a)) || accounts[0];
+        
+        G.ACCOUNT_ID = account.account;
+        G.ACCOUNT_TYPE = isReal(account) ? 'real' : 'demo';
+        G.BALANCE = account.balance;
+        log('[AUTH] Selected: ' + G.ACCOUNT_ID + ' (' + G.ACCOUNT_TYPE + ') $' + G.BALANCE, 'i');
+        
+        // Get OTP WebSocket URL for this account
+        const otpResp = await fetch('https://api.derivws.com/trading/v1/options/accounts/' + account.account + '/otp', {
+          method: 'POST',
+          headers: hdrs,
+          body: '{}'
+        });
+        
+        if(otpResp.ok){
+          const otpData = await otpResp.json();
+          const wsUrl = otpData.data?.url || otpData.url;
+          if(wsUrl){
+            log('[AUTH] Got OTP URL, connecting...', 'i');
+            connectOTP(wsUrl);
+            return;
+          }
+        }
+      }
     }
-  } catch(e){ log('[AUTH] OTP failed, trying direct WS...','w'); console.error(e); }
-  // Step 5: Fallback — direct WS with token in URL
-  log('[AUTH] Falling back to direct WebSocket connection', 'i');
-  connectDirectWS(token);
+  } catch(e) { 
+    log('[AUTH] REST failed: ' + e.message, 'e'); 
+    console.error(e); 
+  }
+  
+  // Step 3: Try WS authorize as last resort
+  log('[AUTH] Trying WS authorize...', 'i');
+  try {
+    const wsAccounts = await wsAuthorize(token);
+    if(wsAccounts && wsAccounts.length){
+      accounts = wsAccounts;
+      const preferred = G.ACCOUNT_TYPE || 'real';
+      const isReal = (a) => !a.account.startsWith('VR') && !a.isDemo;
+      let account = accounts.find(a => (preferred === 'real' ? isReal(a) : !isReal(a)));
+      if(!account) account = accounts.find(a => isReal(a)) || accounts[0];
+      
+      G.ACCOUNT_ID = account.account;
+      G.ACCOUNT_TYPE = isReal(account) ? 'real' : 'demo';
+      G.BALANCE = account.balance;
+      
+      log('[AUTH] WS authorize success, connecting to trading...', 'i');
+      connectTradingWS(token);
+      return;
+    }
+  } catch(e) {
+    log('[AUTH] WS authorize failed: ' + e.message, 'e');
+  }
+  
+  document.getElementById('loginError').textContent = 'Authentication failed. Please try again or use a valid API token.';
+  document.getElementById('loginPat').disabled = false;
+  document.getElementById('oauthBtn').disabled = false;
+  document.getElementById('oauthBtn').textContent = 'Login with Deriv';
+}
+
+async function connectTradingWS(token){
+  return new Promise((resolve) => {
+    log('[AUTH] Connecting to trading WebSocket...', 'i');
+    const url = 'wss://ws.derivws.com/websockets/v3?app_id=' + G.APP_ID + '&l=EN';
+    const ws = new WebSocket(url);
+    let authorized = false;
+    let gotBalance = false;
+    let gotSymbol = false;
+    let timeout = setTimeout(() => {
+      if(!authorized){
+        log('[AUTH] WS connection timeout', 'e');
+        ws.close();
+        resolve(false);
+      }
+    }, 15000);
+    
+    ws.onopen = () => {
+      log('[AUTH] WS opened, sending authorize...', 'i');
+      ws.send(JSON.stringify({ authorize: token }));
+    };
+    
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        
+        // Handle authorize response
+        if(msg.msg_type === 'authorize' || msg.authorize){
+          const auth = msg.authorize || msg;
+          if(auth.loginid){
+            authorized = true;
+            clearTimeout(timeout);
+            G.ACCOUNT_ID = auth.loginid;
+            G.ACCOUNT_TYPE = (auth.loginid.startsWith('VR') || auth.is_virtual) ? 'demo' : 'real';
+            G.BALANCE = parseFloat(auth.balance || 0);
+            log('[AUTH] AUTHORIZED: ' + auth.loginid + ' (' + G.ACCOUNT_TYPE + ') $' + G.BALANCE, 's');
+            
+            // Keep this socket as the trading connection
+            G.WS = ws;
+            wrapMasterSocket(ws);
+            G.AUTH = true;
+            G.CONNECTED = true;
+            sbUpsertUser();
+            saveState();
+            showApp();
+            
+            document.getElementById('connDot').className = 'conn g';
+            document.getElementById('engineStatus').textContent = 'ONLINE';
+            document.getElementById('loginPat').disabled = false;
+            document.getElementById('loginError').textContent = '';
+            
+            // Subscribe to market data
+            subscribeAll();
+            startHeartbeat();
+            updateDash();
+            
+            log('[AUTH] REAL TRADING CONNECTED!', 's');
+            resolve(true);
+          }
+        }
+        
+        // Handle balance updates
+        if(msg.msg_type === 'balance' && msg.balance){
+          G.BALANCE = parseFloat(msg.balance.balance || 0);
+          gotBalance = true;
+          updateDash();
+        }
+        
+        // Handle errors
+        if(msg.error){
+          log('[AUTH] WS Error: ' + JSON.stringify(msg.error), 'e');
+          if(msg.error.code === 'AuthorizationFailed' || msg.error.code === 'InvalidToken'){
+            clearTimeout(timeout);
+            ws.close();
+            resolve(false);
+          }
+        }
+        
+        // Handle tick/candle data (proves we're getting REAL market data)
+        if(msg.msg_type === 'tick' || msg.msg_type === 'candles' || msg.msg_type === 'ohlc'){
+          gotSymbol = true;
+        }
+        
+      } catch(e) {
+        console.error('[AUTH] Parse error:', e);
+      }
+    };
+    
+    ws.onerror = (e) => {
+      log('[AUTH] WebSocket error', 'e');
+      clearTimeout(timeout);
+      resolve(false);
+    };
+    
+    ws.onclose = () => {
+      clearTimeout(timeout);
+      if(!authorized){
+        log('[AUTH] WebSocket closed without authorization', 'w');
+        resolve(false);
+      }
+    };
+  });
 }
 function wsAuthorize(token){
   return new Promise((resolve, reject) => {
@@ -6141,44 +6279,6 @@ function wsAuthorize(token){
     ws.onopen = () => ws.send(JSON.stringify({ authorize:token }));
     ws.onerror = () => { if(!done){ done=true; clearTimeout(t); reject(new Error('ws error')); } };
   });
-}
-function connectDirectWS(token){
-  const url = 'wss://ws.derivws.com/websockets/v3?app_id='+G.APP_ID+'&token='+token+'&l=EN';
-  const ws = new WebSocket(url);
-  ws.onopen = () => {
-    G.WS = ws;
-    wrapMasterSocket(ws);
-    G.AUTH = true;
-    G.CONNECTED = true;
-    sbUpsertUser();
-    saveState();
-    showApp();
-    document.getElementById('loginPat').disabled=false;
-    // Login;
-    document.getElementById('loginError').textContent='';
-    document.getElementById('connDot').className='conn g';
-    document.getElementById('engineStatus').textContent='ONLINE';
-    log('[AUTH] Authorized via direct WS','s');
-    updateDash();
-    startHeartbeat();
-    setTimeout(subscribeAll, 200);
-  };
-  ws.onmessage = (e) => {
-    try{ handleMsg(JSON.parse(e.data)); }catch(ex){ log(`[WS] Parse: ${ex.message}`,'e'); }
-  };
-  ws.onerror = () => {
-    document.getElementById('loginError').textContent = 'WebSocket connection failed';
-    document.getElementById('loginPat').disabled=false;
-    // Login;
-  };
-  ws.onclose = () => { 
-    if(G.WS === ws){ 
-      G.AUTH = false; 
-      G.CONNECTED = false;
-      document.getElementById('connDot').className='conn r';
-      document.getElementById('engineStatus').textContent='OFFLINE';
-    } 
-  };
 }
 function connectOTP(url){
   G.TOKEN = document.getElementById('loginPat')?.value?.trim() || '';
