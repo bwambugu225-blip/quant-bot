@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Deriv OAuth Callback</title>
+</head>
+<body>
+  <h2>Connecting to Deriv...</h2>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    
+    // Check for token (legacy flow)
+    const token = params.get('token1');
+    if (token) {
+      window.opener?.postMessage({ type: 'deriv_token', token: token }, '*');
+      document.body.innerHTML = '<p>Connected! You can close this window.</p>';
+      setTimeout(() => window.close(), 1000);
+    }
+    
+    // Check for error
+    const error = params.get('error') || params.get('error_description');
+    if (error) {
+      window.opener?.postMessage({ type: 'deriv_error', error: error }, '*');
+      document.body.innerHTML = '<p>Error: ' + error + '</p><p>You can close this window.</p>';
+      setTimeout(() => window.close(), 3000);
+    }
+    
+    // Check for code (new flow)
+    const code = params.get('code');
+    if (code) {
+      document.body.innerHTML = '<p>Exchanging code...</p>';
+      fetch('https://auth.deriv.com/oauth2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id: '33JFxN3sbe2usdFigbMb8',
+          code: code,
+          redirect_uri: window.location.origin + '/callback.html'
+        })
+      })
+      .then(r => r.json())
+      .then(data => {
+        if (data.access_token) {
+          window.opener?.postMessage({ type: 'deriv_token', token: data.access_token }, '*');
+          document.body.innerHTML = '<p>Connected! You can close this window.</p>';
+        } else {
+          document.body.innerHTML = '<p>Error: ' + (data.error_description || data.error) + '</p>';
+        }
+        setTimeout(() => window.close(), 1000);
+      })
+      .catch(e => {
+        document.body.innerHTML = '<p>Error: ' + e.message + '</p>';
+      });
+    }
+  </script>
+</body>
+</html>

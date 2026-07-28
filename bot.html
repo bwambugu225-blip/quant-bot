@@ -6081,14 +6081,11 @@ async function bulkPurchaseCopy(accounts, type, clientRefs, mult) {
 // ── Login Screen (Deriv OAuth2.0 PKCE flow) ──
 async function oauthLogin(){
   console.log('[OAUTH] Starting OAuth login via popup...');
-  // Clear any previous OAuth state
-  sessionStorage.removeItem('oauth_code_verifier');
-  sessionStorage.removeItem('oauth_state');
-  sessionStorage.removeItem('oauth_redirect_uri');
   
-  // Use popup window for OAuth
+  // Use popup with callback page
+  const callbackUrl = window.location.origin + '/callback.html';
   const oauthWindow = window.open(
-    'https://oauth.deriv.com/oauth2/authorize?app_id=' + G.APP_ID + '&l=EN&redirect_uri=' + encodeURIComponent(OAUTH_REDIRECT_URI),
+    'https://oauth.deriv.com/oauth2/authorize?app_id=' + G.APP_ID + '&l=EN&redirect_uri=' + encodeURIComponent(callbackUrl),
     'deriv_oauth',
     'width=500,height=600,scrollbars=yes'
   );
@@ -6099,44 +6096,37 @@ async function oauthLogin(){
     return;
   }
   
-  // Poll for OAuth callback
-  const pollInterval = setInterval(() => {
-    try {
-      if (oauthWindow.closed) {
-        clearInterval(pollInterval);
-        return;
-      }
-      
-      const url = oauthWindow.location.href;
-      console.log('[OAUTH] Popup URL:', url);
-      
-      if (url.includes('code=')) {
-        clearInterval(pollInterval);
-        const params = new URLSearchParams(url.split('?')[1]);
-        const code = params.get('code');
-        console.log('[OAUTH] Got code:', code);
-        oauthWindow.close();
-        exchangeOAuthCode(code);
-      }
-      
-      if (url.includes('error=')) {
-        clearInterval(pollInterval);
-        const params = new URLSearchParams(url.split('?')[1]);
-        const error = params.get('error_description') || params.get('error');
-        console.error('[OAUTH] Error:', error);
-        oauthWindow.close();
-        document.getElementById('loginError').textContent = 'OAuth error: ' + error;
-      }
-    } catch(e) {
-      // Cross-origin error - ignore
+  // Listen for token from callback
+  window.addEventListener('message', function handler(e) {
+    console.log('[OAUTH] Received message:', e.data);
+    if (e.data?.type === 'deriv_token') {
+      window.removeEventListener('message', handler);
+      console.log('[OAUTH] Got token:', e.data.token.substring(0, 20) + '...');
+      document.getElementById('loginPat').value = e.data.token;
+      authorizePat();
     }
-  }, 500);
+    if (e.data?.type === 'deriv_error') {
+      window.removeEventListener('message', handler);
+      console.error('[OAUTH] Error:', e.data.error);
+      document.getElementById('loginError').textContent = 'OAuth error: ' + e.data.error;
+    }
+  });
+  
+  // Close popup after 5 minutes if no response
+  setTimeout(() => {
+    if (oauthWindow && !oauthWindow.closed) {
+      oauthWindow.close();
+    }
+  }, 300000);
 }
 function legacyLogin(){
   console.log('[OAUTH] Using legacy login...');
-  sessionStorage.setItem('oauth_redirect_uri', OAUTH_REDIRECT_URI);
-  const url = 'https://oauth.deriv.com/oauth2/authorize?app_id='+encodeURIComponent(G.APP_ID)+'&l=EN&redirect_uri='+encodeURIComponent(OAUTH_REDIRECT_URI);
-  window.location.href = url;
+  const callbackUrl = window.location.origin + '/callback.html';
+  window.open(
+    'https://oauth.deriv.com/oauth2/authorize?app_id='+encodeURIComponent(G.APP_ID)+'&l=EN&redirect_uri='+encodeURIComponent(callbackUrl),
+    'deriv_oauth',
+    'width=500,height=600'
+  );
 }
 async function exchangeOAuthCode(code){
   console.log('[OAUTH] Exchanging code:', code);
