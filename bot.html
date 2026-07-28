@@ -6193,14 +6193,29 @@ async function doRESTFlow(token){
     return;
   }
   // Step 3: Pick preferred account
-  const preferred = G.ACCOUNT_TYPE || 'demo';
+  const preferred = G.ACCOUNT_TYPE || 'real';
   const isDemo = (a) => a.account.startsWith('VR') || a.isDemo === true || a.is_virtual === true;
-  let account = accounts.find(a => (preferred==='demo' ? isDemo(a) : !isDemo(a)));
-  if(!account) account = accounts.find(a => isDemo(a)) || accounts[0];
+  
+  // Log all accounts found
+  log('[AUTH] Found ' + accounts.length + ' accounts:','i');
+  accounts.forEach((a, i) => {
+    log('  [' + i + '] ' + a.account + ' - ' + (isDemo(a) ? 'DEMO' : 'REAL') + ' $' + a.balance,'i');
+  });
+  
+  // Prefer REAL account, fallback to first available
+  let account;
+  if(preferred === 'real'){
+    account = accounts.find(a => !isDemo(a));
+  } else {
+    account = accounts.find(a => isDemo(a));
+  }
+  if(!account) account = accounts[0];
+  
   G.ACCOUNT_ID = account.account;
   G.ACCOUNT_TYPE = isDemo(account) ? 'demo' : 'real';
   G.BALANCE = account.balance || 0;
   G.TOKEN = token;
+  log('[AUTH] Selected: ' + account.account + ' (' + G.ACCOUNT_TYPE + ') $' + G.BALANCE,'s');
   // Step 4: Connect via OTP or direct WS
   try {
     const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID };
@@ -6216,6 +6231,7 @@ async function doRESTFlow(token){
 }
 function wsAuthorize(token){
   return new Promise((resolve, reject) => {
+    log('[AUTH] WS authorize starting...','i');
     const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id='+G.APP_ID);
     let done = false;
     const t = setTimeout(() => { if(!done){ done=true; ws.close(); reject(new Error('timeout')); } }, 8000);
@@ -6232,6 +6248,7 @@ function wsAuthorize(token){
           const currency = acc.currency || 'USD';
           const isVirtual = acc.is_virtual === 1 || acc.is_virtual === true || loginId?.startsWith('VR');
           const balance = parseFloat(acc.balance || 0);
+          log('[AUTH] WS authorize success: ' + loginId + ' (' + (isVirtual ? 'DEMO' : 'REAL') + ') $' + balance,'s');
           resolve([{ account:loginId, token:token, currency:currency, isDemo:isVirtual, balance:balance }]);
         }
       } else if(msg.error && msg.error.code === 'AuthorizationFailed'){
@@ -6245,33 +6262,82 @@ function wsAuthorize(token){
 function connectDirectWS(token){
   const url = 'wss://ws.derivws.com/websockets/v3?app_id='+G.APP_ID+'&token='+token+'&l=EN';
   const ws = new WebSocket(url);
+  let authorized = false;
+  
+  const timeout = setTimeout(() => {
+    if(!authorized){
+      log('[AUTH] Direct WS authorization timeout','e');
+      ws.close();
+    }
+  }, 15000);
+  
   ws.onopen = () => {
-    G.WS = ws;
-    wrapMasterSocket(ws);
-    G.AUTH = true;
-    G.CONNECTED = true;
-    sbUpsertUser();
-    saveState();
-    showApp();
-    document.getElementById('loginPat').disabled=false;
-    document.getElementById('oauthBtn').textContent='Login with Deriv';
-    document.getElementById('loginError').textContent='';
-    document.getElementById('connDot').className='conn g';
-    document.getElementById('engineStatus').textContent='ONLINE';
-    log('[AUTH] Authorized via direct WS','s');
-    updateDash();
-    startHeartbeat();
-    setTimeout(subscribeAll, 200);
+    log('[AUTH] WS connected, sending authorize...','i');
+    ws.send(JSON.stringify({ authorize: token }));
   };
+  
   ws.onmessage = (e) => {
-    try{ handleMsg(JSON.parse(e.data)); }catch(ex){ log(`[WS] Parse: ${ex.message}`,'e'); }
+    try {
+      const msg = JSON.parse(e.data);
+      
+      // Handle authorize response
+      if(msg.msg_type === 'authorize' && msg.authorize){
+        authorized = true;
+        clearTimeout(timeout);
+        
+        const acc = msg.authorize;
+        G.ACCOUNT_ID = acc.loginid;
+        G.ACCOUNT_TYPE = (acc.loginid?.startsWith('VR') || acc.is_virtual) ? 'demo' : 'real';
+        G.BALANCE = parseFloat(acc.balance || 0);
+        
+        log('[AUTH] ════════════════════════════════','s');
+        log('[AUTH] AUTHORIZED: ' + acc.loginid,'s');
+        log('[AUTH] Type: ' + G.ACCOUNT_TYPE + (G.ACCOUNT_TYPE === 'demo' ? ' ⚠️' : ''),'s');
+        log('[AUTH] Balance: $' + G.BALANCE,'s');
+        log('[AUTH] Currency: ' + (acc.currency || 'USD'),'i');
+        log('[AUTH] ════════════════════════════════','s');
+        
+        if(G.ACCOUNT_TYPE === 'demo'){
+          log('[AUTH] ⚠️ WARNING: Connected to DEMO account!','w');
+          log('[AUTH] Real trading requires a real account.','w');
+        } else {
+          log('[AUTH] ✅ Connected to REAL account!','s');
+        }
+        
+        G.WS = ws;
+        wrapMasterSocket(ws);
+        G.AUTH = true;
+        G.CONNECTED = true;
+        G.BOOT_AT = Date.now();
+        sbUpsertUser();
+        saveState();
+        showApp();
+        document.getElementById('loginPat').disabled=false;
+        document.getElementById('oauthBtn').textContent='Login with Deriv';
+        document.getElementById('loginError').textContent='';
+        document.getElementById('connDot').className='conn g';
+        document.getElementById('engineStatus').textContent='ONLINE';
+        updateDash();
+        startHeartbeat();
+        setTimeout(subscribeAll, 200);
+      }
+      
+      // Pass other messages to handler
+      handleMsg(msg);
+      
+    } catch(ex){ log(`[WS] Parse: ${ex.message}`,'e'); }
   };
+  
   ws.onerror = () => {
+    clearTimeout(timeout);
+    log('[AUTH] WebSocket connection failed','e');
     document.getElementById('loginError').textContent = 'WebSocket connection failed';
     document.getElementById('loginPat').disabled=false;
     document.getElementById('oauthBtn').textContent='Login with Deriv';
   };
+  
   ws.onclose = () => { 
+    clearTimeout(timeout);
     if(G.WS === ws){ 
       G.AUTH = false; 
       G.CONNECTED = false;
