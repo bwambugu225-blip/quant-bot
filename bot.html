@@ -5975,6 +5975,251 @@ async function createPkce() {
   return { code_verifier, code_challenge };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// MCP API - DERIV TRADING INTEGRATION
+// All trades go through the MCP API for REAL trading
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let G_SESSION_TOKEN = '';
+let G_MCP_WS = null;
+let G_MCP_CONNECTED = false;
+
+// MCP WebSocket connection
+function connectMCP() {
+  return new Promise((resolve, reject) => {
+    log('[MCP] Connecting to Deriv MCP API...', 'i');
+    
+    const ws = new WebSocket(MCP_API_URL);
+    G_MCP_WS = ws;
+    
+    const timeout = setTimeout(() => {
+      ws.close();
+      reject(new Error('MCP connection timeout'));
+    }, 15000);
+    
+    ws.onopen = () => {
+      clearTimeout(timeout);
+      log('[MCP] WebSocket connected!', 's');
+      G_MCP_CONNECTED = true;
+      
+      // Send authorize request
+      if (G_SESSION_TOKEN) {
+        ws.send(JSON.stringify({
+          authorize: G_SESSION_TOKEN
+        }));
+      }
+      
+      resolve();
+    };
+    
+    ws.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        
+        // Handle authorize response
+        if (msg.authorize || msg.msg_type === 'authorize') {
+          const auth = msg.authorize || msg;
+          if (auth.loginid) {
+            log('[MCP] AUTHORIZED: ' + auth.loginid, 's');
+            G.ACCOUNT_ID = auth.loginid;
+            G.ACCOUNT_TYPE = (auth.loginid.startsWith('VR') || auth.is_virtual) ? 'demo' : 'real';
+            G.BALANCE = parseFloat(auth.balance || 0);
+            G.AUTH = true;
+            G.CONNECTED = true;
+            
+            if (G.ACCOUNT_TYPE === 'demo') {
+              log('[MCP] WARNING: Connected to DEMO account!', 'w');
+            } else {
+              log('[MCP] SUCCESS: Connected to REAL account!', 's');
+            }
+            
+            showApp();
+            updateDash();
+            subscribeMCP();
+            startHeartbeat();
+          }
+        }
+        
+        // Handle balance
+        if (msg.msg_type === 'balance' && msg.balance) {
+          G.BALANCE = parseFloat(msg.balance.balance || 0);
+          updateDash();
+        }
+        
+        // Handle proposals
+        if (msg.proposal) {
+          handleMCPProposal(msg.proposal);
+        }
+        
+        // Handle buy confirmations
+        if (msg.buy) {
+          handleMCPBuy(msg.buy);
+        }
+        
+        // Handle contract updates
+        if (msg.proposal_open_contract) {
+          handleMCPContract(msg.proposal_open_contract);
+        }
+        
+        // Handle ticks
+        if (msg.msg_type === 'tick' || msg.msg_type === 'candles') {
+          handleMsg(msg, 'market');
+        }
+        
+        // Handle errors
+        if (msg.error) {
+          log('[MCP] Error: ' + JSON.stringify(msg.error), 'e');
+        }
+        
+      } catch (e) {
+        console.error('[MCP] Parse error:', e);
+      }
+    };
+    
+    ws.onerror = (e) => {
+      clearTimeout(timeout);
+      log('[MCP] WebSocket error', 'e');
+      reject(e);
+    };
+    
+    ws.onclose = () => {
+      clearTimeout(timeout);
+      G_MCP_CONNECTED = false;
+      G.CONNECTED = false;
+      G.AUTH = false;
+      log('[MCP] Connection closed', 'w');
+      document.getElementById('connDot').className = 'conn r';
+      document.getElementById('engineStatus').textContent = 'OFFLINE';
+      
+      // Attempt reconnect
+      if (G.ACCOUNT_ID) {
+        setTimeout(() => {
+          if (G.ACCOUNT_ID) connectMCP();
+        }, 5000);
+      }
+    };
+  });
+}
+
+function subscribeMCP() {
+  if (!G_MCP_WS || !G_MCP_CONNECTED) return;
+  
+  // Subscribe to balance
+  G_MCP_WS.send(JSON.stringify({ balance: 1, subscribe: 1 }));
+  
+  // Subscribe to market data
+  SYMBOLS.forEach(s => {
+    G_MCP_WS.send(JSON.stringify({
+      ticks_history: s.sym,
+      end: 'latest',
+      count: 1100,
+      style: 'ticks',
+      subscribe: 1
+    }));
+  });
+  
+  log('[MCP] Subscribed to balance and markets', 'i');
+}
+
+function sendMCP(payload) {
+  if (G_MCP_WS && G_MCP_CONNECTED) {
+    G_MCP_WS.send(JSON.stringify(payload));
+    return true;
+  }
+  log('[MCP] Not connected!', 'e');
+  return false;
+}
+
+function handleMCPProposal(p) {
+  log('[PROP] ' + p.id + ' ask=' + p.ask_price, 'i');
+  G.ACTIVE_CONTRACTS.delete('sending');
+  G.ACTIVE_CONTRACTS.set('pending', { id: p.id, price: p.ask_price });
+  
+  // Auto-buy the proposal
+  sendMCP({ buy: p.id, price: p.ask_price, subscribe: 1 });
+}
+
+function handleMCPBuy(b) {
+  if (G.SENDING_TIMEOUT) {
+    clearTimeout(G.SENDING_TIMEOUT);
+    G.SENDING_TIMEOUT = null;
+  }
+  
+  G.ACTIVE_CONTRACTS.delete('pending');
+  G.ACTIVE_CONTRACTS.delete('sending');
+  
+  if (b.contract_id) {
+    G.ACTIVE_CONTRACTS.set(b.contract_id, {
+      id: b.contract_id,
+      price: b.buy_price,
+      time: Date.now()
+    });
+    G.TRADES++;
+    G.BALANCE -= b.buy_price;
+    updateDash();
+    log('[BUY] #' + b.contract_id + ' $' + b.buy_price.toFixed(2), 's');
+  }
+  
+  if (b.error) {
+    log('[BUY] ' + b.error.message, 'e');
+  }
+}
+
+function handleMCPContract(c) {
+  if (c.status === 'won' || c.status === 'lost') {
+    const profit = parseFloat(c.profit || 0);
+    G.BALANCE += Math.abs(profit) + (c.status === 'won' ? 0 : c.buy_price || 0);
+    G.ACTIVE_CONTRACTS.delete(c.contract_id);
+    
+    if (c.status === 'won') {
+      G.WINS++;
+      log('[WIN] +$' + profit.toFixed(2), 's');
+    } else {
+      G.LOSSES++;
+      log('[LOSS] -$' + Math.abs(profit).toFixed(2), 'e');
+    }
+    
+    updateDash();
+  }
+}
+
+// Override execTrade to use MCP
+const originalExecTrade = execTrade;
+execTrade = function(asset, ct, stake, dur, durUnit, signal) {
+  if (!G.AUTH || !G.ACCOUNT_ID) {
+    log('[TRADE] Please authenticate first!', 'e');
+    return;
+  }
+  
+  if (G.ACCOUNT_TYPE === 'demo') {
+    log('[TRADE] WARNING: Trading on DEMO account!', 'w');
+  }
+  
+  log('[TRADE] EXEC ' + asset + ' ' + ct + ' $' + stake.toFixed(2), 'i');
+  
+  G.ACTIVE_CONTRACTS.set('sending', { id: null, price: null, time: Date.now() });
+  
+  if (G.SENDING_TIMEOUT) clearTimeout(G.SENDING_TIMEOUT);
+  G.SENDING_TIMEOUT = setTimeout(() => {
+    G.ACTIVE_CONTRACTS.delete('sending');
+    log('[TRADE] Proposal timed out', 'w');
+  }, 15000);
+  
+  // Send proposal request via MCP
+  sendMCP({
+    proposal: 1,
+    subscribe: 1,
+    amount: +stake.toFixed(2),
+    basis: 'stake',
+    contract_type: ct,
+    currency: 'USD',
+    duration: dur,
+    duration_unit: durUnit,
+    underlying_symbol: asset
+  });
+};
+
+// OAuth Login - Start
 async function startOAuthLogin() {
   const btn = document.getElementById('oauthBtn');
   const err = document.getElementById('loginError');
@@ -5982,15 +6227,18 @@ async function startOAuthLogin() {
   btn.textContent = 'Redirecting...';
   btn.disabled = true;
   
-  // Clear ALL cached data to ensure fresh authentication
+  // Clear old data
   localStorage.removeItem('deriv_token');
-  localStorage.removeItem('deriv_account_type');
+  localStorage.removeItem('deriv_session');
   sessionStorage.clear();
   
   try {
+    log('[AUTH] Starting Deriv OAuth...', 'i');
+    
+    // Use PKCE flow
     const { code_verifier, code_challenge } = await createPkce();
     const state = base64UrlEncode(crypto.getRandomValues(new Uint8Array(16)));
-    const redirectUri = 'https://dv-quant.vercel.app';
+    const redirectUri = window.location.origin;
     
     sessionStorage.setItem('oauth_code_verifier', code_verifier);
     sessionStorage.setItem('oauth_state', state);
@@ -6007,45 +6255,81 @@ async function startOAuthLogin() {
     });
     
     window.location.href = 'https://auth.deriv.com/oauth2/auth?' + params.toString();
+    
   } catch (e) {
-    err.textContent = 'Failed to start login: ' + e.message;
+    err.textContent = 'Login failed: ' + e.message;
     btn.textContent = 'Login with Deriv';
     btn.disabled = false;
-    log('[OAUTH] Start failed: ' + e.message, 'e');
+    log('[AUTH] OAuth failed: ' + e.message, 'e');
   }
 }
 
-async function exchangeOAuthToken(code) {
-  const code_verifier = sessionStorage.getItem('oauth_code_verifier');
-  const redirect_uri = sessionStorage.getItem('oauth_redirect_uri');
+// Handle OAuth callback
+async function handleOAuthCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const state = params.get('state');
+  const error = params.get('error');
   
-  if (!code_verifier) {
-    throw new Error('No code verifier found');
+  if (error) {
+    document.getElementById('loginError').textContent = 'OAuth error: ' + error;
+    return;
   }
   
-  log('[OAUTH] Exchanging code for token...', 'i');
-  const resp = await fetch('https://auth.deriv.com/oauth2/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      client_id: DERIV_APP_ID,
-      code: code,
-      redirect_uri: redirect_uri,
-      code_verifier: code_verifier
-    })
-  });
+  if (!code) return;
   
-  const data = await resp.json();
-  log('[OAUTH] Token response: ' + JSON.stringify(data).substring(0, 300), 'i');
-  
-  if (data.error) {
-    throw new Error(data.error_description || data.error);
+  // Verify state
+  const savedState = sessionStorage.getItem('oauth_state');
+  if (state !== savedState) {
+    document.getElementById('loginError').textContent = 'Invalid OAuth state';
+    return;
   }
   
-  return data.access_token;
+  try {
+    log('[AUTH] Exchanging code for token...', 'i');
+    
+    const code_verifier = sessionStorage.getItem('oauth_code_verifier');
+    const redirect_uri = sessionStorage.getItem('oauth_redirect_uri');
+    
+    const resp = await fetch('https://auth.deriv.com/oauth2/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        client_id: DERIV_APP_ID,
+        code: code,
+        redirect_uri: redirect_uri,
+        code_verifier: code_verifier
+      })
+    });
+    
+    const data = await resp.json();
+    
+    if (data.error) {
+      throw new Error(data.error_description || data.error);
+    }
+    
+    log('[AUTH] Got access token!', 's');
+    
+    // Store token and connect
+    G_SESSION_TOKEN = data.access_token;
+    localStorage.setItem('deriv_token', data.access_token);
+    
+    // Clean URL
+    window.history.replaceState({}, document.title, window.location.pathname);
+    
+    // Connect to MCP
+    await connectMCP();
+    
+  } catch (e) {
+    document.getElementById('loginError').textContent = 'Auth failed: ' + e.message;
+    document.getElementById('oauthBtn').disabled = false;
+    document.getElementById('oauthBtn').textContent = 'Login with Deriv';
+    log('[AUTH] Token exchange failed: ' + e.message, 'e');
+  }
 }
 
+// PAT Login
 async function authorizePat(){
   const inp = document.getElementById('loginPat');
   const err = document.getElementById('loginError');
@@ -6065,270 +6349,6 @@ async function authorizePat(){
   
   log('[AUTH] authorizePat called, token length: ' + (token?.length || 0), 'i');
   await doRESTFlow(token);
-}
-async function doRESTFlow(token){
-  log('[AUTH] Starting auth with token (length: ' + (token?.length || 0) + ')', 'i');
-  G.TOKEN = token;
-  
-  // Step 1: Connect directly to WebSocket with token for REAL trading
-  // OAuth tokens and PATs work with WebSocket via authorize message
-  const wsConnected = await connectTradingWS(token);
-  
-  if(wsConnected) {
-    log('[AUTH] WebSocket connected successfully - REAL trading active', 's');
-    return;
-  }
-  
-  // Step 2: If direct WS failed, try REST API to get accounts then OTP
-  log('[AUTH] Direct WS failed, trying REST API...', 'w');
-  try {
-    const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID };
-    const resp = await fetch('https://api.derivws.com/trading/v1/options/accounts', { headers:hdrs });
-    log('[AUTH] REST accounts status: ' + resp.status, 'i');
-    
-    if(resp.ok){
-      const data = await resp.json();
-      log('[AUTH] REST accounts: ' + JSON.stringify(data).substring(0, 300), 'i');
-      
-      if(data.data && data.data.length > 0){
-        accounts = data.data.map(a => ({ 
-          account: a.account_id, 
-          token: token, 
-          currency: a.currency || 'USD', 
-          isDemo: a.account_type === 'demo' || a.is_virtual,
-          balance: parseFloat(a.balance || 0) 
-        }));
-        
-        log('[AUTH] Found ' + accounts.length + ' accounts via REST', 'i');
-        
-        // Pick real account first
-        const preferred = G.ACCOUNT_TYPE || 'real';
-        const isReal = (a) => !a.account.startsWith('VR') && !a.isDemo;
-        let account = accounts.find(a => (preferred === 'real' ? isReal(a) : !isReal(a)));
-        if(!account) account = accounts.find(a => isReal(a)) || accounts[0];
-        
-        G.ACCOUNT_ID = account.account;
-        G.ACCOUNT_TYPE = isReal(account) ? 'real' : 'demo';
-        G.BALANCE = account.balance;
-        log('[AUTH] Selected: ' + G.ACCOUNT_ID + ' (' + G.ACCOUNT_TYPE + ') $' + G.BALANCE, 'i');
-        
-        // Get OTP WebSocket URL for this account
-        const otpResp = await fetch('https://api.derivws.com/trading/v1/options/accounts/' + account.account + '/otp', {
-          method: 'POST',
-          headers: hdrs,
-          body: '{}'
-        });
-        
-        if(otpResp.ok){
-          const otpData = await otpResp.json();
-          const wsUrl = otpData.data?.url || otpData.url;
-          if(wsUrl){
-            log('[AUTH] Got OTP URL, connecting...', 'i');
-            connectOTP(wsUrl);
-            return;
-          }
-        }
-      }
-    }
-  } catch(e) { 
-    log('[AUTH] REST failed: ' + e.message, 'e'); 
-    console.error(e); 
-  }
-  
-  // Step 3: Try WS authorize as last resort
-  log('[AUTH] Trying WS authorize...', 'i');
-  try {
-    const wsAccounts = await wsAuthorize(token);
-    if(wsAccounts && wsAccounts.length){
-      accounts = wsAccounts;
-      const preferred = G.ACCOUNT_TYPE || 'real';
-      const isReal = (a) => !a.account.startsWith('VR') && !a.isDemo;
-      let account = accounts.find(a => (preferred === 'real' ? isReal(a) : !isReal(a)));
-      if(!account) account = accounts.find(a => isReal(a)) || accounts[0];
-      
-      G.ACCOUNT_ID = account.account;
-      G.ACCOUNT_TYPE = isReal(account) ? 'real' : 'demo';
-      G.BALANCE = account.balance;
-      
-      log('[AUTH] WS authorize success, connecting to trading...', 'i');
-      connectTradingWS(token);
-      return;
-    }
-  } catch(e) {
-    log('[AUTH] WS authorize failed: ' + e.message, 'e');
-  }
-  
-  document.getElementById('loginError').textContent = 'Authentication failed. Please try again or use a valid API token.';
-  document.getElementById('loginPat').disabled = false;
-  document.getElementById('oauthBtn').disabled = false;
-  document.getElementById('oauthBtn').textContent = 'Login with Deriv';
-}
-
-async function connectTradingWS(token){
-  return new Promise((resolve) => {
-    log('[AUTH] Connecting to trading WebSocket...', 'i');
-    const url = 'wss://ws.derivws.com/websockets/v3?app_id=' + G.APP_ID + '&l=EN';
-    const ws = new WebSocket(url);
-    let authorized = false;
-    let gotBalance = false;
-    let gotSymbol = false;
-    let timeout = setTimeout(() => {
-      if(!authorized){
-        log('[AUTH] WS connection timeout', 'e');
-        ws.close();
-        resolve(false);
-      }
-    }, 15000);
-    
-    ws.onopen = () => {
-      log('[AUTH] WS opened, sending authorize...', 'i');
-      ws.send(JSON.stringify({ authorize: token }));
-    };
-    
-    ws.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        
-        // Handle authorize response
-        if(msg.msg_type === 'authorize' || msg.authorize){
-          const auth = msg.authorize || msg;
-          if(auth.loginid){
-            authorized = true;
-            clearTimeout(timeout);
-            G.ACCOUNT_ID = auth.loginid;
-            G.ACCOUNT_TYPE = (auth.loginid.startsWith('VR') || auth.is_virtual) ? 'demo' : 'real';
-            G.BALANCE = parseFloat(auth.balance || 0);
-            log('[AUTH] AUTHORIZED: ' + auth.loginid + ' (' + G.ACCOUNT_TYPE + ') $' + G.BALANCE, 's');
-            
-            // Keep this socket as the trading connection
-            G.WS = ws;
-            wrapMasterSocket(ws);
-            G.AUTH = true;
-            G.CONNECTED = true;
-            sbUpsertUser();
-            saveState();
-            showApp();
-            
-            document.getElementById('connDot').className = 'conn g';
-            document.getElementById('engineStatus').textContent = 'ONLINE';
-            document.getElementById('loginPat').disabled = false;
-            document.getElementById('loginError').textContent = '';
-            
-            // Subscribe to market data
-            subscribeAll();
-            startHeartbeat();
-            updateDash();
-            
-            log('[AUTH] REAL TRADING CONNECTED!', 's');
-            resolve(true);
-          }
-        }
-        
-        // Handle balance updates
-        if(msg.msg_type === 'balance' && msg.balance){
-          G.BALANCE = parseFloat(msg.balance.balance || 0);
-          gotBalance = true;
-          updateDash();
-        }
-        
-        // Handle errors
-        if(msg.error){
-          log('[AUTH] WS Error: ' + JSON.stringify(msg.error), 'e');
-          if(msg.error.code === 'AuthorizationFailed' || msg.error.code === 'InvalidToken'){
-            clearTimeout(timeout);
-            ws.close();
-            resolve(false);
-          }
-        }
-        
-        // Handle tick/candle data (proves we're getting REAL market data)
-        if(msg.msg_type === 'tick' || msg.msg_type === 'candles' || msg.msg_type === 'ohlc'){
-          gotSymbol = true;
-        }
-        
-      } catch(e) {
-        console.error('[AUTH] Parse error:', e);
-      }
-    };
-    
-    ws.onerror = (e) => {
-      log('[AUTH] WebSocket error', 'e');
-      clearTimeout(timeout);
-      resolve(false);
-    };
-    
-    ws.onclose = () => {
-      clearTimeout(timeout);
-      if(!authorized){
-        log('[AUTH] WebSocket closed without authorization', 'w');
-        resolve(false);
-      }
-    };
-  });
-}
-function wsAuthorize(token){
-  return new Promise((resolve, reject) => {
-    const ws = new WebSocket('wss://ws.derivws.com/websockets/v3?app_id='+G.APP_ID);
-    let done = false;
-    const t = setTimeout(() => { if(!done){ done=true; ws.close(); reject(new Error('timeout')); } }, 8000);
-    ws.onmessage = (e) => {
-      let msg;
-      try{ msg = JSON.parse(e.data); }catch(er){ return; }
-      if(msg.msg_type === 'authorize'){
-        if(!done && msg.authorize){
-          done = true;
-          clearTimeout(t);
-          ws.close();
-          const acc = msg.authorize;
-          const loginId = acc.loginid;
-          const currency = acc.currency || 'USD';
-          const isVirtual = acc.is_virtual === 1 || acc.is_virtual === true || loginId?.startsWith('VR');
-          const balance = parseFloat(acc.balance || 0);
-          resolve([{ account:loginId, token:token, currency:currency, isDemo:isVirtual, balance:balance }]);
-        }
-      } else if(msg.error && msg.error.code === 'AuthorizationFailed'){
-        if(!done){ done=true; clearTimeout(t); ws.close(); reject(new Error(msg.error.message)); }
-      }
-    };
-    ws.onopen = () => ws.send(JSON.stringify({ authorize:token }));
-    ws.onerror = () => { if(!done){ done=true; clearTimeout(t); reject(new Error('ws error')); } };
-  });
-}
-function connectOTP(url){
-  G.TOKEN = document.getElementById('loginPat')?.value?.trim() || '';
-  if(G.WS && (G.WS.readyState===WebSocket.OPEN || G.WS.readyState===WebSocket.CONNECTING)){
-    G.CLOSING_TRADE_WS = true;
-    try{ G.WS.close(); }catch(e){}
-  }
-  G.RECONN_ACTIVE = G.RUNNING;
-  const ws = new WebSocket(url);
-  G.WS = ws;
-  const to = setTimeout(() => { log('[WS] OTP connection timeout','e'); try{ ws.close(); }catch(e){} }, 15000);
-  ws.onopen = () => {
-    clearTimeout(to);
-    wrapMasterSocket(ws);
-    G.CONNECTED=true; G.AUTH=true; G.RECONN_ATT=0; G.BOOT_AT = Date.now();
-    sbUpsertUser();
-    G.ACTIVE_CONTRACTS.clear();
-    document.getElementById('connDot').className='conn g';
-    document.getElementById('engineStatus').textContent='ONLINE';
-    syncFab();
-    log(`[AUTH] ${G.ACCOUNT_ID} $${G.BALANCE.toFixed(2)}`,'s');
-    saveState(); showApp();
-    startHeartbeat();
-    setTimeout(subscribeAll, 200);
-  };
-  ws.onmessage = (e) => { try{ handleMsg(JSON.parse(e.data)); }catch(ex){ log(`Parse: ${ex.message}`,'e'); } };
-  ws.onerror = () => { G.CONNECTED=false; document.getElementById('connDot').className='conn r'; };
-  ws.onclose = () => {
-    clearTimeout(to);
-    const intentional = G.CLOSING_TRADE_WS;
-    G.CLOSING_TRADE_WS = false;
-    G.CONNECTED=false; G.AUTH=false;
-    document.getElementById('connDot').className='conn r';
-    document.getElementById('engineStatus').textContent='OFFLINE';
-    if(!intentional){ log('[WS] Disconnected — reconnecting...','w'); scheduleRecon(); }
-  };
 }
 function showApp(){
   document.getElementById('loginOverlay').classList.add('hidden');
