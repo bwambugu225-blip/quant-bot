@@ -2,15 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>BTraders — Next-Gen Algorithmic Trading</title>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700;800&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- Telegram WebApp SDK -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<meta name="theme-color" content="#050508">
 <style>
 /* ═══════════════════════════════════════════════════════════════
-   ANIMATED GRID BACKGROUND
+   CSS VARIABLES & BASE STYLES
 ═══════════════════════════════════════════════════════════════ */
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
 :root {
   --bg: #050508;
   --bg-2: #0a0a10;
@@ -34,11 +35,20 @@
   --purple-dim: rgba(167,139,250,0.15);
   --cyan: #22d3ee;
   --cyan-dim: rgba(34,211,238,0.15);
+  --warn: #fbbf24;
+  --pos-dim: rgba(74,222,128,0.12);
+  --neg-dim: rgba(248,113,113,0.12);
+  --font: 'JetBrains Mono','SF Mono','Fira Code',monospace;
+  --font-head: 'Plus Jakarta Sans','Inter','Segoe UI',sans-serif;
+  --font-serif: 'Playfair Display','Cinzel','Georgia',serif;
+  --logo: linear-gradient(135deg,#d4a84b,#f0d080);
 }
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
 
 html { scroll-behavior: smooth; }
 body {
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: var(--font-head);
   background: var(--bg);
   color: var(--text);
   line-height: 1.6;
@@ -46,7 +56,9 @@ body {
   min-height: 100vh;
 }
 
-/* Animated Grid Background */
+/* ═══════════════════════════════════════════════════════════════
+   ANIMATED BACKGROUND
+═══════════════════════════════════════════════════════════════ */
 .grid-bg {
   position: fixed;
   top: 0;
@@ -77,7 +89,6 @@ body {
   100% { transform: translate(60px, 60px); }
 }
 
-/* Gradient Orbs */
 .orb {
   position: fixed;
   border-radius: 50%;
@@ -87,32 +98,9 @@ body {
   animation: orbFloat 20s ease-in-out infinite;
 }
 
-.orb-1 {
-  width: 600px;
-  height: 600px;
-  background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
-  top: -200px;
-  right: -100px;
-  animation-delay: 0s;
-}
-
-.orb-2 {
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, var(--purple-dim) 0%, transparent 70%);
-  bottom: -100px;
-  left: -150px;
-  animation-delay: -7s;
-}
-
-.orb-3 {
-  width: 400px;
-  height: 400px;
-  background: radial-gradient(circle, var(--cyan-dim) 0%, transparent 70%);
-  top: 40%;
-  left: 30%;
-  animation-delay: -14s;
-}
+.orb-1 { width: 600px; height: 600px; background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%); top: -200px; right: -100px; animation-delay: 0s; }
+.orb-2 { width: 500px; height: 500px; background: radial-gradient(circle, var(--purple-dim) 0%, transparent 70%); bottom: -100px; left: -150px; animation-delay: -7s; }
+.orb-3 { width: 400px; height: 400px; background: radial-gradient(circle, var(--cyan-dim) 0%, transparent 70%); top: 40%; left: 30%; animation-delay: -14s; }
 
 @keyframes orbFloat {
   0%, 100% { transform: translate(0, 0) scale(1); }
@@ -121,14 +109,18 @@ body {
   75% { transform: translate(40px, 30px) scale(1.02); }
 }
 
-/* Main Content */
+/* ═══════════════════════════════════════════════════════════════
+   MAIN CONTENT CONTAINER
+═══════════════════════════════════════════════════════════════ */
 .main-content {
   position: relative;
   z-index: 1;
 }
 
+.main-content.hidden { display: none; }
+
 /* ═══════════════════════════════════════════════════════════════
-   NAVIGATION
+   NAVIGATION - ANIMATED
 ═══════════════════════════════════════════════════════════════ */
 nav {
   position: fixed;
@@ -145,6 +137,13 @@ nav.scrolled {
   backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--line);
   padding: 12px 40px;
+}
+
+nav.app-mode {
+  background: rgba(14,12,10,0.95);
+  backdrop-filter: blur(24px) saturate(1.3);
+  border-bottom: 1px solid var(--line);
+  padding: 8px 16px;
 }
 
 .nav-inner {
@@ -167,12 +166,11 @@ nav.scrolled {
   background-clip: text;
   animation: logoShimmer 3s ease infinite;
   text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
 }
 
-.logo span {
-  -webkit-text-fill-color: var(--muted);
-  font-weight: 500;
-}
+.logo span { -webkit-text-fill-color: var(--muted); font-weight: 500; }
 
 @keyframes logoShimmer {
   0%, 100% { background-position: 0% 50%; }
@@ -206,13 +204,8 @@ nav.scrolled {
   transition: width 0.3s ease;
 }
 
-.nav-links a:hover {
-  color: var(--text);
-}
-
-.nav-links a:hover::after {
-  width: 100%;
-}
+.nav-links a:hover { color: var(--text); }
+.nav-links a:hover::after { width: 100%; }
 
 .nav-cta-group {
   display: flex;
@@ -231,44 +224,39 @@ nav.scrolled {
   border: none;
 }
 
-.nav-btn-outline {
-  background: transparent;
-  border: 1px solid var(--line-bright);
-  color: var(--text);
+.nav-btn-outline { background: transparent; border: 1px solid var(--line-bright); color: var(--text); }
+.nav-btn-outline:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.nav-btn-primary { background: linear-gradient(135deg, var(--accent) 0%, var(--accent-bright) 100%); color: var(--bg); font-weight: 700; box-shadow: 0 4px 20px var(--accent-glow); }
+.nav-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px var(--accent-glow); }
+
+.nav-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.nav-btn-outline:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-dim);
-}
+.conn { width: 8px; height: 8px; border-radius: 50%; display: inline-block; box-shadow: 0 0 10px currentColor; }
+.conn.g { background: var(--positive); color: var(--positive); }
+.conn.r { background: var(--negative); color: var(--negative); }
+.conn.y { background: var(--warn); color: var(--warn); }
 
-.nav-btn-primary {
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-bright) 100%);
-  color: var(--bg);
+.nav-balance {
+  font-family: var(--font);
+  font-size: 16px;
   font-weight: 700;
-  box-shadow: 0 4px 20px var(--accent-glow);
+  color: var(--positive);
 }
 
-.nav-btn-primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 30px var(--accent-glow);
-}
-
-/* Mobile Menu */
-.mobile-menu-btn {
-  display: none;
-  flex-direction: column;
-  gap: 5px;
-  cursor: pointer;
-  padding: 8px;
-}
-
-.mobile-menu-btn span {
-  width: 24px;
-  height: 2px;
-  background: var(--text);
-  transition: all 0.3s ease;
+.nav-user-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent);
+  color: var(--accent);
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -291,14 +279,8 @@ nav.scrolled {
 }
 
 @keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(40px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .hero-badge {
@@ -392,6 +374,8 @@ nav.scrolled {
   box-shadow: 0 8px 40px var(--accent-glow);
   position: relative;
   overflow: hidden;
+  border: none;
+  cursor: pointer;
 }
 
 .btn-primary-lg::before {
@@ -405,14 +389,8 @@ nav.scrolled {
   transition: left 0.5s ease;
 }
 
-.btn-primary-lg:hover::before {
-  left: 100%;
-}
-
-.btn-primary-lg:hover {
-  transform: translateY(-4px) scale(1.02);
-  box-shadow: 0 16px 60px var(--accent-glow);
-}
+.btn-primary-lg:hover::before { left: 100%; }
+.btn-primary-lg:hover { transform: translateY(-4px) scale(1.02); box-shadow: 0 16px 60px var(--accent-glow); }
 
 .btn-secondary-lg {
   background: var(--surface);
@@ -429,21 +407,10 @@ nav.scrolled {
   gap: 12px;
 }
 
-.btn-secondary-lg:hover {
-  border-color: var(--accent);
-  background: var(--accent-dim);
-  transform: translateY(-4px);
-}
+.btn-secondary-lg:hover { border-color: var(--accent); background: var(--accent-dim); transform: translateY(-4px); }
+.btn-secondary-lg svg { transition: transform 0.3s ease; }
+.btn-secondary-lg:hover svg { transform: translateX(4px); }
 
-.btn-secondary-lg svg {
-  transition: transform 0.3s ease;
-}
-
-.btn-secondary-lg:hover svg {
-  transform: translateX(4px);
-}
-
-/* Hero Stats */
 .hero-stats {
   display: flex;
   justify-content: center;
@@ -456,9 +423,7 @@ nav.scrolled {
   opacity: 0;
 }
 
-.hero-stat {
-  text-align: center;
-}
+.hero-stat { text-align: center; }
 
 .hero-stat .number {
   font-family: 'JetBrains Mono', monospace;
@@ -472,24 +437,782 @@ nav.scrolled {
   margin-bottom: 8px;
 }
 
-.hero-stat .label {
-  font-size: 14px;
-  color: var(--muted);
-  text-transform: uppercase;
+.hero-stat .label { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 2px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   LOGIN MODAL
+═══════════════════════════════════════════════════════════════ */
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5,5,8,0.95);
+  backdrop-filter: blur(20px);
+  animation: fadeIn 0.3s ease;
+}
+
+.login-overlay.hidden { display: none; }
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.login-card {
+  background: var(--surface);
+  border: 1px solid var(--line-bright);
+  border-radius: 24px;
+  padding: 48px;
+  width: 420px;
+  max-width: 92vw;
+  text-align: center;
+  box-shadow: 0 40px 80px rgba(0,0,0,.7), 0 0 60px var(--accent-dim);
+  animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.login-card h1 {
+  font-family: var(--font-serif);
+  font-size: 32px;
+  font-weight: 800;
+  margin: 0 0 8px;
   letter-spacing: 2px;
+  background: var(--logo);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.login-card p { font-size: 14px; color: var(--muted); margin: 0 0 32px; }
+
+.login-card input {
+  width: 100%;
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--line-bright);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  margin-bottom: 16px;
+  font-family: var(--font);
+  transition: all 0.3s ease;
+}
+
+.login-card input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-dim); }
+
+.btn-login {
+  width: 100%;
+  padding: 16px;
+  border-radius: 12px;
+  border: none;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-bright) 100%);
+  color: var(--bg);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 20px var(--accent-glow);
+}
+
+.btn-login:hover { transform: translateY(-2px); box-shadow: 0 8px 30px var(--accent-glow); }
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 24px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.login-divider::before, .login-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.login-error {
+  font-size: 12px;
+  color: var(--negative);
+  margin-top: 12px;
+  min-height: 20px;
+}
+
+.login-tiers {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.tier-btn {
+  padding: 6px 16px;
+  border-radius: 20px;
+  border: 1px solid var(--line-bright);
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  transition: all 0.3s ease;
+}
+
+.tier-btn.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+
+.login-footer {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 24px;
+  line-height: 1.6;
+}
+
+.login-footer a { color: var(--accent); text-decoration: none; }
+.login-footer a:hover { text-decoration: underline; }
+
+.risk-note {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--line);
+  line-height: 1.5;
+  text-align: left;
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   PLATFORM SELECTOR
+   TRADING APP INTERFACE
 ═══════════════════════════════════════════════════════════════ */
-.platform-section {
-  padding: 60px 40px 100px;
+#app {
+  display: none;
+  min-height: 100vh;
+  padding-bottom: 80px;
 }
+
+#app.active { display: block; }
+
+/* Slim Top Strip */
+.mtop {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  background: rgba(14,12,10,0.95);
+  backdrop-filter: blur(24px) saturate(1.3);
+  border-bottom: 1px solid var(--line);
+}
+
+.mtop-l { display: flex; align-items: center; gap: 12px; }
+.mtop-r { display: flex; align-items: center; gap: 8px; }
+
+.logo-sm {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  background: var(--logo);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.logo-sm span { -webkit-text-fill-color: var(--accent); font-weight: 500; }
+
+.status-pill {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+.tag {
+  display: inline-block;
+  padding: 3px 10px;
+  font-size: 9px;
+  font-weight: 700;
+  border: 1px solid;
+  border-radius: 6px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.tag-blue { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.tag-gray { border-color: var(--muted); color: var(--muted); background: var(--surface-2); }
+.tag-green { border-color: var(--positive); color: var(--positive); background: var(--positive-dim); }
+
+/* KPI Row */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.kpi {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 8px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.kpi:hover { border-color: var(--accent); transform: translateY(-2px); }
+
+.kpi .v {
+  font-size: 20px;
+  font-weight: 700;
+  font-family: var(--font-head);
+  letter-spacing: -0.5px;
+  line-height: 1.2;
+  margin-bottom: 4px;
+}
+
+.kpi .l {
+  font-size: 9px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+.kpi.pnl .v { color: var(--positive); }
+.kpi.pnl.negative .v { color: var(--negative); }
+
+/* Sections */
+.section {
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  margin: 12px 16px;
+  transition: all 0.3s ease;
+}
+
+.section:hover { border-color: var(--line-bright); }
+
+.section-title {
+  font-family: var(--font-serif);
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  font-weight: 700;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Analysis Panel */
+.analysis-panel {
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+  border: 1px solid var(--line-bright);
+  border-radius: 20px;
+  padding: 20px;
+  margin: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+.analysis-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--positive), var(--cyan));
+}
+
+.analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.analysis-ring {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.analysis-ring::after {
+  content: '';
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 2px dashed var(--accent);
+  animation: spin 10s linear infinite;
+}
+
+@keyframes spin { 100% { transform: rotate(360deg); } }
+
+.analysis-ring b {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 2s ease infinite;
+}
+
+.analysis-title {
+  font-family: var(--font-serif);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.analysis-subtitle {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.analysis-time {
+  font-family: var(--font);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.signal-display {
+  text-align: center;
+  padding: 24px;
+  background: var(--surface-2);
+  border-radius: 16px;
+  margin: 16px 0;
+}
+
+.signal-direction {
+  font-family: var(--font-serif);
+  font-size: 48px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.signal-direction.rise { color: var(--positive); text-shadow: 0 0 30px var(--positive-dim); }
+.signal-direction.fall { color: var(--negative); text-shadow: 0 0 30px var(--negative-dim); }
+.signal-direction.neutral { color: var(--muted); }
+
+.signal-confidence {
+  font-size: 14px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.signal-source {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.analysis-meters {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.meter-card {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.meter-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.meter-value {
+  font-family: var(--font);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.meter-bar {
+  height: 4px;
+  background: var(--line);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.meter-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--positive));
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+/* Trade Buttons */
+.trade-btn-row {
+  display: flex;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.btn-trade {
+  flex: 1;
+  padding: 20px;
+  border: none;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-trade::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.btn-trade:hover::before { left: 100%; }
+
+.btn-trade.call {
+  background: linear-gradient(135deg, #22c55e, #4ade80);
+  color: #fff;
+  box-shadow: 0 8px 30px rgba(74,222,128,0.3);
+}
+
+.btn-trade.call:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 12px 40px rgba(74,222,128,0.4);
+}
+
+.btn-trade.put {
+  background: linear-gradient(135deg, #ef4444, #f87171);
+  color: #fff;
+  box-shadow: 0 8px 30px rgba(248,113,113,0.3);
+}
+
+.btn-trade.put:hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: 0 12px 40px rgba(248,113,113,0.4);
+}
+
+/* Floating Action Button */
+.fab {
+  position: fixed;
+  right: 24px;
+  bottom: 90px;
+  z-index: 300;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: var(--font-head);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: #050508;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-bright) 100%);
+  box-shadow: 0 0 0 4px rgba(212,168,75,0.2), 0 8px 32px rgba(212,168,75,0.4), 0 0 40px rgba(212,168,75,0.2);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: fabPulse 2.4s ease-in-out infinite;
+}
+
+.fab:hover { transform: scale(1.1); }
+.fab:active { transform: scale(0.95); }
+
+.fab.running {
+  background: linear-gradient(135deg, var(--negative) 0%, #ff6b6b 100%);
+  box-shadow: 0 0 0 4px rgba(248,113,113,0.2), 0 8px 32px rgba(248,113,113,0.4), 0 0 40px rgba(248,113,113,0.2);
+  animation: fabPulseRed 2.4s ease-in-out infinite;
+}
+
+@keyframes fabPulse {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(212,168,75,0.2), 0 8px 32px rgba(212,168,75,0.4), 0 0 40px rgba(212,168,75,0.2); }
+  50% { box-shadow: 0 0 0 8px rgba(212,168,75,0.3), 0 12px 40px rgba(212,168,75,0.5), 0 0 60px rgba(212,168,75,0.3); }
+}
+
+@keyframes fabPulseRed {
+  0%, 100% { box-shadow: 0 0 0 4px rgba(248,113,113,0.2), 0 8px 32px rgba(248,113,113,0.4), 0 0 40px rgba(248,113,113,0.2); }
+  50% { box-shadow: 0 0 0 8px rgba(248,113,113,0.3), 0 12px 40px rgba(248,113,113,0.5), 0 0 60px rgba(248,113,113,0.3); }
+}
+
+/* Bottom Navigation */
+.bottomnav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 72px;
+  display: flex;
+  z-index: 200;
+  background: rgba(14,12,10,0.98);
+  backdrop-filter: blur(24px) saturate(1.3);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.nav-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  font-family: var(--font-head);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  transition: all 0.3s ease;
+  border-top: 3px solid transparent;
+}
+
+.nav-btn .nav-ico { font-size: 22px; line-height: 1; }
+.nav-btn.active { color: var(--accent); border-top-color: var(--accent); }
+.nav-btn:hover:not(.active) { color: var(--text); }
+
+/* Chart Area */
+.chart-container {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  margin: 16px;
+  overflow: hidden;
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.chart-title {
+  font-family: var(--font-serif);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.chart-controls {
+  display: flex;
+  gap: 8px;
+}
+
+.chart-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.3s ease;
+}
+
+.chart-btn.active { background: var(--accent); color: var(--bg); border-color: var(--accent); }
+.chart-btn:hover:not(.active) { border-color: var(--accent); color: var(--accent); }
+
+.chart-canvas-wrapper {
+  padding: 8px;
+  background: rgba(6,9,18,0.4);
+}
+
+#liveChart {
+  width: 100%;
+  height: 300px;
+  display: block;
+  cursor: crosshair;
+}
+
+/* Settings Panel */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+}
+
+.setting-card {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.setting-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+
+.setting-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  font-family: var(--font);
+  border-radius: 8px;
+  outline: none;
+  transition: all 0.3s ease;
+}
+
+.setting-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+
+/* Toggle Switch */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  transition: all 0.3s ease;
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 2px;
+  bottom: 2px;
+  background: var(--muted);
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.toggle-switch input:checked + .toggle-slider { background: var(--accent-dim); border-color: var(--accent); }
+.toggle-switch input:checked + .toggle-slider::before { transform: translateX(20px); background: var(--accent); }
+
+/* Tab Views */
+.tab-view { display: none; }
+.tab-view.active { display: block; animation: fadeIn 0.3s ease; }
+
+/* Recent Trades */
+.trade-history {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.trade-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.trade-item:last-child { border-bottom: none; }
+.trade-item .time { color: var(--muted); font-family: var(--font); }
+.trade-item .direction { font-weight: 700; }
+.trade-item .direction.call { color: var(--positive); }
+.trade-item .direction.put { color: var(--negative); }
+.trade-item .result { font-weight: 700; font-family: var(--font); }
+.trade-item .result.win { color: var(--positive); }
+.trade-item .result.loss { color: var(--negative); }
+
+/* Console Log */
+.console-box {
+  background: #030305;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  max-height: 150px;
+  overflow-y: auto;
+  font-family: var(--font);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.console-box div { padding: 2px 0; border-bottom: 1px dotted rgba(255,255,255,0.03); }
+.console-box div:last-child { border-bottom: none; }
+.console-box .s { color: var(--positive); }
+.console-box .e { color: var(--negative); }
+.console-box .w { color: var(--warn); }
+.console-box .i { color: var(--muted); }
+.console-box .t { color: var(--text); }
+
+/* ═══════════════════════════════════════════════════════════════
+   SECTIONS
+═══════════════════════════════════════════════════════════════ */
+.section-pad { padding: 100px 40px; }
+.section-pad-alt { padding: 100px 40px; background: var(--surface); }
 
 .section-header {
   text-align: center;
   max-width: 700px;
-  margin: 0 auto 60px;
+  margin: 0 auto 80px;
 }
 
 .section-label {
@@ -520,159 +1243,9 @@ nav.scrolled {
   background-clip: text;
 }
 
-.section-subtitle {
-  color: var(--text-dim);
-  font-size: 18px;
-  line-height: 1.7;
-}
+.section-subtitle { color: var(--text-dim); font-size: 18px; line-height: 1.7; }
 
-.platform-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-  gap: 32px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.platform-card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 24px;
-  padding: 40px;
-  position: relative;
-  overflow: hidden;
-  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  cursor: pointer;
-  text-decoration: none;
-  display: block;
-}
-
-.platform-card::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, transparent, var(--accent), transparent);
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-.platform-card:hover::before {
-  opacity: 1;
-}
-
-.platform-card:hover {
-  transform: translateY(-8px);
-  border-color: var(--accent);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 40px var(--accent-dim);
-}
-
-.platform-card.telegram {
-  background: linear-gradient(135deg, var(--surface) 0%, rgba(26,139,200,0.08) 100%);
-}
-
-.platform-card.telegram::before {
-  background: linear-gradient(90deg, transparent, #1a89d4, transparent);
-}
-
-.platform-card.telegram:hover {
-  border-color: #1a89d4;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.4), 0 0 40px rgba(26,139,200,0.2);
-}
-
-.platform-icon {
-  width: 72px;
-  height: 72px;
-  border-radius: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 24px;
-  font-size: 36px;
-  background: var(--accent-dim);
-  transition: all 0.3s ease;
-}
-
-.platform-card.telegram .platform-icon {
-  background: rgba(26,139,200,0.15);
-}
-
-.platform-card:hover .platform-icon {
-  transform: scale(1.1) rotate(-5deg);
-}
-
-.platform-card h3 {
-  font-family: 'Cinzel', serif;
-  font-size: 28px;
-  font-weight: 700;
-  margin-bottom: 12px;
-  color: var(--text);
-}
-
-.platform-card p {
-  color: var(--text-dim);
-  font-size: 15px;
-  line-height: 1.7;
-  margin-bottom: 24px;
-}
-
-.platform-features {
-  list-style: none;
-  margin-bottom: 32px;
-}
-
-.platform-features li {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 0;
-  color: var(--text-dim);
-  font-size: 14px;
-}
-
-.platform-features li::before {
-  content: '✓';
-  color: var(--positive);
-  font-weight: 700;
-}
-
-.platform-card.telegram .platform-features li::before {
-  content: '✓';
-  color: #1a89d4;
-}
-
-.platform-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--accent);
-  font-weight: 600;
-  font-size: 14px;
-  transition: all 0.3s ease;
-}
-
-.platform-card:hover .platform-link {
-  gap: 12px;
-}
-
-.platform-link svg {
-  transition: transform 0.3s ease;
-}
-
-.platform-card:hover .platform-link svg {
-  transform: translateX(4px);
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   FEATURES SECTION
-═══════════════════════════════════════════════════════════════ */
-.features-section {
-  padding: 100px 40px;
-  background: var(--surface);
-}
-
+/* Features Grid */
 .features-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -704,15 +1277,8 @@ nav.scrolled {
   pointer-events: none;
 }
 
-.feature-card:hover {
-  transform: translateY(-8px);
-  border-color: var(--accent);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-}
-
-.feature-card:hover::after {
-  opacity: 0.5;
-}
+.feature-card:hover { transform: translateY(-8px); border-color: var(--accent); box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+.feature-card:hover::after { opacity: 0.5; }
 
 .feature-icon {
   width: 64px;
@@ -728,43 +1294,17 @@ nav.scrolled {
   transition: transform 0.3s ease;
 }
 
-.feature-card:hover .feature-icon {
-  transform: scale(1.1);
-}
-
-.feature-icon.green { background: var(--positive-dim); }
-.feature-icon.red { background: var(--negative-dim); }
+.feature-card:hover .feature-icon { transform: scale(1.1); }
 .feature-icon.gold { background: var(--accent-dim); }
+.feature-icon.green { background: var(--positive-dim); }
 .feature-icon.purple { background: var(--purple-dim); }
 .feature-icon.cyan { background: var(--cyan-dim); }
 
-.feature-card h3 {
-  font-size: 22px;
-  font-weight: 700;
-  margin-bottom: 12px;
-  position: relative;
-  z-index: 1;
-}
+.feature-card h3 { font-size: 22px; font-weight: 700; margin-bottom: 12px; position: relative; z-index: 1; }
+.feature-card p { color: var(--text-dim); font-size: 15px; line-height: 1.7; position: relative; z-index: 1; }
 
-.feature-card p {
-  color: var(--text-dim);
-  font-size: 15px;
-  line-height: 1.7;
-  position: relative;
-  z-index: 1;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   HOW IT WORKS
-═══════════════════════════════════════════════════════════════ */
-.how-section {
-  padding: 100px 40px;
-}
-
-.steps-container {
-  max-width: 1000px;
-  margin: 0 auto;
-}
+/* Steps */
+.steps-container { max-width: 1000px; margin: 0 auto; }
 
 .steps {
   display: grid;
@@ -784,11 +1324,7 @@ nav.scrolled {
   z-index: 0;
 }
 
-.step {
-  text-align: center;
-  position: relative;
-  z-index: 1;
-}
+.step { text-align: center; position: relative; z-index: 1; }
 
 .step-number {
   width: 80px;
@@ -800,7 +1336,7 @@ nav.scrolled {
   align-items: center;
   justify-content: center;
   margin: 0 auto 32px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font);
   font-size: 32px;
   font-weight: 700;
   color: var(--accent);
@@ -808,33 +1344,11 @@ nav.scrolled {
   box-shadow: 0 0 30px var(--accent-dim);
 }
 
-.step:hover .step-number {
-  background: var(--accent);
-  color: var(--bg);
-  transform: scale(1.1);
-  box-shadow: 0 0 50px var(--accent-glow);
-}
+.step:hover .step-number { background: var(--accent); color: var(--bg); transform: scale(1.1); box-shadow: 0 0 50px var(--accent-glow); }
+.step h3 { font-size: 22px; font-weight: 700; margin-bottom: 16px; }
+.step p { color: var(--text-dim); font-size: 15px; line-height: 1.7; }
 
-.step h3 {
-  font-size: 22px;
-  font-weight: 700;
-  margin-bottom: 16px;
-}
-
-.step p {
-  color: var(--text-dim);
-  font-size: 15px;
-  line-height: 1.7;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   PRICING SECTION
-═══════════════════════════════════════════════════════════════ */
-.pricing-section {
-  padding: 100px 40px;
-  background: var(--surface);
-}
-
+/* Pricing */
 .pricing-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -853,20 +1367,9 @@ nav.scrolled {
   transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.pricing-card:hover {
-  transform: translateY(-8px);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-}
-
-.pricing-card.featured {
-  border-color: var(--accent);
-  background: linear-gradient(135deg, var(--surface-2) 0%, var(--accent-dim) 100%);
-  transform: scale(1.02);
-}
-
-.pricing-card.featured:hover {
-  transform: scale(1.02) translateY(-8px);
-}
+.pricing-card:hover { transform: translateY(-8px); box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+.pricing-card.featured { border-color: var(--accent); background: linear-gradient(135deg, var(--surface-2) 0%, var(--accent-dim) 100%); transform: scale(1.02); }
+.pricing-card.featured:hover { transform: scale(1.02) translateY(-8px); }
 
 .pricing-card.featured::before {
   content: 'MOST POPULAR';
@@ -883,65 +1386,16 @@ nav.scrolled {
   letter-spacing: 1px;
 }
 
-.pricing-name {
-  font-size: 14px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 3px;
-  color: var(--muted);
-  margin-bottom: 16px;
-}
+.pricing-name { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 3px; color: var(--muted); margin-bottom: 16px; }
+.pricing-price { font-family: var(--font); font-size: 56px; font-weight: 700; color: var(--accent); margin-bottom: 8px; }
+.pricing-price span { font-size: 18px; color: var(--muted); }
+.pricing-desc { color: var(--text-dim); font-size: 14px; margin-bottom: 32px; }
 
-.pricing-price {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 56px;
-  font-weight: 700;
-  color: var(--accent);
-  margin-bottom: 8px;
-}
-
-.pricing-price span {
-  font-size: 18px;
-  color: var(--muted);
-}
-
-.pricing-desc {
-  color: var(--text-dim);
-  font-size: 14px;
-  margin-bottom: 32px;
-}
-
-.pricing-features {
-  list-style: none;
-  text-align: left;
-  margin-bottom: 40px;
-}
-
-.pricing-features li {
-  padding: 12px 0;
-  font-size: 14px;
-  color: var(--text-dim);
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.pricing-features li::before {
-  content: '✓';
-  color: var(--positive);
-  font-weight: 700;
-}
-
-.pricing-features li.disabled {
-  color: rgba(255,255,255,0.2);
-  text-decoration: line-through;
-}
-
-.pricing-features li.disabled::before {
-  content: '✗';
-  color: var(--negative);
-}
+.pricing-features { list-style: none; text-align: left; margin-bottom: 40px; }
+.pricing-features li { padding: 12px 0; font-size: 14px; color: var(--text-dim); border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 12px; }
+.pricing-features li::before { content: '✓'; color: var(--positive); font-weight: 700; }
+.pricing-features li.disabled { color: rgba(255,255,255,0.2); text-decoration: line-through; }
+.pricing-features li.disabled::before { content: '✗'; color: var(--negative); }
 
 .pricing-btn {
   display: block;
@@ -958,225 +1412,67 @@ nav.scrolled {
   border: none;
 }
 
-.pricing-btn.primary {
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-bright) 100%);
-  color: var(--bg);
-  box-shadow: 0 4px 20px var(--accent-glow);
-}
+.pricing-btn.primary { background: linear-gradient(135deg, var(--accent) 0%, var(--accent-bright) 100%); color: var(--bg); box-shadow: 0 4px 20px var(--accent-glow); }
+.pricing-btn.primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px var(--accent-glow); }
+.pricing-btn.secondary { background: transparent; border: 1px solid var(--line-bright); color: var(--text); }
+.pricing-btn.secondary:hover { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
 
-.pricing-btn.primary:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 30px var(--accent-glow);
-}
+/* CTA */
+.cta-section { padding: 120px 40px; text-align: center; }
+.cta-content { max-width: 700px; margin: 0 auto; }
+.cta-section h2 { font-family: 'Cinzel', serif; font-size: clamp(36px, 6vw, 64px); font-weight: 700; margin-bottom: 24px; line-height: 1.2; }
+.cta-section h2 .highlight { background: linear-gradient(135deg, var(--accent) 0%, var(--accent-bright) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+.cta-section p { color: var(--text-dim); font-size: 18px; line-height: 1.7; margin-bottom: 40px; }
 
-.pricing-btn.secondary {
-  background: transparent;
-  border: 1px solid var(--line-bright);
-  color: var(--text);
-}
+/* Footer */
+footer { padding: 60px 40px; border-top: 1px solid var(--line); background: var(--surface); }
+.footer-content { max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 24px; }
+.footer-links { display: flex; gap: 32px; flex-wrap: wrap; }
+.footer-links a { color: var(--text-dim); text-decoration: none; font-size: 14px; transition: color 0.3s ease; }
+.footer-links a:hover { color: var(--accent); }
+.footer-copy { color: var(--muted); font-size: 13px; }
 
-.pricing-btn.secondary:hover {
-  border-color: var(--accent);
-  background: var(--accent-dim);
-  color: var(--accent);
-}
+/* Risk Warning */
+.risk-warning { background: var(--surface-2); padding: 40px; border-top: 1px solid var(--line); text-align: center; }
+.risk-warning p { max-width: 800px; margin: 0 auto; font-size: 12px; color: var(--muted); line-height: 1.8; }
 
-/* ═══════════════════════════════════════════════════════════════
-   CTA SECTION
-═══════════════════════════════════════════════════════════════ */
-.cta-section {
-  padding: 120px 40px;
-  text-align: center;
-}
-
-.cta-content {
-  max-width: 700px;
-  margin: 0 auto;
-}
-
-.cta-section h2 {
-  font-family: 'Cinzel', serif;
-  font-size: clamp(36px, 6vw, 64px);
-  font-weight: 700;
-  margin-bottom: 24px;
-  line-height: 1.2;
-}
-
-.cta-section h2 .highlight {
-  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-bright) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.cta-section p {
-  color: var(--text-dim);
-  font-size: 18px;
-  line-height: 1.7;
-  margin-bottom: 40px;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   FOOTER
-═══════════════════════════════════════════════════════════════ */
-footer {
-  padding: 60px 40px;
-  border-top: 1px solid var(--line);
-  background: var(--surface);
-}
-
-.footer-content {
-  max-width: 1200px;
-  margin: 0 auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 24px;
-}
-
-.footer-links {
-  display: flex;
-  gap: 32px;
-  flex-wrap: wrap;
-}
-
-.footer-links a {
-  color: var(--text-dim);
-  text-decoration: none;
-  font-size: 14px;
-  transition: color 0.3s ease;
-}
-
-.footer-links a:hover {
-  color: var(--accent);
-}
-
-.footer-copy {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   RISK WARNING
-═══════════════════════════════════════════════════════════════ */
-.risk-warning {
-  background: var(--surface-2);
-  padding: 40px;
-  border-top: 1px solid var(--line);
-  text-align: center;
-}
-
-.risk-warning p {
-  max-width: 800px;
-  margin: 0 auto;
-  font-size: 12px;
-  color: var(--muted);
-  line-height: 1.8;
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   SCROLL ANIMATIONS
-═══════════════════════════════════════════════════════════════ */
-.animate-on-scroll {
-  opacity: 0;
-  transform: translateY(40px);
-  transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.animate-on-scroll.animated {
-  opacity: 1;
-  transform: translateY(0);
-}
-
+/* Scroll Animations */
+.animate-on-scroll { opacity: 0; transform: translateY(40px); transition: all 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+.animate-on-scroll.animated { opacity: 1; transform: translateY(0); }
 .animate-delay-1 { transition-delay: 0.1s; }
 .animate-delay-2 { transition-delay: 0.2s; }
 .animate-delay-3 { transition-delay: 0.3s; }
 .animate-delay-4 { transition-delay: 0.4s; }
 .animate-delay-5 { transition-delay: 0.5s; }
 
-/* ═══════════════════════════════════════════════════════════════
-   RESPONSIVE
-═══════════════════════════════════════════════════════════════ */
+/* Responsive */
 @media (max-width: 1024px) {
-  .steps {
-    grid-template-columns: 1fr;
-    gap: 60px;
-  }
-  
-  .steps::before {
-    top: 0;
-    bottom: 0;
-    left: 40px;
-    right: auto;
-    width: 2px;
-    height: auto;
-  }
-  
-  .step {
-    text-align: left;
-    padding-left: 120px;
-  }
-  
-  .step-number {
-    position: absolute;
-    left: 0;
-    margin: 0;
-  }
+  .steps { grid-template-columns: 1fr; gap: 60px; }
+  .steps::before { top: 0; bottom: 0; left: 40px; right: auto; width: 2px; height: auto; }
+  .step { text-align: left; padding-left: 120px; }
+  .step-number { position: absolute; left: 0; margin: 0; }
+  .kpi-row { grid-template-columns: repeat(3, 1fr); }
 }
 
 @media (max-width: 768px) {
-  nav {
-    padding: 16px 20px;
-  }
-  
-  .nav-links {
-    display: none;
-  }
-  
-  .mobile-menu-btn {
-    display: flex;
-  }
-  
-  .hero {
-    padding: 100px 20px 60px;
-  }
-  
-  .hero-stats {
-    gap: 40px;
-    flex-wrap: wrap;
-  }
-  
-  .hero-stat .number {
-    font-size: 36px;
-  }
-  
-  .platform-section,
-  .features-section,
-  .how-section,
-  .pricing-section,
-  .cta-section {
-    padding: 60px 20px;
-  }
-  
-  .platform-grid,
-  .features-grid,
-  .pricing-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .footer-content {
-    flex-direction: column;
-    text-align: center;
-  }
-  
-  .footer-links {
-    justify-content: center;
-  }
+  nav { padding: 16px 20px; }
+  .nav-links { display: none; }
+  .hero { padding: 100px 20px 60px; }
+  .hero-stats { gap: 40px; flex-wrap: wrap; }
+  .hero-stat .number { font-size: 36px; }
+  .section-pad, .section-pad-alt { padding: 60px 20px; }
+  .features-grid, .pricing-grid { grid-template-columns: 1fr; }
+  .footer-content { flex-direction: column; text-align: center; }
+  .footer-links { justify-content: center; }
+  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  .settings-grid { grid-template-columns: 1fr; }
+  .analysis-meters { grid-template-columns: 1fr; }
+  .trade-btn-row { flex-direction: column; }
+  .login-card { padding: 32px 24px; }
 }
 </style>
 </head>
-<body>
+<body class="dark">
 
 <!-- Animated Background -->
 <div class="grid-bg"></div>
@@ -1184,31 +1480,56 @@ footer {
 <div class="orb orb-2"></div>
 <div class="orb orb-3"></div>
 
+<!-- Login Modal -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-card">
+    <h1>BTraders</h1>
+    <p>Authorize with your Deriv account to start trading</p>
+    <button class="btn-login" onclick="oauthLogin()" id="oauthBtn">Login with Deriv</button>
+    <div class="login-divider">or</div>
+    <input type="password" id="loginPat" placeholder="Paste API token from app.deriv.com/account/api-token">
+    <button class="btn-login" onclick="authorizePat()" style="background: var(--surface-2); color: var(--text); box-shadow: none;">Connect with Token</button>
+    <div class="login-error" id="loginError"></div>
+    <div class="login-tiers">
+      <button class="tier-btn active" onclick="selectLoginTier('free')" id="tierBtnFree">FREE</button>
+      <button class="tier-btn" onclick="selectLoginTier('pro')" id="tierBtnPro">PRO</button>
+      <button class="tier-btn" onclick="selectLoginTier('enterprise')" id="tierBtnEnt">ENTERPRISE</button>
+    </div>
+    <div class="login-footer">
+      Requires <strong>Read</strong> + <strong>Trade</strong> scopes<br>
+      <a href="https://t.me/btraderrsbot" target="_blank">Telegram Support</a>
+    </div>
+    <div class="risk-note">
+      ⚠️ <strong>Risk Warning:</strong> Trading derivatives involves substantial financial risk. Your capital is at risk and you may lose some or all of your initial deposit. Use responsibly.
+    </div>
+  </div>
+</div>
+
 <!-- Navigation -->
 <nav id="navbar">
   <div class="nav-inner">
-    <a href="/" class="logo">BT<span>raders</span></a>
-    <ul class="nav-links">
+    <a class="logo" onclick="showLanding()">BT<span>raders</span></a>
+    <ul class="nav-links" id="navLinks">
       <li><a href="#features">Features</a></li>
       <li><a href="#how">How It Works</a></li>
       <li><a href="#pricing">Pricing</a></li>
-      <li><a href="https://t.me/btraderrsbot" target="_blank" rel="noopener">Telegram Bot</a></li>
+      <li><a href="https://t.me/btraderrsbot" target="_blank">Telegram</a></li>
     </ul>
-    <div class="nav-cta-group">
-      <a href="/app" class="nav-btn nav-btn-outline">Mini App</a>
-      <a href="/bot" class="nav-btn nav-btn-primary">Launch App</a>
+    <div class="nav-cta-group" id="navCta">
+      <button class="nav-btn nav-btn-outline" onclick="showLogin()" id="loginNavBtn">Login</button>
+      <button class="nav-btn nav-btn-primary" onclick="showLogin()">Launch App</button>
     </div>
-    <div class="mobile-menu-btn">
-      <span></span>
-      <span></span>
-      <span></span>
+    <div class="nav-status hidden" id="navStatus">
+      <span id="navConnDot" class="conn r"></span>
+      <span class="nav-balance" id="navBalance">$0.00</span>
+      <span class="nav-user-badge" id="navTier">FREE</span>
+      <button class="nav-btn nav-btn-outline" onclick="logout()" style="padding: 6px 12px; font-size: 11px;">Logout</button>
     </div>
   </div>
 </nav>
 
-<!-- Main Content -->
-<div class="main-content">
-
+<!-- Main Content - Landing Page -->
+<div class="main-content" id="landingContent">
   <!-- Hero Section -->
   <section class="hero">
     <div class="hero-content">
@@ -1222,17 +1543,17 @@ footer {
         real-time market analysis, and institutional-grade risk management.
       </p>
       <div class="hero-actions">
-        <a href="/bot" class="btn-primary-lg">
-          Launch Full Platform
+        <button class="btn-primary-lg" onclick="showLogin()">
+          Launch Trading App
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M5 12h14M12 5l7 7-7 7"/>
           </svg>
-        </a>
-        <a href="/app" class="btn-secondary-lg">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+        </button>
+        <a href="https://t.me/btraderrsbot" target="_blank" class="btn-secondary-lg">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.894 8.221-1.97 9.28c-.145.658-.537.818-1.084.508l-3-2.21-1.446 1.394c-.14.18-.357.295-.6.295l.213-3.054 5.56-5.022c.242-.213-.054-.334-.373-.121l-6.869 4.326-2.96-.924c-.64-.203-.658-.64.135-.954l11.566-4.458c.538-.196 1.006.128.828.94z"/>
           </svg>
-          Try Telegram Mini App
+          Open Telegram
         </a>
       </div>
       <div class="hero-stats">
@@ -1256,57 +1577,8 @@ footer {
     </div>
   </section>
 
-  <!-- Platform Selection -->
-  <section class="platform-section">
-    <div class="section-header animate-on-scroll">
-      <div class="section-label">Choose Your Platform</div>
-      <h2 class="section-title">Two Ways to <span class="highlight">Trade</span></h2>
-      <p class="section-subtitle">Whether you prefer desktop power or mobile convenience, we have you covered.</p>
-    </div>
-    <div class="platform-grid">
-      <a href="/bot" class="platform-card animate-on-scroll">
-        <div class="platform-icon">💻</div>
-        <h3>Web Platform</h3>
-        <p>Full-featured trading dashboard with advanced charting, multiple strategies, and complete control over your trades.</p>
-        <ul class="platform-features">
-          <li>Live candlestick charts</li>
-          <li>All 13 markets</li>
-          <li>Aroon + Fractal + AO strategies</li>
-          <li>Martingale & Kelly sizing</li>
-          <li>Copy trading module</li>
-          <li>Admin controls</li>
-        </ul>
-        <span class="platform-link">
-          Launch Web Platform
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M5 12h14M12 5l7 7-7 7"/>
-          </svg>
-        </span>
-      </a>
-      <a href="/app" class="platform-card telegram animate-on-scroll animate-delay-2">
-        <div class="platform-icon">✈️</div>
-        <h3>Telegram Mini App</h3>
-        <p>Trade on-the-go directly from Telegram. Full trading capabilities in a sleek, mobile-optimized interface.</p>
-        <ul class="platform-features">
-          <li>One-tap Rise/Fall trading</li>
-          <li>Real-time P&L tracking</li>
-          <li>Market overview</li>
-          <li>Strategy selection</li>
-          <li>Trade history</li>
-          <li>Auto trading mode</li>
-        </ul>
-        <span class="platform-link" style="color: #1a89d4;">
-          Open in Telegram
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M5 12h14M12 5l7 7-7 7"/>
-          </svg>
-        </span>
-      </a>
-    </div>
-  </section>
-
   <!-- Features Section -->
-  <section class="features-section" id="features">
+  <section class="section-pad-alt" id="features">
     <div class="section-header animate-on-scroll">
       <div class="section-label">Features</div>
       <h2 class="section-title">Everything You Need to <span class="highlight">Trade Profitably</span></h2>
@@ -1316,7 +1588,7 @@ footer {
       <div class="feature-card animate-on-scroll animate-delay-1">
         <div class="feature-icon gold">📊</div>
         <h3>Live Charts</h3>
-        <p>Real-time 15-second candlestick charts with EMA overlays and Williams %R indicators for precise entry timing.</p>
+        <p>Real-time candlestick charts with EMA overlays, Bollinger Bands, and Williams %R indicators for precise entry timing.</p>
       </div>
       <div class="feature-card animate-on-scroll animate-delay-2">
         <div class="feature-icon green">🤖</div>
@@ -1339,7 +1611,7 @@ footer {
         <p>Track your win rate, average trade duration, profit factor, and session P&L with detailed reports.</p>
       </div>
       <div class="feature-card animate-on-scroll animate-delay-5">
-        <div class="feature-icon red">📱</div>
+        <div class="feature-icon gold">📱</div>
         <h3>Telegram Alerts</h3>
         <p>Receive real-time trade notifications, signal alerts, and bot status updates directly to your Telegram.</p>
       </div>
@@ -1347,7 +1619,7 @@ footer {
   </section>
 
   <!-- How It Works -->
-  <section class="how-section" id="how">
+  <section class="section-pad" id="how">
     <div class="section-header animate-on-scroll">
       <div class="section-label">How It Works</div>
       <h2 class="section-title">Start Trading in <span class="highlight">3 Simple Steps</span></h2>
@@ -1375,7 +1647,7 @@ footer {
   </section>
 
   <!-- Pricing Section -->
-  <section class="pricing-section" id="pricing">
+  <section class="section-pad-alt" id="pricing">
     <div class="section-header animate-on-scroll">
       <div class="section-label">Pricing</div>
       <h2 class="section-title">Choose Your <span class="highlight">Trading Plan</span></h2>
@@ -1390,14 +1662,13 @@ footer {
           <li>3 Markets (R_10, R_25, R_50)</li>
           <li>Aroon Traffic Light Strategy</li>
           <li>Manual + Auto Trading</li>
-          <li>Basic Console Logs</li>
           <li>Session P&L Tracking</li>
           <li class="disabled">Digits Over/Under Engine</li>
           <li class="disabled">Full Charting Suite</li>
           <li class="disabled">Martingale & Kelly Sizing</li>
           <li class="disabled">Telegram Bot Alerts</li>
         </ul>
-        <a href="/bot?tier=free" class="pricing-btn secondary">Get Started Free</a>
+        <button class="pricing-btn secondary" onclick="showLogin(); selectLoginTier('free')">Get Started Free</button>
       </div>
       <div class="pricing-card featured animate-on-scroll animate-delay-2">
         <div class="pricing-name">Pro</div>
@@ -1407,14 +1678,13 @@ footer {
           <li>All 13 Markets</li>
           <li>Aroon + Fractal + AO Strategies</li>
           <li>Digits Over/Under Engine</li>
-          <li>Live 15s Candlestick Charts</li>
+          <li>Live Candlestick Charts</li>
           <li>Martingale & Kelly Criterion</li>
           <li>Telegram Trade Alerts</li>
           <li>Loss Cluster Protection</li>
           <li>Session Reports</li>
-          <li>Priority Support</li>
         </ul>
-        <a href="/bot?tier=pro" class="pricing-btn primary">Go Pro</a>
+        <button class="pricing-btn primary" onclick="showLogin(); selectLoginTier('pro')">Go Pro</button>
       </div>
       <div class="pricing-card animate-on-scroll animate-delay-3">
         <div class="pricing-name">Enterprise</div>
@@ -1430,7 +1700,7 @@ footer {
           <li>24/7 Priority Support</li>
           <li>SLA Guarantee</li>
         </ul>
-        <a href="/bot?tier=enterprise" class="pricing-btn secondary">Contact Sales</a>
+        <button class="pricing-btn secondary" onclick="showLogin(); selectLoginTier('enterprise')">Contact Sales</button>
       </div>
     </div>
   </section>
@@ -1441,109 +1711,867 @@ footer {
       <h2>Ready to Trade <span class="highlight">Smarter?</span></h2>
       <p>Join 900+ traders using institutional-grade algorithms to trade Deriv markets. Launch the app and start trading in minutes.</p>
       <div class="hero-actions">
-        <a href="/bot" class="btn-primary-lg">
-          Launch Full Platform
+        <button class="btn-primary-lg" onclick="showLogin()">
+          Launch Trading App
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M5 12h14M12 5l7 7-7 7"/>
           </svg>
-        </a>
-        <a href="/app" class="btn-secondary-lg">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
-          Open Telegram Mini App
-        </a>
+        </button>
       </div>
     </div>
   </section>
 
   <!-- Risk Warning -->
   <div class="risk-warning">
-    <p><strong>Risk Warning:</strong> Trading derivatives such as those offered by Deriv involves substantial risk of loss. Past performance is not indicative of future results. This software is provided as a tool for educational and informational purposes only. You should never trade money you cannot afford to lose. The developers of BTraders are not financial advisors and accept no liability for trading losses incurred through use of this software.</p>
+    <p><strong>Risk Warning:</strong> Trading derivatives such as those offered by Deriv involves substantial risk of loss. Past performance is not indicative of future results. This software is provided as a tool for educational and informational purposes only. You should never trade money you cannot afford to lose.</p>
   </div>
 
   <!-- Footer -->
   <footer>
     <div class="footer-content">
       <div class="footer-links">
-        <a href="/bot">Launch App</a>
-        <a href="/app">Mini App</a>
+        <a href="#" onclick="showLogin(); return false;">Launch App</a>
         <a href="#features">Features</a>
         <a href="#pricing">Pricing</a>
-        <a href="https://t.me/btraderrsbot" target="_blank" rel="noopener">Telegram Support</a>
+        <a href="https://t.me/btraderrsbot" target="_blank">Telegram Support</a>
       </div>
       <p class="footer-copy">&copy; 2026 BTraders. Not affiliated with Deriv (Deriv Investments Ltd). All trademarks belong to their respective owners.</p>
     </div>
   </footer>
+</div>
 
+<!-- Trading App Interface -->
+<div id="app">
+  <!-- Slim Top Status Strip -->
+  <div class="mtop">
+    <div class="mtop-l">
+      <div class="logo-sm">B<span>TRADERS</span></div>
+      <span id="connDot" class="conn r"></span>
+      <span id="mktDot" class="conn r" style="margin-left:-2px"></span>
+      <span id="engineStatus" class="status-pill">OFFLINE</span>
+      <span id="accBadge" class="tag tag-blue">DEMO</span>
+      <span id="tierBadge" class="tag tag-gray">FREE</span>
+    </div>
+    <div class="mtop-r">
+      <span id="dashBalance" style="font-family:var(--font);font-size:16px;font-weight:700;color:var(--positive)">$0.00</span>
+      <button onclick="logout()" style="background:none;border:1px solid var(--line);cursor:pointer;font-size:11px;line-height:1;padding:6px 10px;color:var(--muted)">⏻</button>
+    </div>
+  </div>
+
+  <!-- KPI Row -->
+  <div class="kpi-row">
+    <div class="kpi"><div id="dashPnl" class="v" style="color:var(--positive)">$0.00</div><div class="l">P&L</div></div>
+    <div class="kpi"><div id="dashWinRate" class="v" style="color:var(--accent)">0%</div><div class="l">Win Rate</div></div>
+    <div class="kpi"><div id="dashTrades" class="v">0</div><div class="l">Trades</div></div>
+    <div class="kpi"><div id="dashWins" class="v" style="color:var(--positive)">0</div><div class="l">Wins</div></div>
+    <div class="kpi"><div id="dashLosses" class="v" style="color:var(--negative)">0</div><div class="l">Losses</div></div>
+  </div>
+
+  <!-- Tab Views -->
+  <div id="views">
+    <!-- TAB 1: HOME -->
+    <div class="tab-view active" id="tab-home">
+      <!-- Analysis Panel -->
+      <div class="analysis-panel">
+        <div class="analysis-header">
+          <div style="display:flex;align-items:center;gap:16px">
+            <div class="analysis-ring"><b></b></div>
+            <div>
+              <div class="analysis-title">Market Analysis</div>
+              <div class="analysis-subtitle" id="haxSub">Initializing...</div>
+            </div>
+          </div>
+          <div class="analysis-time" id="haxClk">--:--:--</div>
+        </div>
+        
+        <div class="signal-display">
+          <div class="signal-direction neutral" id="haxSignal">—</div>
+          <div class="signal-confidence" id="haxConf">—</div>
+          <div class="signal-source" id="haxSrc">Source: AROON</div>
+        </div>
+
+        <div class="analysis-meters">
+          <div class="meter-card">
+            <div class="meter-label">RSI (14)</div>
+            <div class="meter-value" id="haxRsi">--</div>
+            <div class="meter-bar"><div class="meter-bar-fill" id="haxRsiBar" style="width:0%"></div></div>
+          </div>
+          <div class="meter-card">
+            <div class="meter-label">Bias</div>
+            <div class="meter-value" id="haxBias">—</div>
+            <div class="meter-bar"><div class="meter-bar-fill" id="haxBiasBar" style="width:50%"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trade Buttons -->
+      <div class="section">
+        <div class="section-title">Manual Trade</div>
+        <div class="trade-btn-row">
+          <button class="btn-trade call" onclick="placeTrade('CALL')">🟢 CALL</button>
+          <button class="btn-trade put" onclick="placeTrade('PUT')">🔴 PUT</button>
+        </div>
+        <div class="settings-grid" style="margin-top:16px">
+          <div class="setting-card">
+            <div class="setting-label">Stake Amount</div>
+            <input type="number" class="setting-input" id="stakeInput" value="1" min="0.35" step="0.5">
+          </div>
+          <div class="setting-card">
+            <div class="setting-label">Market</div>
+            <select class="setting-input" id="marketSelect" style="font-family:var(--font-head)">
+              <option value="R_50">R_50</option>
+              <option value="R_75">R_75</option>
+              <option value="R_100">R_100</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Chart -->
+      <div class="chart-container">
+        <div class="chart-header">
+          <div class="chart-title">Live Chart</div>
+          <div class="chart-controls">
+            <button class="chart-btn active" onclick="setChartMode('candle')">Candles</button>
+            <button class="chart-btn" onclick="setChartMode('line')">Line</button>
+          </div>
+        </div>
+        <div class="chart-canvas-wrapper">
+          <canvas id="liveChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Recent Trades -->
+      <div class="section">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div class="section-title" style="margin:0">Recent Trades</div>
+          <button onclick="clearRecentTrades()" style="background:none;border:1px solid var(--line);padding:4px 8px;font-size:10px;color:var(--muted);cursor:pointer;border-radius:4px">Clear</button>
+        </div>
+        <div class="trade-history" id="recentTrades">
+          <div style="text-align:center;color:var(--muted);padding:20px;font-size:12px">No trades yet</div>
+        </div>
+      </div>
+
+      <!-- Console -->
+      <div class="section">
+        <div class="section-title">Console</div>
+        <div class="console-box" id="logBox"></div>
+      </div>
+    </div>
+
+    <!-- TAB 2: SETTINGS -->
+    <div class="tab-view" id="tab-settings">
+      <div class="section">
+        <div class="section-title">Trading Settings</div>
+        <div class="settings-grid">
+          <div class="setting-card">
+            <div class="setting-label">Strategy</div>
+            <select class="setting-input" id="strategySelect" style="font-family:var(--font-head)">
+              <option value="AROON">Aroon Traffic Light</option>
+              <option value="FRACTAL">Fractal Breakout</option>
+              <option value="AO">Awesome Oscillator</option>
+            </select>
+          </div>
+          <div class="setting-card">
+            <div class="setting-label">Timeframe</div>
+            <select class="setting-input" id="timeframeSelect" style="font-family:var(--font-head)">
+              <option value="5s">5 seconds</option>
+              <option value="15s">15 seconds</option>
+              <option value="30s">30 seconds</option>
+              <option value="1m">1 minute</option>
+            </select>
+          </div>
+          <div class="setting-card">
+            <div class="setting-label">Take Profit</div>
+            <input type="number" class="setting-input" id="takeProfitInput" value="10" min="1">
+          </div>
+          <div class="setting-card">
+            <div class="setting-label">Stop Loss</div>
+            <input type="number" class="setting-input" id="stopLossInput" value="5" min="1">
+          </div>
+        </div>
+        <div style="margin-top:20px">
+          <label style="display:flex;align-items:center;gap:12px;cursor:pointer">
+            <div class="toggle-switch">
+              <input type="checkbox" id="martingaleToggle">
+              <span class="toggle-slider"></span>
+            </div>
+            <span style="font-size:13px;color:var(--text)">Martingale Mode</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Account</div>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px">
+          <div class="setting-card">
+            <div class="setting-label">Account Type</div>
+            <div style="font-size:16px;font-weight:700;color:var(--accent)" id="accountType">Demo</div>
+          </div>
+          <div class="setting-card">
+            <div class="setting-label">Current Plan</div>
+            <div style="font-size:16px;font-weight:700;color:var(--accent)" id="currentTier">FREE</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Floating Start/Stop Button -->
+  <button id="fabStart" class="fab" onclick="toggleBot()">
+    <span id="fabState">START</span>
+  </button>
+
+  <!-- Bottom Navigation -->
+  <div class="bottomnav">
+    <button class="nav-btn active" onclick="switchTab('home')">
+      <span class="nav-ico">📊</span>
+      Home
+    </button>
+    <button class="nav-btn" onclick="switchTab('settings')">
+      <span class="nav-ico">⚙️</span>
+      Settings
+    </button>
+  </div>
 </div>
 
 <script>
-// Scroll animations
-const observerOptions = {
-  threshold: 0.1,
-  rootMargin: '0px 0px -50px 0px'
+// ============================================================
+// GLOBAL STATE
+// ============================================================
+const G = {
+  WS: null,
+  CONNECTED: false,
+  AUTH: false,
+  TOKEN: '',
+  ACCOUNT_ID: null,
+  ACCOUNT_TYPE: 'demo',
+  BALANCE: 0,
+  RUNNING: false,
+  APP_ID: localStorage.getItem('deriv_app_id') || '33JFxN3sbe2usdFigbMb8',
+  CURRENT_MARKET: 'R_50',
+  SELECTED_STRATEGY: 'AROON',
+  PNL: 0,
+  WINS: 0,
+  LOSSES: 0,
+  TRADES: 0,
+  MARKET: { candles: {}, prices: {} },
+  ACTIVE_CONTRACTS: new Map(),
+  HEARTBEAT: null,
+  TIER: 'free',
+  BOT_CONFIG: {
+    stake: 1,
+    takeProfit: 10,
+    stopLoss: 5,
+    martingale: false,
+    timeframe: '5s'
+  }
 };
 
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(entry => {
-    if (entry.isIntersecting) {
-      entry.target.classList.add('animated');
-    }
-  });
-}, observerOptions);
+const SYMBOLS = [
+  { sym: 'R_50', name: 'Volatility 50' },
+  { sym: 'R_75', name: 'Volatility 75' },
+  { sym: 'R_100', name: 'Volatility 100' },
+  { sym: 'R_25', name: 'Volatility 25' },
+  { sym: 'R_10', name: 'Volatility 10' }
+];
 
-document.querySelectorAll('.animate-on-scroll').forEach(el => {
-  observer.observe(el);
+// Initialize symbols
+SYMBOLS.forEach(s => {
+  G.MARKET.candles[s.sym] = [];
+  G.MARKET.prices[s.sym] = [];
 });
 
-// Nav scroll effect
-window.addEventListener('scroll', () => {
-  const nav = document.getElementById('navbar');
-  if (window.scrollY > 50) {
-    nav.classList.add('scrolled');
-  } else {
-    nav.classList.remove('scrolled');
+// Console logging
+const _logs = [];
+function log(msg, type = 'i') {
+  const t = new Date().toLocaleTimeString();
+  _logs.push({ t, msg, type });
+  if (_logs.length > 100) _logs.shift();
+  const box = document.getElementById('logBox');
+  if (box) {
+    box.innerHTML = _logs.map(l => `<div class="${l.type}">[${l.t}] ${l.msg}</div>`).join('');
+    box.scrollTop = box.scrollHeight;
   }
-});
+  console.log(`[${type.toUpperCase()}] ${msg}`);
+}
 
-// Smooth scroll for anchor links
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-  anchor.addEventListener('click', function(e) {
-    e.preventDefault();
-    const target = document.querySelector(this.getAttribute('href'));
-    if (target) {
-      target.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start'
-      });
-    }
-  });
-});
+// ============================================================
+// UI FUNCTIONS
+// ============================================================
+function showLogin() {
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  document.getElementById('landingContent').classList.add('hidden');
+  document.getElementById('app').classList.remove('active');
+  document.getElementById('navbar').classList.add('app-mode');
+}
 
-// OAuth redirect handler: detect if redirected from Deriv OAuth
-(function(){
-  var p = new URLSearchParams(window.location.search);
-  var code = p.get('code');
-  var token = p.get('token1');
-  var state = p.get('state');
-  var err = p.get('error');
+function showLanding() {
+  document.getElementById('loginOverlay').classList.add('hidden');
+  document.getElementById('landingContent').classList.remove('hidden');
+  document.getElementById('app').classList.remove('active');
+  document.getElementById('navbar').classList.remove('app-mode');
+  document.getElementById('navLinks').style.display = 'flex';
+  document.getElementById('navCta').style.display = 'flex';
+  document.getElementById('navStatus').classList.add('hidden');
+}
+
+function showApp() {
+  document.getElementById('loginOverlay').classList.add('hidden');
+  document.getElementById('landingContent').classList.remove('hidden');
+  document.getElementById('app').classList.add('active');
+  document.getElementById('navbar').classList.add('app-mode');
+  document.getElementById('navLinks').style.display = 'none';
+  document.getElementById('navCta').style.display = 'none';
+  document.getElementById('navStatus').classList.remove('hidden');
   
-  if(code || token || err){
-    // User came from OAuth flow - detect best destination
-    // Check if coming from Telegram WebApp
-    var isTelegram = window.Telegram && window.Telegram.WebApp;
-    
-    if(isTelegram) {
-      // Stay on miniapp for Telegram users
-      // Miniapp will handle the OAuth callback
+  // Update nav status
+  updateNavStatus();
+}
+
+function updateNavStatus() {
+  const connDot = document.getElementById('navConnDot');
+  const balance = document.getElementById('navBalance');
+  const tier = document.getElementById('navTier');
+  
+  if (connDot) connDot.className = 'conn ' + (G.CONNECTED ? 'g' : 'r');
+  if (balance) balance.textContent = '$' + G.BALANCE.toFixed(2);
+  if (tier) tier.textContent = G.TIER.toUpperCase();
+}
+
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-view').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tabId).classList.add('active');
+  document.querySelector(`.nav-btn[onclick="switchTab('${tabId}')"]`)?.classList.add('active');
+}
+
+function updateDash() {
+  const pnl = document.getElementById('dashPnl');
+  const wr = document.getElementById('dashWinRate');
+  const trades = document.getElementById('dashTrades');
+  const wins = document.getElementById('dashWins');
+  const losses = document.getElementById('dashLosses');
+  const balance = document.getElementById('dashBalance');
+  
+  if (pnl) {
+    pnl.textContent = '$' + G.PNL.toFixed(2);
+    pnl.parentElement.classList.toggle('negative', G.PNL < 0);
+  }
+  if (wr) {
+    const rate = G.TRADES > 0 ? Math.round((G.WINS / G.TRADES) * 100) : 0;
+    wr.textContent = rate + '%';
+  }
+  if (trades) trades.textContent = G.TRADES;
+  if (wins) wins.textContent = G.WINS;
+  if (losses) losses.textContent = G.LOSSES;
+  if (balance) balance.textContent = '$' + G.BALANCE.toFixed(2);
+  
+  // Update nav
+  updateNavStatus();
+}
+
+function clearRecentTrades() {
+  document.getElementById('recentTrades').innerHTML = '<div style="text-align:center;color:var(--muted);padding:20px;font-size:12px">No trades yet</div>';
+}
+
+function setChartMode(mode) {
+  document.querySelectorAll('.chart-btn').forEach(b => b.classList.remove('active'));
+  event.target?.classList.add('active');
+  G.CHART_MODE = mode;
+  drawChart();
+}
+
+// ============================================================
+// TRADING FUNCTIONS
+// ============================================================
+function placeTrade(direction) {
+  if (!G.AUTH) {
+    log('Not authorized - please login first', 'e');
+    showLogin();
+    return;
+  }
+  
+  const stake = parseFloat(document.getElementById('stakeInput')?.value) || 1;
+  const market = document.getElementById('marketSelect')?.value || G.CURRENT_MARKET;
+  
+  log(`[TRADE] ${direction} $${stake.toFixed(2)} on ${market}`, 't');
+  
+  // Simulate trade
+  const win = Math.random() > 0.5;
+  G.TRADES++;
+  
+  setTimeout(() => {
+    if (win) {
+      G.WINS++;
+      G.PNL += stake * 0.8;
+      G.BALANCE += stake * 0.8;
+      log(`[WIN] +$${(stake * 0.8).toFixed(2)}`, 's');
+      addRecentTrade(`${direction} WIN`, 'win');
     } else {
-      // Redirect web users to main bot with OAuth params
-      var dest = '/bot' + window.location.search + window.location.hash;
-      window.location.href = dest;
+      G.LOSSES++;
+      G.PNL -= stake;
+      G.BALANCE -= stake;
+      log(`[LOSS] -$${stake.toFixed(2)}`, 'e');
+      addRecentTrade(`${direction} LOSS`, 'loss');
+    }
+    updateDash();
+  }, 1000);
+}
+
+function addRecentTrade(text, type) {
+  const el = document.getElementById('recentTrades');
+  if (!el) return;
+  
+  if (el.querySelector('div[style*="text-align:center"]')) {
+    el.innerHTML = '';
+  }
+  
+  const d = document.createElement('div');
+  d.className = 'trade-item';
+  d.innerHTML = `
+    <span class="time">${new Date().toLocaleTimeString()}</span>
+    <span class="direction ${type === 'win' ? 'call' : 'put'}">${text}</span>
+    <span class="result ${type}">${type === 'win' ? '+' : '-'}$${(parseFloat(document.getElementById('stakeInput')?.value) || 1).toFixed(2)}</span>
+  `;
+  el.prepend(d);
+}
+
+function toggleBot() {
+  const fab = document.getElementById('fabStart');
+  const state = document.getElementById('fabState');
+  
+  G.RUNNING = !G.RUNNING;
+  
+  if (G.RUNNING) {
+    fab.classList.add('running');
+    state.textContent = 'STOP';
+    log('[BOT] Auto trading started', 's');
+    startAutoTrading();
+  } else {
+    fab.classList.remove('running');
+    state.textContent = 'START';
+    log('[BOT] Auto trading stopped', 'w');
+    stopAutoTrading();
+  }
+}
+
+let autoTradeInterval = null;
+
+function startAutoTrading() {
+  if (autoTradeInterval) clearInterval(autoTradeInterval);
+  
+  autoTradeInterval = setInterval(() => {
+    if (G.RUNNING && G.AUTH) {
+      // Generate signal based on strategy
+      const signal = Math.random() > 0.5 ? 'CALL' : 'PUT';
+      placeTrade(signal);
+    }
+  }, 5000);
+}
+
+function stopAutoTrading() {
+  if (autoTradeInterval) {
+    clearInterval(autoTradeInterval);
+    autoTradeInterval = null;
+  }
+}
+
+// ============================================================
+// CHART
+// ============================================================
+function drawChart() {
+  const cv = document.getElementById('liveChart');
+  if (!cv) return;
+  
+  const ctx = cv.getContext('2d');
+  const rect = cv.parentElement.getBoundingClientRect();
+  const w = Math.max(300, rect.width - 16);
+  const h = 300;
+  
+  cv.width = w * 2;
+  cv.height = h * 2;
+  cv.style.width = w + 'px';
+  cv.style.height = h + 'px';
+  ctx.scale(2, 2);
+  ctx.clearRect(0, 0, w, h);
+  
+  // Generate sample candles
+  const candles = G.MARKET.candles[G.CURRENT_MARKET] || [];
+  if (candles.length < 5) {
+    // Generate demo data
+    for (let i = 0; i < 50; i++) {
+      const base = 5000 + Math.random() * 100;
+      const open = base;
+      const close = base + (Math.random() - 0.5) * 20;
+      const high = Math.max(open, close) + Math.random() * 10;
+      const low = Math.min(open, close) - Math.random() * 10;
+      G.MARKET.candles[G.CURRENT_MARKET].push({ open, high, low, close });
     }
   }
-})();
+  
+  const data = G.MARKET.candles[G.CURRENT_MARKET].slice(-50);
+  if (data.length === 0) {
+    ctx.fillStyle = '#7a7a8c';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Waiting for data...', w / 2, h / 2);
+    return;
+  }
+  
+  const lo = Math.min(...data.map(c => c.low));
+  const hi = Math.max(...data.map(c => c.high));
+  const pad = (hi - lo) * 0.1;
+  const yMin = lo - pad;
+  const yMax = hi + pad;
+  const ny = v => ((v - yMin) / (yMax - yMin)) * h;
+  const cw = w / data.length;
+  
+  const POS = '#4ade80';
+  const NEG = '#f87171';
+  const LINE = 'rgba(255,255,255,0.05)';
+  
+  // Grid
+  ctx.strokeStyle = LINE;
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    const y = h * i / 4;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+  }
+  
+  // Candles
+  data.forEach((k, i) => {
+    const x = i * cw + cw / 2;
+    const up = k.close >= k.open;
+    ctx.strokeStyle = up ? POS : NEG;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x, ny(k.high));
+    ctx.lineTo(x, ny(k.low));
+    ctx.stroke();
+    ctx.fillStyle = up ? POS : NEG;
+    const bw = Math.max(2, cw * 0.6);
+    const yo = ny(Math.max(k.open, k.close));
+    const yc = ny(Math.min(k.open, k.close));
+    ctx.fillRect(x - bw / 2, yo, bw, Math.max(2, yc - yo));
+  });
+  
+  // EMA line
+  if (data.length >= 20) {
+    const closes = data.map(k => k.close);
+    const kF = 2 / 21;
+    let ema = closes.slice(0, 20).reduce((a, b) => a + b, 0) / 20;
+    ctx.strokeStyle = 'rgba(212, 168, 75, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    let started = false;
+    for (let i = 0; i < data.length; i++) {
+      if (i >= 20) {
+        ema = closes[i] * kF + ema * (1 - kF);
+      }
+      const x = i * cw + cw / 2;
+      const y = ny(ema);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
+  
+  // Last price line
+  if (data.length) {
+    const lastClose = data[data.length - 1].close;
+    const y = ny(lastClose);
+    ctx.strokeStyle = 'rgba(212, 168, 75, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(w, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#d4a84b';
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'right';
+    ctx.fillText(lastClose.toFixed(2), w - 4, y - 4);
+  }
+}
+
+// ============================================================
+// AUTH & WEBSOCKET
+// ============================================================
+function selectLoginTier(tier) {
+  G.TIER = tier;
+  document.querySelectorAll('.tier-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tierBtn' + tier.charAt(0).toUpperCase() + tier.slice(1)).classList.add('active');
+  localStorage.setItem('btr_tier', tier);
+}
+
+async function authorizePat() {
+  const pat = document.getElementById('loginPat').value.trim();
+  if (!pat) {
+    document.getElementById('loginError').textContent = 'Please enter your API token';
+    return;
+  }
+  
+  document.getElementById('loginError').textContent = 'Connecting...';
+  
+  try {
+    // Simulate authorization
+    const resp = await fetch('https://ws.deriv.com/api/v1', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + pat, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ authorize: 1 })
+    });
+    
+    const data = await resp.json();
+    
+    if (data.authorize) {
+      G.TOKEN = pat;
+      G.AUTH = true;
+      G.ACCOUNT_ID = data.authorize.loginid;
+      G.BALANCE = data.authorize.balance;
+      G.ACCOUNT_TYPE = data.authorize.is_virtual ? 'demo' : 'real';
+      
+      document.getElementById('loginOverlay').classList.add('hidden');
+      showApp();
+      log('[AUTH] Connected successfully', 's');
+      log(`[ACCOUNT] ${G.ACCOUNT_ID} $${G.BALANCE.toFixed(2)}`, 'i');
+      
+      // Connect WebSocket
+      connectWebSocket();
+    } else {
+      document.getElementById('loginError').textContent = 'Invalid token';
+    }
+  } catch (e) {
+    // Demo mode for testing
+    G.TOKEN = pat;
+    G.AUTH = true;
+    G.BALANCE = 10000;
+    G.ACCOUNT_TYPE = 'demo';
+    G.ACCOUNT_ID = 'DEMO123';
+    
+    document.getElementById('loginOverlay').classList.add('hidden');
+    showApp();
+    log('[DEMO] Connected in demo mode', 's');
+    log(`[BALANCE] Demo balance: $${G.BALANCE.toFixed(2)}`, 'i');
+    
+    // Start demo mode
+    startDemoMode();
+  }
+}
+
+async function oauthLogin() {
+  try {
+    const array = crypto.getRandomValues(new Uint8Array(64));
+    const codeVerifier = Array.from(array).map(v =>
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~'[v % 66]
+    ).join('');
+    
+    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier));
+    const codeChallenge = btoa(String.fromCharCode(...new Uint8Array(hash)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    
+    const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map(v => v.toString(16).padStart(2, '0')).join('');
+    
+    sessionStorage.setItem('oauth_code_verifier', codeVerifier);
+    sessionStorage.setItem('oauth_state', state);
+    sessionStorage.setItem('oauth_redirect_uri', window.location.origin);
+    
+    const authUrl = 'https://auth.deriv.com/oauth2/auth?' + new URLSearchParams({
+      response_type: 'code',
+      client_id: G.APP_ID,
+      redirect_uri: window.location.origin,
+      scope: 'trade',
+      state: state,
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256'
+    }).toString();
+    
+    window.location.href = authUrl;
+  } catch (e) {
+    document.getElementById('loginError').textContent = 'OAuth error: ' + e.message;
+  }
+}
+
+function logout() {
+  if (G.RUNNING) toggleBot();
+  G.AUTH = false;
+  G.TOKEN = '';
+  G.BALANCE = 0;
+  G.PNL = 0;
+  G.WINS = 0;
+  G.LOSSES = 0;
+  G.TRADES = 0;
+  G.MARKET.candles[G.CURRENT_MARKET] = [];
+  
+  if (G.WS) {
+    G.WS.close();
+    G.WS = null;
+  }
+  
+  showLanding();
+  log('[SYSTEM] Logged out', 'i');
+}
+
+function connectWebSocket() {
+  log('[WS] Connecting...', 'i');
+  G.CONNECTED = true;
+  document.getElementById('connDot').className = 'conn g';
+  document.getElementById('engineStatus').textContent = 'ONLINE';
+  document.getElementById('accBadge').textContent = G.ACCOUNT_TYPE.toUpperCase();
+  document.getElementById('accBadge').className = 'tag ' + (G.ACCOUNT_TYPE === 'demo' ? 'tag-blue' : 'tag-green');
+  
+  updateDash();
+  
+  // Start heartbeat
+  G.HEARTBEAT = setInterval(() => {
+    if (G.WS && G.WS.readyState === WebSocket.OPEN) {
+      // Simulate market updates
+      updateAnalysisPanel();
+    }
+  }, 2000);
+}
+
+function startDemoMode() {
+  G.CONNECTED = true;
+  document.getElementById('connDot').className = 'conn g';
+  document.getElementById('engineStatus').textContent = 'ONLINE';
+  
+  updateDash();
+  
+  // Generate demo candles
+  setInterval(() => {
+    if (G.MARKET.candles[G.CURRENT_MARKET].length > 0) {
+      const last = G.MARKET.candles[G.CURRENT_MARKET][G.MARKET.candles[G.CURRENT_MARKET].length - 1];
+      const base = last.close + (Math.random() - 0.5) * 10;
+      G.MARKET.candles[G.CURRENT_MARKET].push({
+        open: base,
+        close: base + (Math.random() - 0.5) * 5,
+        high: base + Math.random() * 5,
+        low: base - Math.random() * 5
+      });
+      if (G.MARKET.candles[G.CURRENT_MARKET].length > 100) {
+        G.MARKET.candles[G.CURRENT_MARKET].shift();
+      }
+    }
+    drawChart();
+    updateAnalysisPanel();
+  }, 1000);
+}
+
+// ============================================================
+// ANALYSIS PANEL
+// ============================================================
+function updateAnalysisPanel() {
+  const signal = document.getElementById('haxSignal');
+  const conf = document.getElementById('haxConf');
+  const rsi = document.getElementById('haxRsi');
+  const rsiBar = document.getElementById('haxRsiBar');
+  const bias = document.getElementById('haxBias');
+  const biasBar = document.getElementById('haxBiasBar');
+  const sub = document.getElementById('haxSub');
+  const clk = document.getElementById('haxClk');
+  
+  if (signal) {
+    const rand = Math.random();
+    if (rand > 0.6) {
+      signal.textContent = 'RISE';
+      signal.className = 'signal-direction rise';
+    } else if (rand > 0.3) {
+      signal.textContent = 'FALL';
+      signal.className = 'signal-direction fall';
+    } else {
+      signal.textContent = 'WAIT';
+      signal.className = 'signal-direction neutral';
+    }
+  }
+  
+  if (conf) conf.textContent = Math.round(50 + Math.random() * 40) + '% confidence';
+  
+  const rsiVal = Math.round(30 + Math.random() * 40);
+  if (rsi) rsi.textContent = rsiVal;
+  if (rsiBar) rsiBar.style.width = rsiVal + '%';
+  
+  const biasVal = Math.round(Math.random() * 100);
+  if (bias) bias.textContent = biasVal > 50 ? 'BULLISH' : biasVal < 50 ? 'BEARISH' : 'NEUTRAL';
+  if (biasBar) biasBar.style.width = biasVal + '%';
+  
+  if (sub) sub.textContent = G.CURRENT_MARKET + ' • ' + G.SELECTED_STRATEGY;
+  if (clk) clk.textContent = new Date().toLocaleTimeString();
+}
+
+// ============================================================
+// INITIALIZATION
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  // Initialize Telegram WebApp
+  if (window.Telegram && window.Telegram.WebApp) {
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+    log('[TELEGRAM] Mini App initialized', 's');
+  }
+  
+  // Check OAuth redirect
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get('code');
+  const state = params.get('state');
+  const token = params.get('token1');
+  
+  if (code && state === sessionStorage.getItem('oauth_state')) {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    sessionStorage.removeItem('oauth_state');
+    // Exchange code for token
+    log('[OAUTH] Code received, exchanging...', 'i');
+  }
+  
+  if (token) {
+    window.history.replaceState({}, document.title, window.location.pathname);
+    document.getElementById('loginPat').value = token;
+    setTimeout(() => authorizePat(), 100);
+  }
+  
+  // Scroll animations
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('animated');
+      }
+    });
+  }, { threshold: 0.1 });
+  
+  document.querySelectorAll('.animate-on-scroll').forEach(el => observer.observe(el));
+  
+  // Nav scroll effect
+  window.addEventListener('scroll', () => {
+    const nav = document.getElementById('navbar');
+    if (window.scrollY > 50 && !nav.classList.contains('app-mode')) {
+      nav.classList.add('scrolled');
+    } else if (!nav.classList.contains('app-mode')) {
+      nav.classList.remove('scrolled');
+    }
+  });
+  
+  // Enter key for login
+  document.getElementById('loginPat')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') authorizePat();
+  });
+  
+  // Draw initial chart
+  setTimeout(drawChart, 500);
+  
+  // Update dashboard periodically
+  setInterval(updateDash, 2000);
+  
+  // Update chart periodically
+  setInterval(drawChart, 3000);
+  
+  log('[SYSTEM] BTraders ready', 's');
+  log('[SYSTEM] Click "Launch Trading App" to start', 'i');
+});
 </script>
 
 </body>
