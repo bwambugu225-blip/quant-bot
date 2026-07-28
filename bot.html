@@ -1092,24 +1092,40 @@ table tr{border-bottom:1px solid var(--line)}
           <input class="inp calc-inp" id="calcCapital" type="number" value="50" min="1" step="1" oninput="calcProjection()">
         </div>
         <div class="calc-card">
-          <div class="calc-label">Scale/Day (×)</div>
-          <input class="inp calc-inp" id="calcDailyPct" type="number" value="3.6" min="0.1" max="50" step="0.1" oninput="calcProjection()">
+          <div class="calc-label">Month 1 Trade ($)</div>
+          <input class="inp calc-inp" id="calcM1" type="number" value="2" min="0.5" step="0.5" oninput="calcProjection()">
+        </div>
+        <div class="calc-card">
+          <div class="calc-label">Month 2 Trade ($)</div>
+          <input class="inp calc-inp" id="calcM2" type="number" value="5" min="0.5" step="0.5" oninput="calcProjection()">
+        </div>
+        <div class="calc-card">
+          <div class="calc-label">Month 3 Trade ($)</div>
+          <input class="inp calc-inp" id="calcM3" type="number" value="12" min="0.5" step="0.5" oninput="calcProjection()">
+        </div>
+        <div class="calc-card">
+          <div class="calc-label">Month 4 Trade ($)</div>
+          <input class="inp calc-inp" id="calcM4" type="number" value="25" min="0.5" step="0.5" oninput="calcProjection()">
+        </div>
+        <div class="calc-card">
+          <div class="calc-label">Month 5 Trade ($)</div>
+          <input class="inp calc-inp" id="calcM5" type="number" value="50" min="0.5" step="0.5" oninput="calcProjection()">
+        </div>
+        <div class="calc-card">
+          <div class="calc-label">Reward Multiple (×)</div>
+          <input class="inp calc-inp" id="calcRRatio" type="number" value="2" min="1" max="10" step="0.5" oninput="calcProjection()">
+        </div>
+        <div class="calc-card">
+          <div class="calc-label">Wins / Day</div>
+          <input class="inp calc-inp" id="calcWinsDay" type="number" value="3" min="0" max="20" step="1" oninput="calcProjection()">
+        </div>
+        <div class="calc-card">
+          <div class="calc-label">Losses / Day</div>
+          <input class="inp calc-inp" id="calcLossDay" type="number" value="1" min="0" max="20" step="1" oninput="calcProjection()">
         </div>
         <div class="calc-card">
           <div class="calc-label">Trading Days / Month</div>
           <input class="inp calc-inp" id="calcDays" type="number" value="22" min="5" max="30" step="1" oninput="calcProjection()">
-        </div>
-        <div class="calc-card">
-          <div class="calc-label">Risk Per Trade (%)</div>
-          <input class="inp calc-inp" id="calcRisk" type="number" value="2" min="0.5" max="10" step="0.5" oninput="calcProjection()">
-        </div>
-        <div class="calc-card">
-          <div class="calc-label">Win Rate (%)</div>
-          <input class="inp calc-inp" id="calcWr" type="number" value="65" min="30" max="95" step="1" oninput="calcProjection()">
-        </div>
-        <div class="calc-card">
-          <div class="calc-label">Trades / Day</div>
-          <input class="inp calc-inp" id="calcTrades" type="number" value="3" min="1" max="20" step="1" oninput="calcProjection()">
         </div>
       </div>
     </div>
@@ -5803,25 +5819,32 @@ function clearRecentTrades(){
 let calcTableMode = 'milestones';
 function calcProjection(){
   const capital = parseFloat(document.getElementById('calcCapital')?.value) || 50;
-  const scaleFactor = parseFloat(document.getElementById('calcDailyPct')?.value) || 8;
+  const tradeAmts = [0,
+    parseFloat(document.getElementById('calcM1')?.value) || 2,
+    parseFloat(document.getElementById('calcM2')?.value) || 5,
+    parseFloat(document.getElementById('calcM3')?.value) || 12,
+    parseFloat(document.getElementById('calcM4')?.value) || 25,
+    parseFloat(document.getElementById('calcM5')?.value) || 50
+  ];
+  const rRatio = parseFloat(document.getElementById('calcRRatio')?.value) || 2;
+  const winsDay = parseInt(document.getElementById('calcWinsDay')?.value) || 3;
+  const lossDay = parseInt(document.getElementById('calcLossDay')?.value) || 1;
   const daysPerMonth = parseInt(document.getElementById('calcDays')?.value) || 22;
-  const riskPct = parseFloat(document.getElementById('calcRisk')?.value) || 2;
-  const wr = parseFloat(document.getElementById('calcWr')?.value) || 65;
-  const tradesPerDay = parseInt(document.getElementById('calcTrades')?.value) || 3;
 
-  const dailyMult = 1 + scaleFactor / 100;
+  const daysInMonth = [0, 30, 30, 30, 30, 30];
   const totalDays = 150;
   const data = [{ day:0, capital:capital, pnl:0, cumPnl:0, growth:1 }];
-  let maxCapital = data[0].capital;
 
   for(let d=1; d<=totalDays; d++){
+    const monthIdx = d <= 30 ? 1 : d <= 60 ? 2 : d <= 90 ? 3 : d <= 120 ? 4 : 5;
+    const tradeAmt = tradeAmts[monthIdx];
+    const reward = tradeAmt * rRatio;
+    const dailyPnl = (winsDay * reward) - (lossDay * tradeAmt);
     const prev = data[d-1].capital;
-    const dayCapital = prev * dailyMult;
-    const dayPnl = dayCapital - prev;
-    const cumPnl = data[0].capital * (Math.pow(dailyMult, d) - 1);
-    const growth = dayCapital / data[0].capital;
-    data.push({ day:d, capital:dayCapital, pnl:dayPnl, cumPnl:cumPnl, growth:growth });
-    maxCapital = Math.max(maxCapital, dayCapital);
+    const newCap = prev + dailyPnl;
+    const cumPnl = newCap - capital;
+    const growth = newCap / capital;
+    data.push({ day:d, capital:newCap, pnl:dailyPnl, cumPnl:cumPnl, growth:growth });
   }
 
   const totalGrowth = data[totalDays].growth;
@@ -5847,7 +5870,7 @@ function calcProjection(){
   if(dae) dae.textContent = '$' + dailyAvg.toFixed(2);
 
   renderPlanTable(data);
-  renderSmartPlan(data, capital, scaleFactor, daysPerMonth);
+  renderSmartPlan(data, capital);
 }
 
 function renderPlanTable(data){
@@ -5868,7 +5891,7 @@ function renderPlanTable(data){
   tbody.innerHTML = html;
 }
 
-function renderSmartPlan(data, capital, dailyPct, daysPerMonth){
+function renderSmartPlan(data, capital){
   const el = document.getElementById('smartPlan');
   if(!el) return;
   const phases = [
