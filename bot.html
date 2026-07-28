@@ -1110,7 +1110,7 @@ const G = {
   SELECTED_STRATEGY: 'AUTO',
   WS:null, CONNECTED:false, AUTH:false, RID:0, TOKEN:'', CLOSING_TRADE_WS:false,
   APP_ID:localStorage.getItem('deriv_app_id') || '33JFxN3sbe2usdFigbMb8',
-  ACCOUNT_ID:null, ACCOUNT_TYPE:'demo', BALANCE:0,
+  ACCOUNT_ID:null, ACCOUNT_TYPE:'real', BALANCE:0,
   RUNNING:false,
   ACTIVE_CONTRACTS:new Map(),
   PROCESSED_CONTRACTS:new Set(),
@@ -5651,8 +5651,8 @@ async function fetchClientProfile(token, preferredType) {
         balance: parseFloat(a.balance || 0)
       }));
       if (accounts.length > 0) {
-        let matched = accounts.find(a => (preferredType === 'demo' ? a.isDemo : !a.isDemo));
-        if (!matched) matched = accounts.find(a => a.isDemo) || accounts[0];
+        let matched = accounts.find(a => (preferredType === 'real' ? !a.isDemo : a.isDemo));
+        if (!matched) matched = accounts[0];
         return {
           accountId: matched.account,
           balance: matched.balance,
@@ -5668,7 +5668,7 @@ async function fetchClientProfile(token, preferredType) {
   // Fallback to WS Authorize
   const wsAuthList = await wsAuthorize(token);
   if (wsAuthList && wsAuthList.length > 0) {
-    let matched = wsAuthList.find(a => (preferredType === 'demo' ? a.isDemo : !a.isDemo));
+    let matched = wsAuthList.find(a => (preferredType === 'real' ? !a.isDemo : a.isDemo));
     if (!matched) matched = wsAuthList[0];
     return {
       accountId: matched.account,
@@ -6076,12 +6076,12 @@ async function doRESTFlow(token){
     return;
   }
   // Step 3: Pick preferred account
-  const preferred = G.ACCOUNT_TYPE || 'demo';
-  const isDemo = (a) => a.account.startsWith('VR') || a.isDemo === true || a.is_virtual === true;
-  let account = accounts.find(a => (preferred==='demo' ? isDemo(a) : !isDemo(a)));
-  if(!account) account = accounts.find(a => isDemo(a)) || accounts[0];
+  const preferred = G.ACCOUNT_TYPE || 'real';
+  const isReal = (a) => !a.account.startsWith('VR') && a.isDemo !== true && a.is_virtual !== true;
+  let account = accounts.find(a => (preferred==='real' ? isReal(a) : !isReal(a)));
+  if(!account) account = accounts.find(a => isReal(a)) || accounts[0];
   G.ACCOUNT_ID = account.account;
-  G.ACCOUNT_TYPE = isDemo(account) ? 'demo' : 'real';
+  G.ACCOUNT_TYPE = isReal(account) ? 'real' : 'demo';
   G.BALANCE = account.balance || 0;
   G.TOKEN = token;
   // Step 4: Connect via OTP or direct WS
