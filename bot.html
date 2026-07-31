@@ -843,20 +843,12 @@ table tr{border-bottom:1px solid var(--line)}
     </div>
   </div>
 
-  <!-- TAB 2: MARKETS -->
-  <div class="tab-view" id="tab-markets">
-    <div class="section" style="padding:10px 0">
-      <div class="hax-matrix-head">MARKETS · <span id="haxMktCount">0</span> LIVE</div>
-      <div class="hax-matrix" id="haxMatrix"></div>
-    </div>
-  </div>
-
   <!-- TAB 3: CHART -->
   <div class="tab-view" id="tab-chart">
     <div style="display:flex;gap:4px;margin-bottom:6px;align-items:center">
       <span style="font-size:8px;color:var(--muted);white-space:nowrap">CHART</span>
       <button id="chartCandleBtn" class="btn btn-ghost" onclick="setChartMode('candle')" style="flex:1;padding:4px;font-size:8px;background:var(--accent);color:#fff;border-color:var(--accent)">1m CANDLES</button>
-      <button id="chartLineBtn" class="btn btn-ghost" onclick="setChartMode('line')" style="flex:1;padding:4px;font-size:8px">LINE</button>
+      <button id="chartLineBtn" class="btn btn-ghost" onclick="setChartMode('line')" style="flex:1;padding:4px;font-size:8px">TICKS</button>
     </div>
     <div style="display:flex;gap:4px;margin-bottom:6px">
       <button class="btn btn-call" onclick="placeManualRF('RISE')" style="flex:1;padding:6px;font-size:9px">RISE</button>
@@ -1069,19 +1061,9 @@ table tr{border-bottom:1px solid var(--line)}
         <div id="dgBiasWatch" style="display:flex;flex-direction:column;gap:2px;max-height:120px;overflow:auto"></div>
       </div>
     </div>
-
-    <!-- Mode toggle -->
-    <div class="section">
-      <div class="section-title">Mode</div>
-      <div style="display:flex;gap:4px">
-        <button id="btnModeRF" class="mode-tab active" onclick="switchMode('RISEFALL')" style="flex:1">R/F</button>
-        <button id="btnModeDigits" class="mode-tab" onclick="switchMode('DIGITS')" style="flex:1">DIGITS</button>
-      </div>
-      <div id="modeIndicator" style="font-size:8px;color:var(--muted);margin-top:3px">Auto</div>
-    </div>
   </div>
 
-  <!-- TAB 4: PLAN -->
+  <!-- TAB 4: PLAN (hidden — access via Admin Panel) -->
   <div class="tab-view" id="tab-plan">
     <div class="section">
       <div class="section-title" style="display:flex;align-items:center;gap:8px">
@@ -1352,17 +1334,11 @@ table tr{border-bottom:1px solid var(--line)}
     <button class="nav-btn active" data-tab="home" onclick="switchTab('home')">
       <span class="nav-lbl">HOME</span>
     </button>
-    <button class="nav-btn" data-tab="markets" onclick="switchTab('markets')">
-      <span class="nav-lbl">MARKETS</span>
-    </button>
     <button class="nav-btn" data-tab="chart" onclick="switchTab('chart')">
       <span class="nav-lbl">CHART</span>
     </button>
     <button class="nav-btn" data-tab="digits" onclick="switchTab('digits')">
       <span class="nav-lbl">DIGITS</span>
-    </button>
-    <button class="nav-btn" data-tab="plan" onclick="switchTab('plan')">
-      <span class="nav-lbl">PLAN</span>
     </button>
     <button class="nav-btn" data-tab="settings" onclick="switchTab('settings')">
       <span class="nav-lbl">SETTINGS</span>
@@ -1982,6 +1958,7 @@ function renderAdminPanel(){
         <div class="admin-tab" data-tab="users" onclick="switchAdminTab('users')" style="padding:8px 14px;cursor:pointer;font-size:11px;border-left:3px solid var(--accent,#d4a84b);background:rgba(212,168,75,0.1);color:var(--accent,#d4a84b)">📋 Users</div>
         <div class="admin-tab" data-tab="activity" onclick="switchAdminTab('activity')" style="padding:8px 14px;cursor:pointer;font-size:11px;color:#8a7e6a">⚠ Activity</div>
         <div class="admin-tab" data-tab="settings" onclick="switchAdminTab('settings')" style="padding:8px 14px;cursor:pointer;font-size:11px;color:#8a7e6a">🔑 Settings</div>
+        <div class="admin-tab" data-tab="plan" onclick="switchAdminTab('plan')" style="padding:8px 14px;cursor:pointer;font-size:11px;color:#8a7e6a">📈 Plan</div>
       </div>
       <div id="adminContent" style="flex:1;padding:12px;overflow-y:auto;background:#0d0c0a"></div>
     </div>`;
@@ -2000,6 +1977,11 @@ function switchAdminTab(tab){
   if(tab === 'users') renderAdminUsers(content);
   else if(tab === 'activity') renderAdminActivity(content);
   else if(tab === 'settings') renderAdminSettings(content);
+  else if(tab === 'plan'){
+    closeAdminPanel();
+    switchTab('plan');
+    setTimeout(()=>{ if(typeof initPlanTab==='function'){ try{ initPlanTab(); }catch(e){} } }, 50);
+  }
 }
 async function renderAdminUsers(container){
   container.innerHTML = '<div style="padding:20px;text-align:center;color:#8a7e6a">Loading users...</div>';
@@ -2674,8 +2656,18 @@ function isSuppressed(fp){
 // ============================================================
 // DIGIT TRACKING & STRATEGY ENGINE
 // ============================================================
+function isDigitSymbol(sym){
+  const info = SYMBOLS.find(x=>x.sym===sym);
+  if(!info) return true;                    // unknown symbol — allow
+  return info.cat === 'VOL' || info.cat === 'VOL1S';  // 1-tick digit contracts only on volatility indices
+}
+
 function processDigit(sym, price){
-  const digit = (price.toFixed(2)).slice(-1)|0;
+  // Deriv digit = LAST digit of the displayed price, decimal point ignored.
+  // Old: (price.toFixed(2)).slice(-1) — broke on 1-decimal symbols (Step Index)
+  // because toFixed(2) forces ".00" → digit always 0 → all-identical history.
+  const s = String(price).replace(/[^0-9]/g,'');
+  const digit = s ? parseInt(s.slice(-1), 10) : 0;
   // Per-market digit history for the multimarket digit engine.
   if(!G.MARKET.digHist) G.MARKET.digHist = {};
   const h = G.MARKET.digHist[sym] || (G.MARKET.digHist[sym] = []);
@@ -2702,6 +2694,7 @@ function placeDigitManual(contractType){
   if(!G.WS || G.WS.readyState!==WebSocket.OPEN){ log('[DIGIT] WS not open','e'); return; }
   if(G.ACTIVE_CONTRACTS.size>=1){ log('[DIGIT] Contract active — wait','w'); return; }
   const sym = G.CURRENT_MARKET || 'R_50';
+  if(!isDigitSymbol(sym)){ log(`[DIGIT] ${sym} doesn't support 1-tick digit contracts — pick a Volatility index`,'e'); return; }
   // Sync base stake from input, apply martingale
   BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
   const mult = parseFloat(document.getElementById('dgMartMult')?.value) || 1;
@@ -2842,6 +2835,8 @@ function digitEmpiricalProb(hist, type, barrier){
 function evaluateDigitStrategy(sym){
   if(!BotState.isTrading) return;
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
+  if(!isDigitSymbol(sym)) return;   // skip Step/Trend — no 1-tick digit contracts
+  if(G.DIGIT_REJECT_COOLDOWN && Date.now() < G.DIGIT_REJECT_COOLDOWN) return;  // post-rejection pause
 
   // ── Anti-fatigue: loss cooldown (refractory pause) ──
   // After a loss we stand aside for a while so we never tilt into a bad
@@ -2935,7 +2930,7 @@ function evaluateDigitStrategy(sym){
     if(p_recent < p_full - 0.025) continue;
 
     if(!best || edge > best.edge){
-      best = { ...c, p_transition:p_trans, p_empirical:p_emp, p_composite:p_full, edge, edgeRecent:edgeR };
+      best = { ...c, p_transition:p_trans, p_empirical:p_emp, p_composite:p_full, p_recent, edge, edgeRecent:edgeR };
     }
   }
 
@@ -3354,7 +3349,18 @@ function handleMsg(data, source='trade'){
     case 'error':
       if(G.SENDING_TIMEOUT){ clearTimeout(G.SENDING_TIMEOUT); G.SENDING_TIMEOUT=null; }
       G.ACTIVE_CONTRACTS.delete('sending'); G.ACTIVE_CONTRACTS.delete('pending');
-      if(data.error) log(`[API] ${data.error.message || data.error.code || JSON.stringify(data.error)}`,'e');
+      if(data.error){
+        const code = data.error.code || '';
+        const msg = data.error.message || JSON.stringify(data.error);
+        log(`[API] ${msg}`,'e');
+        // Proposal rejections (e.g. TradingDurationNotAllowed) — pause the digit
+        // engine so it stops hammering the same failing request every tick.
+        if(G.TRADE_MODE==='DIGITS' && BotState.isTrading){
+          G.DIGIT_REJECT_COOLDOWN = Date.now() + 30000;
+          BotState.dgCooldownTicks = 60;
+          log(`[DIGIT] Proposal rejected (${code||'?'}) — cooling down 30s`,'w');
+        }
+      }
       break;
   }
 }
@@ -3471,6 +3477,7 @@ function handleTick(data){
     if(G.ACTIVE_CONTRACTS.size===0 && G.MARKET.digHist){
       for(const m of Object.keys(G.MARKET.digHist)){
         if(m===sym) continue;
+        if(!isDigitSymbol(m)) continue;
         if((G.MARKET.digHist[m]||[]).length >= 90){ evaluateDigitStrategy(m); if(G.ACTIVE_CONTRACTS.size>=1) break; }
       }
     }
@@ -4215,23 +4222,28 @@ function setChartMode(mode){
   drawChart();
 }
 
-function drawLineChart(canvas, ctx, all, w, h, dpr, C){
+function drawTickChart(canvas, ctx, ticks, w, h, dpr, C){
   canvas.style.width = '100%'; canvas.style.minWidth = '';
   canvas.width = w * dpr; canvas.height = h * dpr;
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,w,h);
+  if(!ticks || ticks.length < 2){
+    ctx.fillStyle=C.MUTED; ctx.font='11px monospace';
+    ctx.fillText('Waiting for tick data…',12,h/2);
+    return;
+  }
   let lo=Infinity, hi=-Infinity;
-  for(const k of all){ if(k.low<lo)lo=k.low; if(k.high>hi)hi=k.high; }
+  for(const p of ticks){ if(p<lo)lo=p; if(p>hi)hi=p; }
   const pad=(hi-lo)*0.1||0.001, yMin=lo-pad, yMax=hi+pad;
   const ny=v=>h-((v-yMin)/(yMax-yMin))*h;
-  const stepX=w/(all.length-1);
-  if(ChartSettings.grid){
+  const stepX=w/(ticks.length-1);
+  if(C.grid){
     ctx.strokeStyle=C.LINE; ctx.lineWidth=1;
     for(let i=1;i<5;i++){const y=h*i/5;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
   }
   // Area fill
   ctx.beginPath();
-  for(let i=0;i<all.length;i++){ const x=i*stepX, y=ny(all[i].close); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+  for(let i=0;i<ticks.length;i++){ const x=i*stepX, y=ny(ticks[i]); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); }
   ctx.lineTo(w, h); ctx.lineTo(0, h); ctx.closePath();
   const grad=ctx.createLinearGradient(0,0,0,h);
   grad.addColorStop(0,'rgba(54,225,255,0.22)');
@@ -4240,11 +4252,17 @@ function drawLineChart(canvas, ctx, all, w, h, dpr, C){
   // Price line
   ctx.strokeStyle=C.ACC; ctx.lineWidth=1.6; ctx.setLineDash([]);
   ctx.beginPath();
-  for(let i=0;i<all.length;i++){ const x=i*stepX, y=ny(all[i].close); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); }
+  for(let i=0;i<ticks.length;i++){ const x=i*stepX, y=ny(ticks[i]); if(i===0)ctx.moveTo(x,y); else ctx.lineTo(x,y); }
   ctx.stroke();
-  // Last price dot
-  const lastX=(all.length-1)*stepX, lastY=ny(all[all.length-1].close);
+  // Last price dot + labels
+  const lastX=(ticks.length-1)*stepX, lastY=ny(ticks[ticks.length-1]);
   ctx.fillStyle=C.POS; ctx.beginPath(); ctx.arc(lastX,lastY,2.5,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle=C.MUTED; ctx.font='9px monospace'; ctx.textAlign='right'; ctx.textBaseline='top';
+  ctx.fillText(hi.toFixed(2), w-4, 4);
+  ctx.textBaseline='bottom';
+  ctx.fillText(lo.toFixed(2), w-4, h-4);
+  ctx.textAlign='left';
+  ctx.fillStyle=C.POS; ctx.fillText(ticks[ticks.length-1].toFixed(2), 6, 4);
 }
 
 function drawChart(){
@@ -4290,7 +4308,16 @@ function drawChart(){
     return;
   }
   if(G.CHART_MODE === 'line'){
-    drawLineChart(canvas, ctx, all, w, h, dpr, { MUTED, ACC, POS, NEG, LINE });
+    const ticks = G.MARKET.liveBuf?.[sym] || [];
+    if(ticks.length < 2){
+      canvas.style.width = '100%'; canvas.style.minWidth = '';
+      canvas.width = w*dpr; canvas.height = h*dpr;
+      ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+      ctx.fillStyle=MUTED; ctx.font='11px monospace';
+      ctx.fillText('Waiting for live ticks… '+ticks.length+'/2',12,h/2);
+      return;
+    }
+    drawTickChart(canvas, ctx, ticks, w, h, dpr, { MUTED, ACC, POS, NEG, LINE, grid:ChartSettings.grid });
     return;
   }
   canvas.style.width = '100%'; canvas.style.minWidth = '';
