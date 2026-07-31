@@ -961,10 +961,9 @@ table tr{border-bottom:1px solid var(--line)}
   <!-- TAB 3: DIGITS -->
   <div class="tab-view" id="tab-digits">
     <div id="dgSection" class="section">
-      <div class="section-title">Digits <span id="dgModeLabel" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">OVER/UNDER</span></div>
+      <div class="section-title">Digits <span id="dgModeLabel" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">OVER 3</span></div>
       <div id="dgTradeBtnsOU" class="trade-btn-row" style="flex-wrap:wrap;gap:3px">
-        <button class="btn btn-call" onclick="placeDigitManual('DIGITOVER')" style="flex:1">OVER</button>
-        <button class="btn btn-put" onclick="placeDigitManual('DIGITUNDER')" style="flex:1">UNDER</button>
+        <button class="btn btn-call" onclick="placeDigitManual(null)" style="flex:1">BUY</button>
       </div>
 
       <div style="display:flex;gap:4px;margin-top:5px;align-items:center">
@@ -992,14 +991,22 @@ table tr{border-bottom:1px solid var(--line)}
             </select>
             <span style="font-size:7px;color:var(--muted)">× on loss</span>
           </div>
-          <div style="display:flex;gap:3px;width:100%;margin-bottom:2px">
-            <span style="font-size:7px;color:var(--muted);align-self:center">Focus barrier:</span>
-            <select id="dgBarrier" class="inp inp-sm" style="width:70px;font-size:9px;padding:2px">
-              <option value="3">OVER 3</option>
-              <option value="4">OVER 4</option>
-              <option value="6">UNDER 6</option>
-              <option value="7">UNDER 7</option>
+          <div style="display:flex;gap:3px;width:100%;margin-bottom:2px;align-items:center">
+            <span style="font-size:7px;color:var(--muted);align-self:center">Barrier:</span>
+            <select id="dgBarrierType" class="inp inp-sm" style="width:78px;font-size:9px;padding:2px" onchange="updateDigitModeLabel()">
+              <option value="DIGITOVER" selected>OVER</option>
+              <option value="DIGITUNDER">UNDER</option>
+              <option value="DIGITMATCH">MATCHES</option>
+              <option value="DIGITDIFF">DIFFERS</option>
             </select>
+            <select id="dgBarrier" class="inp inp-sm" style="width:52px;font-size:9px;padding:2px" onchange="updateDigitModeLabel()">
+              <option>0</option><option>1</option><option>2</option><option selected>3</option>
+              <option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option>
+            </select>
+            <label style="display:flex;align-items:center;gap:3px;font-size:7px;color:var(--muted);cursor:pointer;margin-left:auto;white-space:nowrap">
+              <input type="checkbox" id="dgFixedBarrier" onchange="updateDigitModeLabel()" style="width:12px;height:12px;accent-color:var(--accent)">
+              AUTO ONLY
+            </label>
           </div>
         </div>
       </details>
@@ -2703,17 +2710,21 @@ function placeDigitManual(contractType){
   BotState.currentStake = stake;
   const hist = (G.MARKET.digHist && G.MARKET.digHist[sym]) || [];
   if(hist.length < 20){ log('[DIGIT] Not enough ticks','w'); return; }
+  // Read the selected digit selection (type + barrier) from the UI
+  const sel = getDigitSelection();
+  contractType = contractType || sel.type;
+  const barrier = sel.barrier;
+  const label = contractType.replace('DIGIT','');
   const isOU = contractType === 'DIGITOVER' || contractType === 'DIGITUNDER';
-  if(!isOU) return;
-  const label = contractType==='DIGITOVER'?'OVER':'UNDER';
-  let barrier = parseInt(document.getElementById('dgBarrier')?.value || '5');
-  // Restrict to the elite focus set: OVER 3/4, UNDER 6/7
-  const isOver = contractType==='DIGITOVER';
-  const allowed = isOver ? [3,4] : [6,7];
-  if(!allowed.includes(barrier)) barrier = allowed[0];
+  if(!isOU && contractType !== 'DIGITMATCH' && contractType !== 'DIGITDIFF') return;
   // Note the probability for the manual pick (informational only).
   const rollingHist = hist.slice(-1000);
-  const winCount = rollingHist.filter(d => contractType==='DIGITOVER' ? d > barrier : d < barrier).length;
+  const winCount = rollingHist.filter(d => {
+    if(contractType==='DIGITOVER') return d > barrier;
+    if(contractType==='DIGITUNDER') return d < barrier;
+    if(contractType==='DIGITMATCH') return d === barrier;
+    return d !== barrier;
+  }).length;
   const rate = winCount / Math.max(1, rollingHist.length);
   const analysis = `barrier=${barrier} p_emp=${(rate*100).toFixed(1)}%`;
   log(`[DIGIT] ${label} $${stake.toFixed(2)} ${sym} · ${analysis}`,'t');
@@ -2732,6 +2743,19 @@ function placeDigitManual(contractType){
     BotState.contractActive = false;
     log('[DIGIT] Manual trade timed out','w');
   },15000);
+}
+
+function getDigitSelection(){
+  const type = document.getElementById('dgBarrierType')?.value || 'DIGITOVER';
+  let barrier = parseInt(document.getElementById('dgBarrier')?.value || '3', 10);
+  if(isNaN(barrier)) barrier = 3;
+  return { type, barrier };
+}
+
+function updateDigitModeLabel(){
+  const sel = getDigitSelection();
+  const lbl = document.getElementById('dgModeLabel');
+  if(lbl) lbl.textContent = sel.type.replace('DIGIT','') + ' ' + sel.barrier;
 }
 
 function toggleDigitEngine(){
@@ -2804,29 +2828,49 @@ function evaluateDigitStrategy(sym){
   // Current last digit
   const nowDigit = buf[len - 1];
 
-  // Candidates for Over/Under trading with elite statistical expectations
-  const cands = [
-    { dir:'DIGITOVER',  barrier:1, baseline: 0.80, minComposite: 0.835 }, // 80% baseline
-    { dir:'DIGITOVER',  barrier:2, baseline: 0.70, minComposite: 0.745 }, // 70% baseline
-    { dir:'DIGITOVER',  barrier:3, baseline: 0.60, minComposite: 0.645 }, // 60% baseline
-    { dir:'DIGITUNDER', barrier:6, baseline: 0.60, minComposite: 0.645 }, // 60% baseline
-    { dir:'DIGITUNDER', barrier:7, baseline: 0.70, minComposite: 0.745 }, // 70% baseline
-    { dir:'DIGITUNDER', barrier:8, baseline: 0.80, minComposite: 0.835 }  // 80% baseline
-  ];
+  // ── Candidate set ─────────────────────────────────────────────
+  // If the user locked a fixed barrier (AUTO ONLY), evaluate ONLY that
+  // selection. Otherwise scan the elite statistical candidate set.
+  const fixedSel = (document.getElementById('dgFixedBarrier')?.checked)
+    ? getDigitSelection()
+    : null;
+
+  let cands;
+  if(fixedSel){
+    const t = fixedSel.type, b = fixedSel.barrier;
+    let baseline = 0.5;
+    if(t === 'DIGITOVER') baseline = (9 - b) / 10;
+    else if(t === 'DIGITUNDER') baseline = b / 10;
+    else if(t === 'DIGITMATCH') baseline = 0.1;
+    else if(t === 'DIGITDIFF') baseline = 0.9;
+    cands = [{ dir:t, barrier:b, baseline, minComposite: baseline + 0.045 }];
+  } else {
+    cands = [
+      { dir:'DIGITOVER',  barrier:1, baseline: 0.80, minComposite: 0.835 }, // 80% baseline
+      { dir:'DIGITOVER',  barrier:2, baseline: 0.70, minComposite: 0.745 }, // 70% baseline
+      { dir:'DIGITOVER',  barrier:3, baseline: 0.60, minComposite: 0.645 }, // 60% baseline
+      { dir:'DIGITUNDER', barrier:6, baseline: 0.60, minComposite: 0.645 }, // 60% baseline
+      { dir:'DIGITUNDER', barrier:7, baseline: 0.70, minComposite: 0.745 }, // 70% baseline
+      { dir:'DIGITUNDER', barrier:8, baseline: 0.80, minComposite: 0.835 }  // 80% baseline
+    ];
+  }
 
   let best = null;
   for(const c of cands){
     // Calculate Markov row-transition probability of winning
     let p_transition = 0;
-    const isOver = c.dir === 'DIGITOVER';
-    for(let d=0; d<10; d++){
-      if(isOver ? d > c.barrier : d < c.barrier){
-        p_transition += M[nowDigit][d];
-      }
-    }
+    const t = c.dir, b = c.barrier;
+    if(t === 'DIGITOVER') for(let d=0; d<10; d++){ if(d > b) p_transition += M[nowDigit][d]; }
+    else if(t === 'DIGITUNDER') for(let d=0; d<10; d++){ if(d < b) p_transition += M[nowDigit][d]; }
+    else if(t === 'DIGITMATCH') p_transition = M[nowDigit][b];
+    else if(t === 'DIGITDIFF') p_transition = 1 - M[nowDigit][b];
 
     // Calculate empirical frequency of winning in the rolling window
-    const winCount = buf.filter(d => isOver ? d > c.barrier : d < c.barrier).length;
+    let winCount;
+    if(t === 'DIGITOVER') winCount = buf.filter(d => d > b).length;
+    else if(t === 'DIGITUNDER') winCount = buf.filter(d => d < b).length;
+    else if(t === 'DIGITMATCH') winCount = buf.filter(d => d === b).length;
+    else winCount = buf.filter(d => d !== b).length;
     const p_empirical = winCount / len;
 
     // Combined mathematical composite probability
@@ -2852,7 +2896,7 @@ function evaluateDigitStrategy(sym){
     return;
   }
 
-  const dirLabel = best.dir === 'DIGITOVER' ? 'OVER' : 'UNDER';
+  const dirLabel = best.dir.replace('DIGIT','');
   const label = `Markov ${sym}: ${dirLabel} ${best.barrier} (P_comp = ${(best.p_composite*100).toFixed(1)}%, Edge = +${(best.edge*100).toFixed(1)}%)`;
 
   const orderPayload = {
@@ -2887,10 +2931,10 @@ function placeDigitContract(sym, contractType, barrier){
   BotState.contractActive = true;
   BotState.lastContractType = contractType;
   const isRF = contractType === 'CALL' || contractType === 'PUT';
+  const dType = (contractType||'').replace('DIGIT','');
   const actionLabel = isRF
     ? (contractType === 'CALL' ? 'CALL ↑' : 'PUT ↓')
-    : contractType==='DIGITOVER' ? `OVER ${barrier}`
-    : `UNDER ${barrier}`;
+    : contractType && contractType.startsWith('DIGIT') ? `${dType} ${barrier}` : contractType;
   BotState.lastAction = actionLabel;
   const payload = {
     proposal:1, subscribe:1, amount:+stake.toFixed(2), basis:'stake',
@@ -4948,7 +4992,7 @@ function updateDigitsUI(){
   // === MARKET BIAS WATCH (all subscribed markets) ===
   const watch = get('dgBiasWatch');
   if(watch && G.MARKET.digHist){
-    const cands = [
+    let cands = [
       { dir:'OVER',  barrier:1, baseline: 0.80, minComposite: 0.835 },
       { dir:'OVER',  barrier:2, baseline: 0.70, minComposite: 0.745 },
       { dir:'OVER',  barrier:3, baseline: 0.60, minComposite: 0.645 },
@@ -4956,6 +5000,16 @@ function updateDigitsUI(){
       { dir:'UNDER', barrier:7, baseline: 0.70, minComposite: 0.745 },
       { dir:'UNDER', barrier:8, baseline: 0.80, minComposite: 0.835 }
     ];
+    if(document.getElementById('dgFixedBarrier')?.checked){
+      const sel = getDigitSelection();
+      const short = sel.type.replace('DIGIT','');
+      let baseline = 0.5;
+      if(sel.type==='DIGITOVER') baseline = (9 - sel.barrier) / 10;
+      else if(sel.type==='DIGITUNDER') baseline = sel.barrier / 10;
+      else if(sel.type==='DIGITMATCH') baseline = 0.1;
+      else if(sel.type==='DIGITDIFF') baseline = 0.9;
+      cands = [{ dir:short, barrier:sel.barrier, baseline, minComposite: baseline + 0.045 }];
+    }
     const rows = [];
     for(const sym of Object.keys(G.MARKET.digHist)){
       const h = G.MARKET.digHist[sym];
@@ -4977,11 +5031,16 @@ function updateDigitsUI(){
       let best=null;
       for(const c of cands){
         let p_trans = 0;
-        const isOver = c.dir === 'OVER';
-        for(let d=0; d<10; d++){
-          if(isOver ? d > c.barrier : d < c.barrier) p_trans += M[nowDigit][d];
-        }
-        const winCount = buf.filter(d => isOver ? d > c.barrier : d < c.barrier).length;
+        const t = c.dir, b = c.barrier;
+        if(t === 'OVER') for(let d=0; d<10; d++){ if(d > b) p_trans += M[nowDigit][d]; }
+        else if(t === 'UNDER') for(let d=0; d<10; d++){ if(d < b) p_trans += M[nowDigit][d]; }
+        else if(t === 'MATCHES') p_trans = M[nowDigit][b];
+        else if(t === 'DIFFERS') p_trans = 1 - M[nowDigit][b];
+        let winCount;
+        if(t === 'OVER') winCount = buf.filter(d => d > b).length;
+        else if(t === 'UNDER') winCount = buf.filter(d => d < b).length;
+        else if(t === 'MATCHES') winCount = buf.filter(d => d === b).length;
+        else winCount = buf.filter(d => d !== b).length;
         const p_empirical = winCount / len;
         const p_composite = 0.5 * p_trans + 0.5 * p_empirical;
         const edge = p_composite - c.baseline;
@@ -6843,6 +6902,7 @@ document.addEventListener('DOMContentLoaded', () => {
   BotState.targetProfit = parseFloat(document.getElementById('dgTakeProfit')?.value || 10);
   BotState.stopLoss = parseFloat(document.getElementById('dgStopLoss')?.value || 5);
   BotState.currentStake = BotState.baseStake;
+  if(typeof updateDigitModeLabel === 'function') updateDigitModeLabel();
   updateDigitsUI();
   log('[SYSTEM] BTraders ready \u00b7 God Mode Ensemble v2', 's');
   log(`[SYSTEM] WPR-Only (HA Williams %R) \u00b7 ${SYMBOLS.length} markets`, 'i');
