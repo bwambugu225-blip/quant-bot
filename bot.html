@@ -1052,7 +1052,7 @@ table tr{border-bottom:1px solid var(--line)}
             <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Ticks</div><div id="dgATicks" style="font-size:11px;font-weight:700">0</div>
           </div>
           <div style="background:var(--bg);padding:2px;text-align:center;border:1px solid var(--line)">
-            <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Entropy H</div><div id="dgChiSq" style="font-size:11px;font-weight:700;color:var(--accent)">--</div>
+            <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Bias χ²</div><div id="dgChiSq" style="font-size:11px;font-weight:700;color:var(--accent)">--</div>
           </div>
           <div style="background:var(--bg);padding:2px;text-align:center;border:1px solid var(--line)">
             <div style="font-size:7px;color:var(--muted);text-transform:uppercase">Streak</div>
@@ -2339,6 +2339,7 @@ const BotState = {
   sessionDeficit: 0,
   cyclePnL: 0,
   dgMartMult: 3,
+  dgCooldownTicks: 0,
   _tqOff: -1,
 };
 
@@ -2791,9 +2792,65 @@ function shannonEntropy(hist){
   return entropy;
 }
 
+// Chi-square statistic for the digit distribution vs. uniform (df=9).
+// Critical values: 16.92 (p<0.05), 21.67 (p<0.01). High χ² ⇒ real bias.
+function chiSquareBias(hist){
+  const len = hist.length;
+  if(len < 50) return 0;
+  const freq = Array(10).fill(0);
+  for(const d of hist) freq[d]++;
+  const exp = len / 10;
+  let chi2 = 0;
+  for(let i=0;i<10;i++){
+    const diff = freq[i] - exp;
+    chi2 += (diff * diff) / exp;
+  }
+  return chi2;
+}
+
+function buildMarkov(hist){
+  const len = hist.length;
+  const M = Array.from({ length: 10 }, () => Array(10).fill(0.1));
+  for(let i=0;i<len-1;i++) M[hist[i]][hist[i+1]]++;
+  for(let i=0;i<10;i++){
+    const s = M[i].reduce((a,b)=>a+b,0);
+    for(let j=0;j<10;j++) M[i][j] /= s;
+  }
+  return M;
+}
+
+function digitTransitionProb(M, from, type, barrier){
+  if(type==='DIGITOVER'){ let p=0; for(let d=0;d<10;d++){ if(d>barrier) p+=M[from][d]; } return p; }
+  if(type==='DIGITUNDER'){ let p=0; for(let d=0;d<10;d++){ if(d<barrier) p+=M[from][d]; } return p; }
+  if(type==='DIGITMATCH') return M[from][barrier];
+  if(type==='DIGITDIFF') return 1 - M[from][barrier];
+  return 0;
+}
+
+function digitEmpiricalProb(hist, type, barrier){
+  const len = hist.length || 1;
+  let w = 0;
+  for(const d of hist){
+    if(type==='DIGITOVER' && d>barrier) w++;
+    else if(type==='DIGITUNDER' && d<barrier) w++;
+    else if(type==='DIGITMATCH' && d===barrier) w++;
+    else if(type==='DIGITDIFF' && d!==barrier) w++;
+  }
+  return w / len;
+}
+
 function evaluateDigitStrategy(sym){
   if(!BotState.isTrading) return;
   if(G.ACTIVE_CONTRACTS.size >= 1) return;
+
+  // ── Anti-fatigue: loss cooldown (refractory pause) ──
+  // After a loss we stand aside for a while so we never tilt into a bad
+  // regime. Decrement happens here so it ticks down on live data.
+  if(BotState.dgCooldownTicks > 0){
+    BotState.dgCooldownTicks--;
+    return;
+  }
+
   const hist = (G.MARKET.digHist && G.MARKET.digHist[sym]) || [];
   if(hist.length < 150) return;   // warm-up: need at least 150 ticks to make Markov estimates stable
 
@@ -2807,25 +2864,24 @@ function evaluateDigitStrategy(sym){
   const stake = +(BotState.baseStake * factor).toFixed(2);
   BotState.currentStake = stake;
 
-  // Analysis over the rolling buffer (last 1000 digits).
+  // Two windows: full (1000) for the stable estimate, recent (300) to sense
+  // regime changes. Trading requires BOTH to agree — this is what stops the
+  // bot from "tiring" (keeping a stale edge after the market reverts).
   const buf = hist.slice(-1000);
   const len = buf.length;
-  if(len < 10) return;
+  if(len < 150) return;
+  const recent = buf.slice(-300);
+  const rLen = recent.length;
 
-  // Build the 10x10 Markov Transition Matrix with Laplace smoothing (0.1)
-  const M = Array.from({ length: 10 }, () => Array(10).fill(0.1));
-  for (let i = 0; i < len - 1; i++) {
-    M[buf[i]][buf[i+1]]++;
-  }
-  // Normalize row probabilities
-  for (let i = 0; i < 10; i++) {
-    const rowSum = M[i].reduce((a, b) => a + b, 0);
-    for (let j = 0; j < 10; j++) {
-      M[i][j] /= rowSum;
-    }
-  }
+  // ── Accuracy: bias-significance gate ──
+  // If the recent digit distribution is statistically indistinguishable from
+  // random (χ² < 16.92, df=9, p=0.05), any apparent edge is noise — sit out.
+  const chi2 = chiSquareBias(recent);
+  if(chi2 < 16.92) return;
 
-  // Current last digit
+  // Fresh + full Markov matrices
+  const M  = buildMarkov(buf);
+  const Mr = buildMarkov(recent);
   const nowDigit = buf[len - 1];
 
   // ── Candidate set ─────────────────────────────────────────────
@@ -2857,39 +2913,38 @@ function evaluateDigitStrategy(sym){
 
   let best = null;
   for(const c of cands){
-    // Calculate Markov row-transition probability of winning
-    let p_transition = 0;
-    const t = c.dir, b = c.barrier;
-    if(t === 'DIGITOVER') for(let d=0; d<10; d++){ if(d > b) p_transition += M[nowDigit][d]; }
-    else if(t === 'DIGITUNDER') for(let d=0; d<10; d++){ if(d < b) p_transition += M[nowDigit][d]; }
-    else if(t === 'DIGITMATCH') p_transition = M[nowDigit][b];
-    else if(t === 'DIGITDIFF') p_transition = 1 - M[nowDigit][b];
+    // Full-window composite
+    const p_trans  = digitTransitionProb(M,  nowDigit, c.dir, c.barrier);
+    const p_emp    = digitEmpiricalProb(buf, c.dir, c.barrier);
+    const p_full   = 0.5 * p_trans + 0.5 * p_emp;
 
-    // Calculate empirical frequency of winning in the rolling window
-    let winCount;
-    if(t === 'DIGITOVER') winCount = buf.filter(d => d > b).length;
-    else if(t === 'DIGITUNDER') winCount = buf.filter(d => d < b).length;
-    else if(t === 'DIGITMATCH') winCount = buf.filter(d => d === b).length;
-    else winCount = buf.filter(d => d !== b).length;
-    const p_empirical = winCount / len;
+    // Recent-window composite (regime freshness)
+    const p_transR = digitTransitionProb(Mr, nowDigit, c.dir, c.barrier);
+    const p_empR   = digitEmpiricalProb(recent, c.dir, c.barrier);
+    const p_recent = 0.5 * p_transR + 0.5 * p_empR;
 
-    // Combined mathematical composite probability
-    const p_composite = 0.5 * p_transition + 0.5 * p_empirical;
-    const edge = p_composite - c.baseline;
+    const edge = p_full - c.baseline;
+    const edgeR = p_recent - c.baseline;
 
-    if(p_composite >= c.minComposite && edge > 0.035){
-      if(!best || edge > best.edge){
-        best = { ...c, p_transition, p_empirical, p_composite, edge };
-      }
+    // Dual-window gates: the edge must be live in BOTH windows, and it must
+    // not be fading in the recent window (otherwise we'd chase a dead bias).
+    if(p_full < c.minComposite) continue;
+    if(p_recent < c.minComposite) continue;
+    if(edge <= 0.035) continue;
+    if(edgeR <= 0.015) continue;
+    if(p_recent < p_full - 0.025) continue;
+
+    if(!best || edge > best.edge){
+      best = { ...c, p_transition:p_trans, p_empirical:p_emp, p_composite:p_full, edge, edgeRecent:edgeR };
     }
   }
 
-  // Log rolling analytics to the console
+  // Log rolling analytics to the console (incl. bias significance)
   const o2 = buf.filter(d => d > 2).length / len;
   const o3 = buf.filter(d => d > 3).length / len;
   const u6 = buf.filter(d => d < 6).length / len;
   const u7 = buf.filter(d => d < 7).length / len;
-  log(`[DIG·ANAL] ${sym}: O2=${(o2*100).toFixed(0)}% O3=${(o3*100).toFixed(0)}% U6=${(u6*100).toFixed(0)}% U7=${(u7*100).toFixed(0)}% H=${shannonEntropy(buf).toFixed(3)}` ,'i');
+  log(`[DIG·ANAL] ${sym}: O2=${(o2*100).toFixed(0)}% O3=${(o3*100).toFixed(0)}% U6=${(u6*100).toFixed(0)}% U7=${(u7*100).toFixed(0)}% H=${shannonEntropy(buf).toFixed(3)} χ²=${chi2.toFixed(1)}` ,'i');
 
   if(!best){
     // No elite mathematical edge found - stay silent to preserve capital
@@ -2897,7 +2952,7 @@ function evaluateDigitStrategy(sym){
   }
 
   const dirLabel = best.dir.replace('DIGIT','');
-  const label = `Markov ${sym}: ${dirLabel} ${best.barrier} (P_comp = ${(best.p_composite*100).toFixed(1)}%, Edge = +${(best.edge*100).toFixed(1)}%)`;
+  const label = `Markov ${sym}: ${dirLabel} ${best.barrier} (P_comp = ${(best.p_composite*100).toFixed(1)}%, Edge = +${(best.edge*100).toFixed(1)}%, R=${(best.p_recent*100).toFixed(1)}%)`;
 
   const orderPayload = {
     contract_type: best.dir,
@@ -2963,11 +3018,15 @@ function onDigitContractResolved(won, profit){
     BotState.totalWins++; BotState.winStreak++; BotState.lossStreak=0;
     BotState.totalProfitLoss += profit;
     BotState.currentStake = BotState.baseStake;
+    BotState.dgCooldownTicks = 0;
   } else {
     BotState.totalLosses++; BotState.lossStreak++; BotState.winStreak=0;
     BotState.totalProfitLoss -= Math.abs(profit);
     const factor = mult > 1 ? Math.pow(mult, BotState.lossStreak) : 1;
     BotState.currentStake = +(BotState.baseStake * factor).toFixed(2);
+    // Anti-fatigue: after a loss stand aside. Longer pause after clusters.
+    BotState.dgCooldownTicks = BotState.lossStreak >= 2 ? 60 : 25;
+    log(`[DIGIT] Loss — cooling down ${BotState.dgCooldownTicks} ticks`,'w');
   }
   if(BotState.totalProfitLoss >= BotState.targetProfit || BotState.totalProfitLoss <= -BotState.stopLoss){
     const isTP = BotState.totalProfitLoss >= BotState.targetProfit;
@@ -4965,7 +5024,10 @@ function updateDigitsUI(){
   const ent = shannonEntropy(live);
   const chiEl = get('dgChiSq');
   if(chiEl){
-    chiEl.textContent = ent ? ent.toFixed(3) : '--';
+    const c2 = chiSquareBias(live);
+    const gateOk = c2 >= 16.92;
+    chiEl.textContent = ent ? `χ²=${c2.toFixed(1)}` : '--';
+    chiEl.style.color = gateOk ? 'var(--positive)' : 'var(--negative)';
   }
   const dgMarket = get('dgMarketName');
   if(dgMarket){ const s = G.CURRENT_MARKET; const info = SYMBOLS.find(x=>x.sym===s); dgMarket.textContent = info?info.name+' ('+s+')':s; }
