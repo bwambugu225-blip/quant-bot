@@ -3961,12 +3961,14 @@ function finishInsiderSignal(action, finalConf, src, sym, candles, liveBuf, tf, 
   const deep = brainBigDecide(ctx, cls);
   if(!deep.trade){
     const why = deep.rationale[deep.rationale.length-1] || 'low situational edge';
-    log(`[BRAIN] ${sym}: ${cls.label} → STAND DOWN — ${why}`,'w');
+    const trace = deep.rationale.length > 1 ? ' | ' + deep.rationale.slice(-4, -1).join(' | ') : '';
+    log(`[BRAIN] ${sym}: ${cls.label} → STAND DOWN — ${why}${trace}`,'w');
     return null;
   }
   const ev = Object.assign({}, extra, {
     regime: regime ? regime.type : '?',
     situation: cls.label,
+    reversal: deep.reversal ? 1 : 0,
     m1: deep.m1 ? deep.m1 + 'm1' : '',
     pUp: deep.pUp !== null ? Math.round(deep.pUp) : null,
     expansion: regime ? +regime.expansion.toFixed(2) : 0,
@@ -3975,7 +3977,7 @@ function finishInsiderSignal(action, finalConf, src, sym, candles, liveBuf, tf, 
     vel: regime ? +regime.vel.toFixed(1) : 0,
     brain: deep.rationale.join(' • ')
   });
-  log(`[BRAIN] ${sym}: ${cls.label} → ${deep.action} ${deep.conf}% ${deep.dur}${deep.durUnit} | ${deep.rationale[deep.rationale.length-1]}`,'i');
+  log(`[BRAIN] ${sym}: ${cls.label} → ${deep.action} ${deep.conf}% ${deep.dur}${deep.durUnit}${deep.reversal?' (REVERSAL)':''} | ${deep.rationale[deep.rationale.length-1]}`,'i');
   return { action: deep.action, conf: deep.conf, src, dur: deep.dur, durUnit: deep.durUnit, evidence: ev,
            brain: { situation: cls.label, rationale: deep.rationale, stakeFactor: deep.stakeFactor } };
 }
@@ -4127,148 +4129,310 @@ function brainStatsPrior(ctx){
   }
   return out;
 }
-// Structural levels across the full range: swing S/R proximity, position in range
-function brainStructure(ctx){
-  const arr = (ctx.m1 && ctx.m1.length >= 30) ? ctx.m1 : ctx.candles;
-  if(!arr || arr.length < 30) return { nearSupportPct: null, nearResistPct: null, rangePos: 50 };
-  const highs = arr.map(c => c.high), lows = arr.map(c => c.low);
-  const hi = Math.max.apply(null, highs), lo = Math.min.apply(null, lows);
+// ────────────────────────────────────────────────────────────
+// REASONING MODULES — market structure, price action, reversals
+// ────────────────────────────────────────────────────────────
+function swingPoints(arr, left, right){
+  left = left || 2; right = right || 2;
+  const pts = [];
+  for(let i=left;i<arr.length-right;i++){
+    let isH=true, isL=true;
+    for(let j=i-left;j<=i+right;j++){ if(j===i) continue; if(arr[j].high>=arr[i].high) isH=false; if(arr[j].low<=arr[i].low) isL=false; }
+    if(isH) pts.push({ i, p:arr[i].high, t:'H' });
+    if(isL) pts.push({ i, p:arr[i].low,  t:'L' });
+  }
+  const out = [];
+  for(const pt of pts){
+    const last = out[out.length-1];
+    if(last && last.t === pt.t){ if((pt.t==='H'&&pt.p>last.p)||(pt.t==='L'&&pt.p<last.p)) out[out.length-1]=pt; }
+    else out.push(pt);
+  }
+  return out;
+}
+// Classify HH/HL/LH/LL market structure + Break of Structure
+function structState(arr){
+  const res = { state:'RANGE', bos:null, hh:null, lh:null, hl:null, ll:null, lastHigh:null, lastLow:null };
+  if(!arr || arr.length < 10) return res;
+  const swings = swingPoints(arr);
+  if(swings.length < 4) return res;
+  const highs = swings.filter(s=>s.t==='H').slice(-2);
+  const lows  = swings.filter(s=>s.t==='L').slice(-2);
+  if(highs.length===2){ res.lh = highs[1].p < highs[0].p; }
+  if(lows.length===2){ res.hl = lows[1].p > lows[0].p; res.hh = res.hl; }
+  res.ll = res.lh === false ? null : res.lh;
+  if(res.hh === true && res.lh === false) res.state = 'BULL';
+  else if(res.hh === false && res.lh === true) res.state = 'BEAR';
+  res.lastHigh = highs.length ? Math.max.apply(null, highs.map(h=>h.p)) : null;
+  res.lastLow = lows.length ? Math.min.apply(null, lows.map(l=>l.p)) : null;
+  const close = arr[arr.length-1].close;
+  if(res.lastHigh !== null && close > res.lastHigh) res.bos = 'BOS_UP';
+  else if(res.lastLow !== null && close < res.lastLow) res.bos = 'BOS_DOWN';
+  return res;
+}
+// Nearest demand (below) and supply (above) order-block zones over the full range
+function orderZones(arr){
+  const out = { demand:null, supply:null, inDemand:false, inSupply:false };
+  if(!arr || arr.length < 14) return out;
   const last = arr[arr.length-1].close;
-  const rangePos = hi > lo ? ((last - lo) / (hi - lo)) * 100 : 50;
-  let nearS = null, nearR = null;
-  for(let i=2;i<arr.length-2;i++){
-    if(highs[i] >= highs[i-1] && highs[i] >= highs[i-2] && highs[i] >= highs[i+1] && highs[i] >= highs[i+2]){
-      if(highs[i] > last){ const d = (highs[i]-last)/last*100; if(nearR===null || d<nearR.d) nearR = { d, p: highs[i] }; }
+  let dBest = null, sBest = null;
+  for(let i=1;i<arr.length-1;i++){
+    const c = arr[i], n = arr[i+1];
+    const cBull = c.close > c.open, nBull = n.close > n.open;
+    if(!cBull && nBull && (n.close-n.open) > (n.high-n.low)*0.5){
+      // demand block: bear candle immediately before a strong up impulse
+      if(c.low < last){
+        const d = (last - c.low)/last*100;
+        if(dBest===null || d<dBest.d) dBest = { d, top:c.high, bot:c.low };
+        if(last >= c.low && last <= c.high) out.inDemand = true;
+      }
     }
-    if(lows[i] <= lows[i-1] && lows[i] <= lows[i-2] && lows[i] <= lows[i+1] && lows[i] <= lows[i+2]){
-      if(lows[i] < last){ const d = (last-lows[i])/last*100; if(nearS===null || d<nearS.d) nearS = { d, p: lows[i] }; }
+    if(cBull && !nBull && (c.close-c.open) > (c.high-c.low)*0.5){
+      // supply block: bull candle immediately before a strong down impulse
+      if(c.high > last){
+        const d = (c.high - last)/last*100;
+        if(sBest===null || d<sBest.d) sBest = { d, top:c.high, bot:c.low };
+        if(last <= c.high && last >= c.low) out.inSupply = true;
+      }
     }
   }
-  return { nearSupportPct: nearS ? +nearS.d.toFixed(2) : null, nearResistPct: nearR ? +nearR.d.toFixed(2) : null, rangePos: +rangePos.toFixed(0) };
+  out.demand = dBest ? { dist:+dBest.d.toFixed(2), top:+dBest.top.toFixed(3), bot:+dBest.bot.toFixed(3) } : null;
+  out.supply = sBest ? { dist:+sBest.d.toFixed(2), top:+sBest.top.toFixed(3), bot:+sBest.bot.toFixed(3) } : null;
+  return out;
 }
-// THE BIG DECISION ENGINE — fuses full-range stats, multi-timeframe alignment,
-// the strategy signal, the regime, session state and learned memory into one
-// directional probability + situational verdict.
+// Last-candle price action pattern
+function paLast(arr){
+  const out = { pattern:'NONE', dir:0, wickUp:0, wickDn:0, bodyPct:0 };
+  if(!arr || arr.length < 2) return out;
+  const last = arr[arr.length-1], prev = arr[arr.length-2];
+  const body = last.close - last.open;
+  const rng = Math.max(last.high - last.low, 1e-9);
+  const upBody = last.close > last.open;
+  const prevUp = prev.close > prev.open;
+  const wickUp = (last.high - Math.max(last.open,last.close))/rng;
+  const wickDn = (Math.min(last.open,last.close) - last.low)/rng;
+  out.wickUp = +wickUp.toFixed(2); out.wickDn = +wickDn.toFixed(2); out.bodyPct = +(Math.abs(body)/rng*100).toFixed(0);
+  const prevBody = prev.close - prev.open;
+  if(upBody && !prevUp && last.close > prev.open && last.open < prev.close && Math.abs(body) > Math.abs(prevBody)*1.15){
+    out.pattern='BULL_ENGULF'; out.dir=1; return out;
+  }
+  if(!upBody && prevUp && last.close < prev.open && last.open > prev.close && Math.abs(body) > Math.abs(prevBody)*1.15){
+    out.pattern='BEAR_ENGULF'; out.dir=-1; return out;
+  }
+  if(wickDn > 0.6 && Math.abs(body) < rng*0.35){ out.pattern='HAMMER'; out.dir=1; return out; }
+  if(wickUp > 0.6 && Math.abs(body) < rng*0.35){ out.pattern='SHOOTING_STAR'; out.dir=-1; return out; }
+  if(last.high <= prev.high && last.low >= prev.low){ out.pattern='INSIDE'; out.dir=0; return out; }
+  if(Math.abs(body) < rng*0.15){ out.pattern='DOJI'; out.dir=0; return out; }
+  return out;
+}
+// RSI divergence between the last two swing highs / swing lows
+function momentumDivergence(arr){
+  const out = { bull:false, bear:false };
+  if(!arr || arr.length < 20) return out;
+  const swings = swingPoints(arr);
+  const hs = swings.filter(s=>s.t==='H').slice(-2);
+  const ls = swings.filter(s=>s.t==='L').slice(-2);
+  const closes = arr.map(c=>c.close);
+  const rsiAt = i => { const sub=closes.slice(0,i+1); return sub.length>=15 ? rsi(sub,14) : null; };
+  if(hs.length===2){
+    const r0=rsiAt(hs[0].i), r1=rsiAt(hs[1].i);
+    if(r0!==null && r1!==null && hs[1].p>hs[0].p && r1<r0-2) out.bear=true;
+  }
+  if(ls.length===2){
+    const r0=rsiAt(ls[0].i), r1=rsiAt(ls[1].i);
+    if(r0!==null && r1!==null && ls[1].p<ls[0].p && r1>r0+2) out.bull=true;
+  }
+  return out;
+}
+// Empirical streak-reversion rate from the full range (the reversal prior)
+function reversionPrior(arr){
+  const out = { runs:0, revPct:null };
+  if(!arr || arr.length < 20) return out;
+  const closes = arr.map(c=>c.close);
+  let runs=0, rev=0;
+  for(let i=3;i<closes.length-1;i++){
+    const d1=Math.sign(closes[i-1]-closes[i-2]);
+    const d2=Math.sign(closes[i-2]-closes[i-3]);
+    const d3=Math.sign(closes[i]-closes[i-1]);
+    if(d1!==0 && d2===d1 && d3===d1){
+      runs++;
+      const d4=Math.sign(closes[i+1]-closes[i]);
+      if(d4!==0 && d4!==d1) rev++;
+    }
+  }
+  out.runs = runs;
+  out.revPct = runs>=8 ? (rev/runs)*100 : null;
+  return out;
+}
+// ── THE REASONING CORE — forms hypotheses, weighs evidence, checks the counter-case ──
+// Hypotheses: CU=continue up, CD=continue down, RU=reverse to up, RD=reverse to down, RANGE.
+function cogReason(ctx, struct, zones, pa, div, rv, prior, mtf, regime, signal, r14, z){
+  const H = { CU:0, CD:0, RU:0, RD:0, RANGE:0 };
+  const we = (k,v)=>{ H[k]+=v; };
+  const narrative = [];
+  const n = s=>narrative.push(s);
+
+  n(`structure=${struct.state}${struct.bos?' ('+struct.bos+')':''}`);
+  if(struct.state==='BULL'){ we('CU',3); n('higher highs / higher lows — bull structure'); }
+  else if(struct.state==='BEAR'){ we('CD',3); n('lower highs / lower lows — bear structure'); }
+  else { we('RANGE',2.5); n('structure chopping between levels'); }
+  if(struct.bos==='BOS_UP'){ we('CU',3.5); n('close above last swing high — continuation'); }
+  if(struct.bos==='BOS_DOWN'){ we('CD',3.5); n('close below last swing low — continuation'); }
+
+  if(div.bull){ we('RU',3); n('bullish RSI divergence at swing lows'); }
+  if(div.bear){ we('RD',3); n('bearish RSI divergence at swing highs'); }
+
+  if(pa.pattern==='BULL_ENGULF'){ we('RU',2); n('bullish engulfing on last candle'); }
+  if(pa.pattern==='BEAR_ENGULF'){ we('RD',2); n('bearish engulfing on last candle'); }
+  if(pa.pattern==='HAMMER'){ we('RU',2); n('hammer — rejection of lows'); }
+  if(pa.pattern==='SHOOTING_STAR'){ we('RD',2); n('shooting star — rejection of highs'); }
+  if(pa.pattern==='DOJI'){ we('RANGE',1); n('doji — indecision'); }
+  if(pa.pattern==='INSIDE'){ n('inside bar — compression, breakout imminent'); }
+
+  if(zones.inDemand){ we('RU',1.5); n('price inside demand/order block'); }
+  if(zones.inSupply){ we('RD',1.5); n('price inside supply/order block'); }
+  if(zones.supply && zones.supply.dist < 0.25){ we('RD',1.2); n(`supply overhead ${zones.supply.dist}% — room to the upside is capped`); }
+  if(zones.demand && zones.demand.dist < 0.25){ we('RU',1.2); n(`demand below ${zones.demand.dist}% — floor is near`); }
+
+  if(struct.rangePos>78){ we('RD',1.5); n(`price at ${struct.rangePos}% of range — stretched high`); }
+  if(struct.rangePos<22){ we('RU',1.5); n(`price at ${struct.rangePos}% of range — washed out`); }
+  if(z!==null && z>1.8){ we('RD',1.2); n(`z=${z.toFixed(1)} overextended above mean`); }
+  if(z!==null && z<-1.8){ we('RU',1.2); n(`z=${z.toFixed(1)} oversold below mean`); }
+
+  if(rv.revPct!==null){
+    n(`streak-reversion ${rv.revPct.toFixed(0)}% (n=${rv.runs})`);
+  }
+  if(prior.sigFollowUp!==null){ n(`pattern follow-through ${prior.sigFollowUp.toFixed(0)}% (n=${prior.sigCount})`); }
+  if(prior.bucketFollowUp!==null){ n(`rsi-bucket follow-through ${prior.bucketFollowUp.toFixed(0)}% (n=${prior.bucketCount})`); }
+
+  if(r14!==null && r14>72){ we('RD',1.5); n(`RSI ${r14.toFixed(0)} — overbought`); }
+  if(r14!==null && r14<28){ we('RU',1.5); n(`RSI ${r14.toFixed(0)} — oversold`); }
+
+  if(regime){
+    n(`regime ${regime.type} (drift ${(+regime.drift).toFixed(2)})`);
+    if(regime.trend==='up'){ we('CU',2.5); }
+    if(regime.trend==='down'){ we('CD',2.5); }
+    if(regime.type==='chop' || regime.type==='cold'){ we('RANGE',2); }
+    if(regime.vel>=6){ n(`tape ${regime.vel.toFixed(1)} ticks/s`); }
+  }
+  let up=0,dn=0;
+  for(const m of mtf){ if(m.slopePct>0.002) up++; else if(m.slopePct<-0.002) dn++; }
+  n(`mtf ${up}up/${dn}dn`);
+  if(up>=dn) we('CU', Math.min(3,up)); else we('CD', Math.min(3,dn));
+
+  if(signal){
+    n(`ensemble signals ${signal.action} ${signal.conf}%`);
+    if(signal.action==='RISE') we('CU',1); else we('CD',1);
+  }
+
+  // ── Decide the dominant hypothesis ──
+  const entries = Object.entries(H).sort((a,b)=>b[1]-a[1]);
+  const topK = entries[0][0], topV = entries[0][1];
+  const secondV = entries[1][1];
+  const edge = topV - secondV;
+  // Reversal detection: strongest reversal hypothesis
+  const revUp = H.RU, revDn = H.RD;
+  const reversal = revUp >= revDn ? (revUp>0?'RU':null) : (revDn>0?'RD':null);
+  const confirmReversal = div.bull || div.bear || pa.dir!==0 || zones.inDemand || zones.inSupply || (rv.revPct!==null && rv.revPct>=55);
+  return { H, topK, topV, secondV, edge, reversal, revUp, revDn, confirmReversal, narrative };
+}
+// THE BIG DECISION ENGINE — reasons over structure, price action, reversals,
+// full-range statistics and multi-timeframe flow into one verdict.
 function brainBigDecide(c, cls){
   const out = { trade:false, action:c.signal?c.signal.action:'RISE', conf:c.signal?c.signal.conf:80,
                 dur:c.signal?c.signal.dur:5, durUnit:c.signal?c.signal.durUnit:'t',
-                stakeFactor:1, rationale:[], situation:cls.label, score:0, pUp:null, m1:0 };
+                stakeFactor:1, rationale:[], situation:cls.label, score:0, pUp:null, m1:0, reversal:false };
   const r = c.regime;
   const ctx = brainContext(c.sym, c.candles, c.liveBuf, c.tf);
   const mtf = brainMTF(ctx);
   const prior = brainStatsPrior(ctx);
-  const struct = brainStructure(ctx);
+  const struct = structState(ctx.m1 && ctx.m1.length>=30 ? ctx.m1 : ctx.candles);
+  const zones = orderZones(ctx.m1 && ctx.m1.length>=14 ? ctx.m1 : ctx.candles);
+  const deep = ctx.m1 && ctx.m1.length>=20 ? ctx.m1 : (ctx.candles || []);
+  const pa = paLast(deep);
+  const div = momentumDivergence(deep);
+  const rv = reversionPrior(deep);
+  const closes = deep.length ? deep.map(x=>x.close) : [];
+  const r14 = rsi(closes, 14);
+  const sma20 = sma(closes,20), sd20 = stddev(closes,20);
+  const lastC = closes[closes.length-1];
+  const z = (sma20!==null&&sd20!==null&&sd20>0&&lastC!==undefined) ? (lastC-sma20)/sd20 : null;
   out.m1 = ctx.m1 ? ctx.m1.length : 0;
   const sigDir = c.signal ? c.signal.action : null;
 
-  // ── Hard safety rules (unchanged discipline) ──
+  // ── Hard safety rules ──
   if(c.inClusterPause){ out.rationale.push('cluster pause — stand down'); return out; }
-  if(!r){
-    if(c.consLoss >= 3){ out.rationale.push(c.consLoss+' losses in a row — cool off'); return out; }
-    const sStat = c.brain.situations ? c.brain.situations[cls.label] : null;
-    if(sStat && sStat.total >= 8 && sStat.wins/sStat.total < 0.40){ out.rationale.push(`learned "${cls.label}" weak — skip`); return out; }
-    if(!c.signal || c.signal.conf < 85){ out.rationale.push('no regime data and conviction below 85% — skip'); return out; }
-    out.trade = true;
-    out.rationale.push('no regime data — trusting ensemble conviction ' + c.signal.conf + '%');
-    return out;
-  }
   if(cls.situations.indexOf('DEAD') !== -1){ out.rationale.push('dead tape (cold vol) — stand down'); return out; }
   if(cls.situations.indexOf('DAMAGE') !== -1 && c.consLoss >= 3){ out.rationale.push(c.consLoss+' losses in a row — cool off'); return out; }
   if(cls.situations.indexOf('CONFLICT') !== -1){ out.rationale.push('signal fights the regime — skip'); return out; }
 
-  // ── Directional probability from ALL evidence ──
-  let pUp = prior.upPct !== null ? prior.upPct : 50;          // base rate from full range
-  let score = 0;
-  out.rationale.push(`base rate P(up)=${pUp.toFixed(0)}% over ${prior.n||'?'} m1 bars`);
+  // ── Reason ──
+  const cog = cogReason(ctx, struct, zones, pa, div, rv, prior, mtf, r, c.signal, r14, z);
 
-  // MTF alignment: count aligned timeframes
-  let upTF = 0, dnTF = 0;
-  for(const m of mtf){
-    const aligned = m.slopePct > 0.002;
-    if(aligned){ upTF++; if(r.trend === 'up') pUp += 2.2; if(r.trend === 'down') pUp -= 1.5; }
-    else { dnTF++; if(r.trend === 'down') pUp -= 2.2; if(r.trend === 'up') pUp += 1.5; }
-  }
-  out.rationale.push(`mtf ${upTF}up/${dnTF}dn across ${mtf.length} timeframes`);
+  // Base probability from full-range statistics
+  let pUp = prior.upPct !== null ? prior.upPct : 50;
+  // Push probability toward the reasoned direction
+  const revFav = cog.reversal === 'RU' || cog.reversal === 'RD';
+  out.reversal = revFav && cog.confirmReversal;
+  if(cog.topK === 'CU'){ pUp += 8; }
+  else if(cog.topK === 'CD'){ pUp -= 8; }
+  else if(cog.topK === 'RU'){ pUp += 10; }
+  else if(cog.topK === 'RD'){ pUp -= 10; }
+  else { /* RANGE */ }
+  if(revFav){ if(cog.reversal==='RU') pUp += 4; else pUp -= 4; }
+  pUp = Math.max(35, Math.min(68, pUp));
+  out.pUp = pUp;
+  const pDown = 100 - pUp;
 
-  // Regime trend
-  if(r.trend === 'up'){ pUp += r.strength * 0.22; score += 14 + r.strength*0.12; }
-  else if(r.trend === 'down'){ pUp -= r.strength * 0.22; score += 14 + r.strength*0.12; }
+  // Direction from reasoning (reversal hypothesis can override continuation)
+  let action;
+  if(cog.topK === 'RU') action = 'RISE';
+  else if(cog.topK === 'RD') action = 'FALL';
+  else if(cog.topK === 'CU') action = 'RISE';
+  else if(cog.topK === 'CD') action = 'FALL';
+  else { out.rationale.push('market is in a range — no clean edge');
+         out.rationale = out.rationale.concat(cog.narrative.slice(0,6)); return out; }
 
-  // Signal alignment
-  if(sigDir === 'RISE'){ pUp += (c.signal.conf-70)*0.45; if(r.trend!=='down') score += 10; }
-  else if(sigDir === 'FALL'){ pUp -= (c.signal.conf-70)*0.45; if(r.trend!=='up') score += 10; }
-
-  // Statistical follow-through priors
-  if(prior.sigFollowUp !== null){
-    out.rationale.push(`pattern follow-through ${prior.sigFollowUp.toFixed(0)}% (n=${prior.sigCount})`);
-    pUp = pUp*0.6 + prior.sigFollowUp*0.4;
-  }
-  if(prior.bucketFollowUp !== null){
-    const bUp = prior.bucketFollowUp;
-    const bFav = (bUp>=52 && sigDir==='RISE') || (bUp<=48 && sigDir==='FALL');
-    out.rationale.push(`rsi-bucket follow-through ${bUp.toFixed(0)}% (n=${prior.bucketCount}) ${bFav?'':'— against us'}`);
-    if(bFav){ pUp = pUp*0.7 + bUp*0.3; score += 8; }
-    else { pUp = pUp*0.7 + (100-bUp)*0.3; score -= 6; }
+  // Never take a reversal without confirmation
+  if(revFav && !cog.confirmReversal){
+    out.rationale.push('reversal hypothesis detected but no confirmation candle/divergence — skip');
+    out.rationale = out.rationale.concat(cog.narrative.slice(0,6)); return out;
   }
 
-  // Structure: price near resistance while we want RISE, or near support while FALL → penalize
-  if(struct.nearResistPct !== null && struct.nearResistPct < 0.25 && sigDir === 'RISE'){
-    pUp -= 8; score -= 14; out.rationale.push(`price <0.25% under swing resistance — RISE capped`);
-  }
-  if(struct.nearSupportPct !== null && struct.nearSupportPct < 0.25 && sigDir === 'FALL'){
-    pUp += 8; score -= 14; out.rationale.push(`price <0.25% above swing support — FALL capped`);
-  }
-  // Position in full range
-  if(struct.rangePos > 82){ pUp -= 5; out.rationale.push(`price at ${struct.rangePos}% of range — stretched high`); }
-  else if(struct.rangePos < 18){ pUp += 5; out.rationale.push(`price at ${struct.rangePos}% of range — washed out`); }
-
-  // Exhaustion / extension penalties
-  if(cls.situations.indexOf('EXTENSION_UP') !== -1 && sigDir === 'RISE'){ pUp -= 7; score -= 12; }
-  if(cls.situations.indexOf('EXTENSION_DOWN') !== -1 && sigDir === 'FALL'){ pUp += 7; score -= 12; }
-  if(cls.situations.indexOf('EXHAUSTION') !== -1) score -= 8;
-  if(cls.situations.indexOf('CHOP') !== -1) score -= 26;
-  if(cls.situations.indexOf('HOT') !== -1) score += 8;
-  if(cls.situations.indexOf('DAMAGE') !== -1) score -= c.consLoss*6;
-  if(cls.situations.indexOf('VELOCITY') !== -1 && (r.trend==='up'||r.trend==='down')) score += 10;
-
-  // Learned situation performance
+  // ── Score: reasoning edge + statistical prior + session + learned ──
+  const favP = action==='RISE' ? pUp : pDown;
+  let score = cog.edge * 7;
+  if(out.reversal && cog.reversal) score += (cog.reversal==='RU' ? cog.revUp : cog.revDn) * 3;
+  if(favP >= 55) score += 15;
+  if(c.signal && c.signal.action === action) score += 6; else if(c.signal) score -= 4;
+  if(c.stratWR !== null) score += (c.stratWR - 0.5) * 40;
+  if(c.sessionWR !== null && c.sessionCount >= 8) score += (c.sessionWR - 0.5) * 30;
+  if(cls.situations.indexOf('HOT') !== -1) score += 6;
+  if(cls.situations.indexOf('DAMAGE') !== -1) score -= c.consLoss*5;
+  score += (c.signal ? c.signal.conf : 80) * 0.2;
   const sStat = c.brain.situations ? c.brain.situations[cls.label] : null;
   if(sStat && sStat.total >= 8){
     const wr = sStat.wins/sStat.total;
     if(wr < 0.40){ out.rationale.push(`learned "${cls.label}" wins ${(wr*100).toFixed(0)}% — skip`); return out; }
-    if(wr > 0.62){ score += 12; out.rationale.push(`learned edge: "${cls.label}" wins ${(wr*100).toFixed(0)}%`); }
+    if(wr > 0.62) score += 10;
   }
-  // Strategy + session context
-  if(c.stratWR !== null){ score += (c.stratWR - 0.5) * 40; }
-  if(c.sessionWR !== null && c.sessionCount >= 8){ score += (c.sessionWR - 0.5) * 30; }
-  score += (c.signal ? c.signal.conf : 80) * 0.3;
-
-  // ── Final probability → direction ──
-  pUp = Math.max(35, Math.min(68, pUp));
-  out.pUp = pUp;
-  const pDown = 100 - pUp;
-  const dirUp = sigDir !== 'FALL' ? pUp > pDown : pUp >= pDown;
-  const favP = dirUp ? pUp : pDown;
-  out.action = dirUp ? 'RISE' : 'FALL';
-  const confGate = 58;
   out.score = Math.round(score);
-  out.rationale.push(`P(up)=${pUp.toFixed(0)}% P(down)=${pDown.toFixed(0)}% → ${out.action} | situational score ${out.score} (gate ${confGate})`);
-  if(favP < 52.5 || score < confGate){
-    out.rationale.push(favP < 52.5 ? 'edge too thin' : 'insufficient situational edge');
+  const confGate = 58;
+  out.rationale = out.rationale.concat(cog.narrative);
+  out.rationale.push(`P(up)=${pUp.toFixed(0)}% P(down)=${pDown.toFixed(0)}% hypothesis=${cog.topK} edge=${cog.edge.toFixed(1)} → ${action}${out.reversal?' (REVERSAL)':''}`);
+  out.rationale.push(`reasoning score ${out.score} (gate ${confGate})`);
+  if(score < confGate || favP < 52.5){
+    out.rationale.push(score < confGate ? 'insufficient reasoning edge' : 'edge too thin');
     return out;
   }
 
   // ── Confidence, duration, stake ──
-  let conf = Math.min(96, Math.round(favP * 0.75 + score * 0.25));
+  let conf = Math.min(96, Math.round(favP*0.7 + score*0.3));
   let dur = out.dur, unit = out.durUnit;
-  // Strong multi-timeframe trend → ride it longer (CFD-style, R_* only)
-  const alignedStrong = upTF >= 2 && r.trend === 'up' || dnTF >= 2 && r.trend === 'down';
-  if(cls.situations.indexOf('TREND_RIDE') !== -1 || (alignedStrong && r.strength >= 70)){
-    if(r.strength >= 75) conf = Math.min(96, conf + 2);
-    if(unit === 't') dur = Math.max(6, Math.min(10, dur));
-  }
-  if(cls.situations.indexOf('VELOCITY') !== -1 && Math.abs(r.drift) < 0.6 && unit === 't'){
-    dur = Math.max(1, Math.min(4, dur));
+  // Reversals are scalps — keep them short
+  if(out.reversal){ if(unit==='t') dur = Math.max(1, Math.min(5, dur)); else dur = Math.min(30, dur); }
+  // Strong continuation + MTF alignment → ride longer (R_* only)
+  if(!out.reversal && (cog.topK==='CU'||cog.topK==='CD') && (struct.state==='BULL'||struct.state==='BEAR')){
+    if(unit==='t') dur = Math.max(6, Math.min(10, dur));
   }
   if(typeof c.sym === 'string' && c.sym.startsWith('1HZ')){
     if(unit !== 't'){ dur = 5; unit = 't'; }
@@ -4278,9 +4442,11 @@ function brainBigDecide(c, cls){
   if(score >= 75) stakeFactor = 1.25;
   else if(score >= 68) stakeFactor = 1.1;
   else if(score <= 62) stakeFactor = 0.8;
+  if(out.reversal) stakeFactor *= 0.85;      // reversals are higher risk
   if(cls.situations.indexOf('DAMAGE') !== -1) stakeFactor *= 0.6;
   out.trade = true; out.conf = conf; out.dur = dur; out.durUnit = unit; out.stakeFactor = stakeFactor;
-  out.rationale.push(`${out.action} @ ${conf}% for ${dur}${unit} (stake x${stakeFactor})`);
+  out.action = action;
+  out.rationale.push(`${action} @ ${conf}% for ${dur}${unit} (stake x${stakeFactor})`);
   return out;
 }
 function brainLearn(signal, won){
