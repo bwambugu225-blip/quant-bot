@@ -3971,15 +3971,20 @@ function finishInsiderSignal(action, finalConf, src, sym, candles, liveBuf, tf, 
     reversal: deep.reversal ? 1 : 0,
     m1: deep.m1 ? deep.m1 + 'm1' : '',
     pUp: deep.pUp !== null ? Math.round(deep.pUp) : null,
+    pEmp: deep.pEmp ? 1 : 0,
+    calibK: deep.calibK !== null && deep.calibK !== undefined ? +deep.calibK.toFixed(2) : null,
+    autoCorr: deep.autoCorr !== null && deep.autoCorr !== undefined ? deep.autoCorr : null,
+    bias: deep.bias || null,
+    rangeFade: deep.rangeFade ? 1 : 0,
     expansion: regime ? +regime.expansion.toFixed(2) : 0,
     drift: regime ? +regime.drift.toFixed(2) : 0,
     adx: regime ? regime.adx : 0,
     vel: regime ? +regime.vel.toFixed(1) : 0,
     brain: deep.rationale.join(' • ')
   });
-  log(`[BRAIN] ${sym}: ${cls.label} → ${deep.action} ${deep.conf}% ${deep.dur}${deep.durUnit}${deep.reversal?' (REVERSAL)':''} | ${deep.rationale[deep.rationale.length-1]}`,'i');
+  log(`[BRAIN] ${sym}: ${cls.label} → ${deep.action} ${deep.conf}% ${deep.dur}${deep.durUnit}${deep.reversal?' (REVERSAL)':''}${deep.rangeFade?' [RANGE-FADE]':''}${deep.pEmp?' [EMP]':''} | ${deep.rationale[deep.rationale.length-1]}`,'i');
   return { action: deep.action, conf: deep.conf, src, dur: deep.dur, durUnit: deep.durUnit, evidence: ev,
-           brain: { situation: cls.label, rationale: deep.rationale, stakeFactor: deep.stakeFactor } };
+           brain: { situation: cls.label, rationale: deep.rationale, stakeFactor: deep.stakeFactor, pWin: deep.pWin, sym } };
 }
 
 // ============================================================
@@ -4130,6 +4135,149 @@ function brainStatsPrior(ctx){
   return out;
 }
 // ────────────────────────────────────────────────────────────
+// STATISTICAL CORE — empirical probabilities + calibration.
+// Synthetics replicate real markets and react to nothing external,
+// so the only real edge is MEASURED: every probability below is
+// estimated from the symbol's own imported OHLC and then corrected
+// against what actually happened. No hand-set weights.
+// ────────────────────────────────────────────────────────────
+// RSI series (simple average-gain, matches rsi()) for per-bar evaluation
+function rsiSeries(closes, p){
+  p = p || 14;
+  const out = new Array(closes.length).fill(null);
+  if(closes.length < p+1) return out;
+  for(let i=p;i<closes.length;i++){
+    let g=0,l=0;
+    for(let k=i-p+1;k<=i;k++){ const d=closes[k]-closes[k-1]; if(d>0) g+=d; else l-=d; }
+    const ag=g/p, al=l/p;
+    out[i] = al===0 ? 100 : 100-100/(1+ag/al);
+  }
+  return out;
+}
+// Lag-1 autocorrelation of log-returns → how the symbol's generator behaves.
+// Negative = mean-reverting (fade / hunt reversals), positive = momentum.
+function brainFingerprint(sym, closes){
+  const res = { autoCorr:0, bias:'neutral', strength:0, n:0 };
+  if(!closes || closes.length < 40) return res;
+  const rets = [];
+  for(let i=1;i<closes.length;i++) if(closes[i-1] > 0) rets.push(Math.log(closes[i]/closes[i-1]));
+  if(rets.length < 30) return res;
+  const m = rets.reduce((a,b)=>a+b,0)/rets.length;
+  let num=0, den=0;
+  for(let i=1;i<rets.length;i++){ num += (rets[i]-m)*(rets[i-1]-m); den += (rets[i-1]-m)*(rets[i-1]-m); }
+  const ac = den>0 ? num/den : 0;
+  res.autoCorr = +ac.toFixed(3);
+  res.n = rets.length;
+  res.bias = ac < -0.08 ? 'revert' : ac > 0.08 ? 'momentum' : 'neutral';
+  res.strength = Math.min(1, Math.abs(ac)*5);
+  if(G._symStats) G._symStats[sym] = { autoCorr:res.autoCorr, bias:res.bias, n:rets.length, at:Date.now() };
+  return res;
+}
+// Empirical model over the imported range: for every feature we measure
+// P(up-next | feature) from actual history and turn it into a log-odds lift.
+function buildEmpiricalModel(m1){
+  const model = { valid:false };
+  if(!m1 || m1.length < 60) return model;
+  const closes = m1.map(c=>c.close);
+  const ranges = m1.map(c=>Math.max(c.high-c.low,1e-9));
+  const rsis = rsiSeries(closes, 14);
+  const n = closes.length-1;
+  let ups=0;
+  for(let i=1;i<closes.length;i++) if(closes[i]>closes[i-1]) ups++;
+  const baseUp = n ? ups/n*100 : 50;
+  const baseOdds = Math.log(Math.max(1e-9, (baseUp/100)/(1-baseUp/100)));
+  const trailUp = i=>{ let k=0; for(let j=i;j>0&&j>i-5;j--){ if(closes[j]>closes[j-1]) k++; else break; } return k; };
+  const trailDn = i=>{ let k=0; for(let j=i;j>0&&j>i-5;j--){ if(closes[j]<closes[j-1]) k++; else break; } return k; };
+  const rangePos = i=>{ const s=Math.max(0,i-40); let lo=Infinity,hi=-Infinity; for(let j=s;j<=i;j++){ if(closes[j]<lo)lo=closes[j]; if(closes[j]>hi)hi=closes[j]; } return hi>lo ? (closes[i]-lo)/(hi-lo)*100 : 50; };
+  const volPct = i=>{ const s=Math.max(0,i-40); const w=ranges.slice(s,i+1).slice().sort((a,b)=>a-b); return w.length ? (w.findIndex(v=>v>=ranges[i])/w.length)*100 : 50; };
+  const zAt = i=>{ const s=Math.max(0,i-20); let mm=0; for(let j=s;j<=i;j++) mm+=closes[j]; mm/=(i-s+1); let vv=0; for(let j=s;j<=i;j++) vv+=(closes[j]-mm)**2; vv=Math.sqrt(vv/(i-s+1)); return vv>0 ? (closes[i]-mm)/vv : 0; };
+  const feats = [];
+  const cur = closes.length-1;
+  const add = (name, fn)=>{
+    const arr = new Array(closes.length).fill(false);
+    let yes=0, up=0;
+    for(let i=30;i<closes.length-1;i++){
+      if(fn(i)){ arr[i]=true; yes++; if(closes[i+1]>closes[i]) up++; }
+    }
+    arr[cur] = fn(cur);   // mark current bar (no outcome counted for it)
+    const pct = yes>=8 ? up/yes*100 : null;
+    const lift = pct!==null ? Math.log(Math.max(1e-9,(pct/100)/(baseUp/100))) : 0;
+    feats.push({ name, arr, pct, n:yes, lift });
+  };
+  add('LAST_UP', i=>closes[i]>closes[i-1]);
+  let curSig = '';
+  for(let i=cur-2;i<=cur;i++) curSig += (closes[i]>closes[i-1]?'1':'0');
+  add('SIG_'+curSig, i=>{ let s=''; for(let j=i-2;j<=i;j++) s+=(closes[j]>closes[j-1]?'1':'0'); return s===curSig; });
+  add('STREAK_UP_3', i=>trailUp(i)>=3);
+  add('STREAK_DN_3', i=>trailDn(i)>=3);
+  add('POS_HIGH', i=>rangePos(i)>=75);
+  add('POS_LOW', i=>rangePos(i)<=25);
+  add('RSI_OB', i=>rsis[i]!==null && rsis[i]>70);
+  add('RSI_OS', i=>rsis[i]!==null && rsis[i]<30);
+  add('VOL_HIGH', i=>volPct(i)>=75);
+  add('VOL_LOW', i=>volPct(i)<=25);
+  add('Z_HIGH', i=>zAt(i)>=1.8);
+  add('Z_LOW', i=>zAt(i)<=-1.8);
+  return { valid:true, n, closes, rsis, baseUp, baseOdds, feats, k:1, cur };
+}
+// Cached per-symbol model (rebuild on new data or every 60s)
+function empiricalModel(sym, m1){
+  if(!G._empModel) G._empModel = {};
+  const len = m1 ? m1.length : 0;
+  const cached = G._empModel[sym];
+  if(cached && cached.len === len && Date.now()-cached.at < 60000) return cached;
+  const model = buildEmpiricalModel(m1);
+  model.len = len; model.at = Date.now();
+  if(model.valid){
+    const prev = G._calib2 && G._calib2[sym];
+    model.k = (prev && prev.valid) ? prev.k : 1;
+    model.dirty = true;
+    if(!prev || Date.now()-prev.at > 120000) brainCalibrate(sym, m1, model);
+    else model.dirty = false;
+  }
+  G._empModel[sym] = model;
+  return model;
+}
+// Predicted P(up) at bar i from the model (lifts × calibration k)
+function estimatePUp(model, i){
+  let s = 0;
+  for(const f of model.feats){ if(f.arr[i]) s += f.lift * model.k; }
+  return 100/(1+Math.exp(-(model.baseOdds + s)));
+}
+// Walk the imported range: compare predicted vs actual win rate per probability
+// bucket, then fix over/under-confidence via a slope correction factor k.
+function brainCalibrate(sym, m1, model){
+  if(!G._calib2) G._calib2 = {};
+  if(!model || !model.valid) return;
+  const closes = model.closes;
+  const buckets = {};
+  let nPts=0, sumX=0, sumY=0, sumXY=0, sumXX=0;
+  for(let i=50;i<closes.length-1;i++){
+    const p = estimatePUp(model, i);
+    const up = closes[i+1]>closes[i] ? 100 : 0;
+    nPts++; sumX+=p; sumY+=up; sumXY+=p*up; sumXX+=p*p;
+    const b = p<46?'<46':p<52?'46-52':p<58?'52-58':'58+';
+    if(!buckets[b]) buckets[b] = { n:0, up:0 };
+    buckets[b].n++; if(up===100) buckets[b].up++;
+  }
+  let k = 1;
+  if(nPts>20){
+    const meanX=sumX/nPts, meanY=sumY/nPts;
+    const den = sumXX - nPts*meanX*meanX;
+    k = den>1e-9 ? (sumXY - nPts*meanX*meanY)/den : 1;
+    k = Math.max(0.5, Math.min(1.5, k));
+  }
+  const table = Object.keys(buckets).sort().map(b=>({ bucket:b, n:buckets[b].n, wr: buckets[b].n ? +(buckets[b].up/buckets[b].n*100).toFixed(0) : 0 }));
+  G._calib2[sym] = { k, table, at:Date.now(), n:nPts, valid:nPts>=20 };
+  model.k = k; model.dirty = false;
+  const prevK = model._lastK;
+  if(prevK===undefined || Math.abs(prevK-k)>0.02){
+    model._lastK = k;
+    log(`[CALIB] ${sym}: correction k=${k.toFixed(2)} (${nPts} bars) | ` + table.map(t=>`${t.bucket}:${t.wr}%(${t.n})`).join(' '),'i');
+  }
+}
+
+// ────────────────────────────────────────────────────────────
 // REASONING MODULES — market structure, price action, reversals
 // ────────────────────────────────────────────────────────────
 function swingPoints(arr, left, right){
@@ -4265,7 +4413,7 @@ function reversionPrior(arr){
 }
 // ── THE REASONING CORE — forms hypotheses, weighs evidence, checks the counter-case ──
 // Hypotheses: CU=continue up, CD=continue down, RU=reverse to up, RD=reverse to down, RANGE.
-function cogReason(ctx, struct, zones, pa, div, rv, prior, mtf, regime, signal, r14, z){
+function cogReason(ctx, struct, zones, pa, div, rv, prior, mtf, regime, signal, r14, z, fp){
   const H = { CU:0, CD:0, RU:0, RD:0, RANGE:0 };
   const we = (k,v)=>{ H[k]+=v; };
   const narrative = [];
@@ -4324,6 +4472,12 @@ function cogReason(ctx, struct, zones, pa, div, rv, prior, mtf, regime, signal, 
     if(signal.action==='RISE') we('CU',1); else we('CD',1);
   }
 
+  if(fp){
+    n(`fingerprint: autoCorr ${fp.autoCorr} → ${fp.bias}`);
+    if(fp.bias==='revert') n('mean-reverting generator — fading streaks favored');
+    if(fp.bias==='momentum') n('momentum generator — continuation favored');
+  }
+
   // ── Decide the dominant hypothesis ──
   const entries = Object.entries(H).sort((a,b)=>b[1]-a[1]);
   const topK = entries[0][0], topV = entries[0][1];
@@ -4366,20 +4520,39 @@ function brainBigDecide(c, cls){
   if(cls.situations.indexOf('CONFLICT') !== -1){ out.rationale.push('signal fights the regime — skip'); return out; }
 
   // ── Reason ──
-  const cog = cogReason(ctx, struct, zones, pa, div, rv, prior, mtf, r, c.signal, r14, z);
-
-  // Base probability from full-range statistics
-  let pUp = prior.upPct !== null ? prior.upPct : 50;
-  // Push probability toward the reasoned direction
+  const fp = brainFingerprint(c.sym, closes);
+  const cog = cogReason(ctx, struct, zones, pa, div, rv, prior, mtf, r, c.signal, r14, z, fp);
   const revFav = cog.reversal === 'RU' || cog.reversal === 'RD';
   out.reversal = revFav && cog.confirmReversal;
-  if(cog.topK === 'CU'){ pUp += 8; }
-  else if(cog.topK === 'CD'){ pUp -= 8; }
-  else if(cog.topK === 'RU'){ pUp += 10; }
-  else if(cog.topK === 'RD'){ pUp -= 10; }
-  else { /* RANGE */ }
-  if(revFav){ if(cog.reversal==='RU') pUp += 4; else pUp -= 4; }
-  pUp = Math.max(35, Math.min(68, pUp));
+
+  // ── Empirical probability model (measured, not guessed) ──
+  let emp = null;
+  const model = empiricalModel(c.sym, ctx.m1);
+  if(model && model.valid){
+    const est = estimatePUp(model, model.cur);
+    if(isFinite(est) && est > 0){
+      emp = { pUp: est, active: model.feats.filter(f=>f.arr[model.cur] && f.pct!==null) };
+      if(model.dirty) brainCalibrate(c.sym, ctx.m1, model);
+    }
+  }
+
+  // ── Decision probability ──
+  let pUp;
+  if(emp){
+    pUp = emp.pUp;
+    out.pEmp = true;
+  } else {
+    out.pEmp = false;
+    pUp = prior.upPct !== null ? prior.upPct : 50;
+    // heuristic fallback while imported history is still thin
+    if(cog.topK === 'CU'){ pUp += 8; }
+    else if(cog.topK === 'CD'){ pUp -= 8; }
+    else if(cog.topK === 'RU'){ pUp += 10; }
+    else if(cog.topK === 'RD'){ pUp -= 10; }
+    else { /* RANGE */ }
+    if(revFav){ if(cog.reversal==='RU') pUp += 4; else pUp -= 4; }
+    pUp = Math.max(35, Math.min(68, pUp));
+  }
   out.pUp = pUp;
   const pDown = 100 - pUp;
 
@@ -4389,17 +4562,36 @@ function brainBigDecide(c, cls){
   else if(cog.topK === 'RD') action = 'FALL';
   else if(cog.topK === 'CU') action = 'RISE';
   else if(cog.topK === 'CD') action = 'FALL';
-  else { out.rationale.push('market is in a range — no clean edge');
-         out.rationale = out.rationale.concat(cog.narrative.slice(0,6)); return out; }
+  else {
+    // Range structure gives no trend read — the only edge left is the
+    // empirical washout/reversion signal (measured, not guessed).
+    if(!emp){
+      out.rationale.push('market is in a range — no clean edge');
+      out.rationale = out.rationale.concat(cog.narrative.slice(0,6)); return out;
+    }
+    action = pUp >= 50 ? 'RISE' : 'FALL';
+    out.rangeFade = true;
+  }
 
-  // Never take a reversal without confirmation
-  if(revFav && !cog.confirmReversal){
+  // Never take a structural reversal without confirmation.
+  // Range-fades are exempt: their confirmation IS the empirical signal
+  // (measured P after the extreme) plus the extra gate margin below.
+  if(revFav && cog.topK !== 'RANGE' && !cog.confirmReversal){
     out.rationale.push('reversal hypothesis detected but no confirmation candle/divergence — skip');
     out.rationale = out.rationale.concat(cog.narrative.slice(0,6)); return out;
   }
 
-  // ── Score: reasoning edge + statistical prior + session + learned ──
-  const favP = action==='RISE' ? pUp : pDown;
+  // ── Break-even + margin gating (measured probability) ──
+  const payout = 0.8;
+  const BE = 100/(1+payout);                     // 55.6% — the true cost of the game
+  let favP = action==='RISE' ? pUp : pDown;
+  let gate = BE + 2;
+  if(out.reversal) gate += 4;                    // reversals need more proof
+  if(out.rangeFade) gate += 1;                   // no structural read — extra evidence
+  if(fp && fp.bias==='revert') gate -= 0.5;      // mean-reverting generator fades naturally
+  const EV = favP/100*(1+payout) - 1;
+
+  // ── Score: reasoning edge + session + learned (sizing, not gating) ──
   let score = cog.edge * 7;
   if(out.reversal && cog.reversal) score += (cog.reversal==='RU' ? cog.revUp : cog.revDn) * 3;
   if(favP >= 55) score += 15;
@@ -4409,25 +4601,36 @@ function brainBigDecide(c, cls){
   if(cls.situations.indexOf('HOT') !== -1) score += 6;
   if(cls.situations.indexOf('DAMAGE') !== -1) score -= c.consLoss*5;
   score += (c.signal ? c.signal.conf : 80) * 0.2;
-  const sStat = c.brain.situations ? c.brain.situations[cls.label] : null;
+  const symStat = c.brain.syms && c.brain.syms[c.sym] ? c.brain.syms[c.sym][cls.label] : null;
+  const sStat = symStat || (c.brain.situations ? c.brain.situations[cls.label] : null);
   if(sStat && sStat.total >= 8){
     const wr = sStat.wins/sStat.total;
     if(wr < 0.40){ out.rationale.push(`learned "${cls.label}" wins ${(wr*100).toFixed(0)}% — skip`); return out; }
     if(wr > 0.62) score += 10;
   }
   out.score = Math.round(score);
-  const confGate = 58;
   out.rationale = out.rationale.concat(cog.narrative);
-  out.rationale.push(`P(up)=${pUp.toFixed(0)}% P(down)=${pDown.toFixed(0)}% hypothesis=${cog.topK} edge=${cog.edge.toFixed(1)} → ${action}${out.reversal?' (REVERSAL)':''}`);
-  out.rationale.push(`reasoning score ${out.score} (gate ${confGate})`);
-  if(score < confGate || favP < 52.5){
-    out.rationale.push(score < confGate ? 'insufficient reasoning edge' : 'edge too thin');
+  if(emp){
+    const det = emp.active.map(f=>`${f.name}:${f.pct!==null?f.pct.toFixed(0)+'%':'-'}`).join(' ');
+    out.rationale.push(`empirical P(up)=${pUp.toFixed(0)}% base=${model.baseUp.toFixed(0)}% k=${model.k.toFixed(2)} [${det}]`);
+  } else {
+    out.rationale.push(`P(up)=${pUp.toFixed(0)}% (heuristic fallback)`);
+  }
+  // A range-fade needs the data behind it — no feature, no fade
+  if(out.rangeFade && (!emp || emp.active.length < 2)){
+    out.rationale.push('range-fade without sufficient empirical features — skip');
     return out;
   }
+  out.rationale.push(`hypothesis=${cog.topK} edge=${cog.edge.toFixed(1)} → ${action}${out.reversal?' (REVERSAL)':''} EV=${(EV*100).toFixed(1)}% gate=${gate.toFixed(1)}%`);
+  if(favP < gate){
+    out.rationale.push(emp ? `measured ${favP.toFixed(1)}% < break-even+margin (${gate.toFixed(1)}%) — no statistical edge` : 'edge too thin');
+    return out;
+  }
+  if(score < 40){ out.rationale.push('weak reasoning score'); return out; }
 
   // ── Confidence, duration, stake ──
-  let conf = Math.min(96, Math.round(favP*0.7 + score*0.3));
-  let dur = out.dur, unit = out.durUnit;
+  let conf = Math.min(96, Math.max(53, Math.round(favP)));   // honest measured probability
+  let dur = out.dur || 5, unit = out.durUnit || 't';
   // Reversals are scalps — keep them short
   if(out.reversal){ if(unit==='t') dur = Math.max(1, Math.min(5, dur)); else dur = Math.min(30, dur); }
   // Strong continuation + MTF alignment → ride longer (R_* only)
@@ -4446,7 +4649,11 @@ function brainBigDecide(c, cls){
   if(cls.situations.indexOf('DAMAGE') !== -1) stakeFactor *= 0.6;
   out.trade = true; out.conf = conf; out.dur = dur; out.durUnit = unit; out.stakeFactor = stakeFactor;
   out.action = action;
-  out.rationale.push(`${action} @ ${conf}% for ${dur}${unit} (stake x${stakeFactor})`);
+  out.pWin = favP/100;
+  out.autoCorr = fp ? fp.autoCorr : null;
+  out.bias = fp ? fp.bias : null;
+  out.calibK = (emp && model.valid) ? model.k : null;
+  out.rationale.push(`${action} @ ${conf}% for ${dur}${unit} (stake x${stakeFactor}) EV=${(EV*100).toFixed(1)}%`);
   return out;
 }
 function brainLearn(signal, won){
@@ -4459,6 +4666,13 @@ function brainLearn(signal, won){
   const s = G._brainStats.situations[key];
   s.total++;
   if(won) s.wins++; else s.losses++;
+  if(b.sym){
+    if(!G._brainStats.syms) G._brainStats.syms = {};
+    if(!G._brainStats.syms[b.sym]) G._brainStats.syms[b.sym] = {};
+    if(!G._brainStats.syms[b.sym][key]) G._brainStats.syms[b.sym][key] = { wins:0, losses:0, total:0 };
+    const ss = G._brainStats.syms[b.sym][key];
+    ss.total++; if(won) ss.wins++; else ss.losses++;
+  }
   if(s.total === 8 || s.total % 25 === 0){
     log(`[BRAIN-L] "${key}" → ${(s.wins/s.total*100).toFixed(0)}% (${s.wins}/${s.total})`,'i');
   }
@@ -4530,7 +4744,7 @@ function execTrade(signal, asset){
   // ── Kelly Criterion sizing (non-martingale, non-copy) ──
   if(!Martingale.enabled && !signal.copyStake && signal.conf){
     const recentWR = G.TRADE_HISTORY.length >= 10 ? G.TRADE_HISTORY.slice(-10).filter(t=>t.won).length / 10 : 0.5;
-    const pWin = Math.min(0.95, Math.max(0.5, (signal.conf/100 * 0.7 + recentWR * 0.3)));
+    const pWin = (signal.brain && signal.brain.pWin) ? signal.brain.pWin : Math.min(0.95, Math.max(0.5, (signal.conf/100 * 0.7 + recentWR * 0.3)));
     const kellyFrac = calcKelly(pWin, 0.8);
     const baseStake = parseFloat(document.getElementById('rfStake')?.value||1);
     const kellyStake = +(baseStake * Math.min(4, kellyFrac * 5)).toFixed(2);
