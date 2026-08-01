@@ -3871,9 +3871,12 @@ function evaluateAndTrade(sym, liveBuf){
   const c = G.MARKET.candles[sym];
   if(!c || c.length < 10) return;
 
-  // Warm-up: skip the first candle close after Start so analysis runs on a fresh live candle
+  // Warm-up: skip the first candle close after a cold Start so analysis runs on a
+  // fresh live candle — but ONLY if there's no imported/accumulated history yet.
   G._warmup = G._warmup || {};
-  if(!G._warmup[sym]){ G._warmup[sym] = true; return; }
+  const haveHistory = (c && c.length) >= 30;
+  if(!G._warmup[sym] && !haveHistory){ G._warmup[sym] = true; return; }
+  if(G._warmup[sym] && haveHistory) delete G._warmup[sym];
 
   // Visible readout so you can SEE the analysis on every candle close
   const tf = G.TF_SELECTED || '5s';
@@ -3955,24 +3958,26 @@ function finishInsiderSignal(action, finalConf, src, sym, candles, liveBuf, tf, 
   const ctx = brainAssess(sym, candles, liveBuf, tf, baseSignal, regime);
   const cls = brainClassifySituation(ctx);
   if(regime) updateRegimeBadge(regime, cls.label);
-  const dec = brainDecide(ctx, cls);
-  if(!dec.trade){
-    const why = dec.rationale[dec.rationale.length-1] || 'low situational edge';
+  const deep = brainBigDecide(ctx, cls);
+  if(!deep.trade){
+    const why = deep.rationale[deep.rationale.length-1] || 'low situational edge';
     log(`[BRAIN] ${sym}: ${cls.label} → STAND DOWN — ${why}`,'w');
     return null;
   }
   const ev = Object.assign({}, extra, {
     regime: regime ? regime.type : '?',
     situation: cls.label,
+    m1: deep.m1 ? deep.m1 + 'm1' : '',
+    pUp: deep.pUp !== null ? Math.round(deep.pUp) : null,
     expansion: regime ? +regime.expansion.toFixed(2) : 0,
     drift: regime ? +regime.drift.toFixed(2) : 0,
     adx: regime ? regime.adx : 0,
     vel: regime ? +regime.vel.toFixed(1) : 0,
-    brain: dec.rationale.join(' • ')
+    brain: deep.rationale.join(' • ')
   });
-  log(`[BRAIN] ${sym}: ${cls.label} → ${dec.action} ${dec.conf}% ${dec.dur}${dec.durUnit} | ${dec.rationale[dec.rationale.length-1]}`,'i');
-  return { action: dec.action, conf: dec.conf, src, dur: dec.dur, durUnit: dec.durUnit, evidence: ev,
-           brain: { situation: cls.label, rationale: dec.rationale, stakeFactor: dec.stakeFactor } };
+  log(`[BRAIN] ${sym}: ${cls.label} → ${deep.action} ${deep.conf}% ${deep.dur}${deep.durUnit} | ${deep.rationale[deep.rationale.length-1]}`,'i');
+  return { action: deep.action, conf: deep.conf, src, dur: deep.dur, durUnit: deep.durUnit, evidence: ev,
+           brain: { situation: cls.label, rationale: deep.rationale, stakeFactor: deep.stakeFactor } };
 }
 
 // ============================================================
@@ -3991,7 +3996,7 @@ function brainAssess(sym, candles, liveBuf, tf, signal, regime){
   const stat = G.STRATEGY_STATS ? G.STRATEGY_STATS[signal ? signal.src : ''] : null;
   const stratWR = stat && stat.total >= 5 ? stat.wins / stat.total : null;
   return {
-    sym, tf, regime, signal, z, rsi14,
+    sym, tf, regime, signal, z, rsi14, candles, liveBuf,
     velocity: regime ? regime.vel : 0,
     consLoss: G.CONS_LOSS || 0,
     sessionWR, stratWR,
@@ -4037,11 +4042,126 @@ function brainClassifySituation(c){
   out.label = out.situations.length ? out.situations.join('+') : 'NEUTRAL';
   return out;
 }
-function brainDecide(c, cls){
+// ── DEEP CONTEXT — pull the FULL imported OHLC range, all timeframes ──
+function brainContext(sym, candles, liveBuf, tf){
+  const TFs = {};
+  for(const tk of G.TF_LIST){
+    const cfg = G.TF[tk];
+    if(!cfg || !cfg.candles) continue;
+    const arr = cfg.candles[sym] || [];
+    if(arr && arr.length >= 3) TFs[tk] = arr;
+  }
+  // Deepest history: imported 1m OHLC cache, else whatever 1m/selected TF holds
+  const m1 = (G.MARKET.candles1m && G.MARKET.candles1m[sym] && G.MARKET.candles1m[sym].length >= 3)
+           ? G.MARKET.candles1m[sym] : (TFs['1m'] || null);
+  return {
+    sym, tf, TFs, m1,
+    candles: candles || TFs[tf] || null,
+    liveBuf,
+    liveT: (G.MARKET.liveT && G.MARKET.liveT[sym]) || null,
+    lastPrice: (G.MARKET.lastPrice && G.MARKET.lastPrice[sym]) || null
+  };
+}
+// Multi-timeframe synthesis over every imported timeframe: slope, ADX, ROC, vol percentile
+function brainMTF(ctx){
+  const out = [];
+  for(const tk of Object.keys(ctx.TFs || {})){
+    const arr = ctx.TFs[tk];
+    if(!arr || arr.length < 20) continue;
+    const closes = arr.map(c => c.close);
+    const n = closes.length;
+    const win = Math.min(40, n);
+    const sl = closes.slice(-win);
+    const ym = sl.reduce((a,b)=>a+b,0) / win;
+    let num = 0, den = 0;
+    for(let i=0;i<win;i++){ const dx=i-(win-1)/2, dy=sl[i]-ym; num+=dx*dy; den+=dx*dx; }
+    const slopePct = den ? (num/den) / (ym || 1) * 100 : 0;
+    const adx = calcADX(arr, Math.max(6, Math.min(14, Math.floor(arr.length/2))));
+    const roc = n > 10 ? ((closes[n-1]-closes[n-11])/(closes[n-11]||1))*100 : 0;
+    const ranges = arr.map(c => Math.max(c.high - c.low, 1e-9));
+    const curR = ranges[ranges.length-1];
+    const sorted = ranges.slice().sort((a,b)=>a-b);
+    const volPct = sorted.length ? (sorted.findIndex(v => v >= curR) / sorted.length) * 100 : 50;
+    out.push({ tf: tk, slopePct, adx: adx ? adx.strength : 0, trend: adx ? adx.trend : null, roc, volPct, count: n });
+  }
+  const TF_SECS = { '5s':5, '15s':15, '30s':30, '1m':60 };
+  out.sort((a,b) => (TF_SECS[a.tf]||0) - (TF_SECS[b.tf]||0));
+  return out;
+}
+// Data-driven priors computed from the full imported range (not hand-coded):
+// base up-rate, last-3-candle signature follow-through, RSI-bucket follow-through.
+function brainStatsPrior(ctx){
+  const out = { n:0, upPct:null, sigFollowUp:null, sigCount:0, bucketFollowUp:null, bucketCount:0 };
+  const m1 = ctx.m1;
+  if(!m1 || m1.length < 40) return out;
+  const closes = m1.map(c => c.close);
+  const n = closes.length - 1;
+  out.n = n;
+  let ups = 0;
+  for(let i=1;i<closes.length;i++) if(closes[i] > closes[i-1]) ups++;
+  out.upPct = n ? (ups/n)*100 : null;
+  // Current signature = direction of last 3 m1 closes
+  let sig = '';
+  for(let i=closes.length-3;i<closes.length;i++) sig += (closes[i] > closes[i-1] ? '1' : '0');
+  let same = 0, upNext = 0;
+  for(let i=3;i<closes.length-1;i++){
+    let s = '';
+    for(let j=0;j<3;j++) s += (closes[i-2+j] > closes[i-3+j] ? '1' : '0');
+    if(s === sig){ same++; if(closes[i+1] > closes[i]) upNext++; }
+  }
+  out.sigFollowUp = same >= 6 ? (upNext/same)*100 : null;
+  out.sigCount = same;
+  // RSI-bucket follow-through over the full range
+  const r14 = rsi(closes, 14);
+  if(r14 !== null){
+    const bucket = r14 < 35 ? 'OS' : r14 < 45 ? 'WK' : r14 < 55 ? 'MD' : r14 < 65 ? 'ST' : 'OB';
+    let bs = 0, bu = 0;
+    for(let i=15;i<closes.length-1;i++){
+      const rr = rsi(closes.slice(0, i+1), 14);
+      if(rr === null) continue;
+      const bb = rr < 35 ? 'OS' : rr < 45 ? 'WK' : rr < 55 ? 'MD' : rr < 65 ? 'ST' : 'OB';
+      if(bb === bucket){ bs++; if(closes[i+1] > closes[i]) bu++; }
+    }
+    out.bucketFollowUp = bs >= 10 ? (bu/bs)*100 : null;
+    out.bucketCount = bs;
+  }
+  return out;
+}
+// Structural levels across the full range: swing S/R proximity, position in range
+function brainStructure(ctx){
+  const arr = (ctx.m1 && ctx.m1.length >= 30) ? ctx.m1 : ctx.candles;
+  if(!arr || arr.length < 30) return { nearSupportPct: null, nearResistPct: null, rangePos: 50 };
+  const highs = arr.map(c => c.high), lows = arr.map(c => c.low);
+  const hi = Math.max.apply(null, highs), lo = Math.min.apply(null, lows);
+  const last = arr[arr.length-1].close;
+  const rangePos = hi > lo ? ((last - lo) / (hi - lo)) * 100 : 50;
+  let nearS = null, nearR = null;
+  for(let i=2;i<arr.length-2;i++){
+    if(highs[i] >= highs[i-1] && highs[i] >= highs[i-2] && highs[i] >= highs[i+1] && highs[i] >= highs[i+2]){
+      if(highs[i] > last){ const d = (highs[i]-last)/last*100; if(nearR===null || d<nearR.d) nearR = { d, p: highs[i] }; }
+    }
+    if(lows[i] <= lows[i-1] && lows[i] <= lows[i-2] && lows[i] <= lows[i+1] && lows[i] <= lows[i+2]){
+      if(lows[i] < last){ const d = (last-lows[i])/last*100; if(nearS===null || d<nearS.d) nearS = { d, p: lows[i] }; }
+    }
+  }
+  return { nearSupportPct: nearS ? +nearS.d.toFixed(2) : null, nearResistPct: nearR ? +nearR.d.toFixed(2) : null, rangePos: +rangePos.toFixed(0) };
+}
+// THE BIG DECISION ENGINE — fuses full-range stats, multi-timeframe alignment,
+// the strategy signal, the regime, session state and learned memory into one
+// directional probability + situational verdict.
+function brainBigDecide(c, cls){
   const out = { trade:false, action:c.signal?c.signal.action:'RISE', conf:c.signal?c.signal.conf:80,
                 dur:c.signal?c.signal.dur:5, durUnit:c.signal?c.signal.durUnit:'t',
-                stakeFactor:1, rationale:[], situation:cls.label, score:0 };
+                stakeFactor:1, rationale:[], situation:cls.label, score:0, pUp:null, m1:0 };
   const r = c.regime;
+  const ctx = brainContext(c.sym, c.candles, c.liveBuf, c.tf);
+  const mtf = brainMTF(ctx);
+  const prior = brainStatsPrior(ctx);
+  const struct = brainStructure(ctx);
+  out.m1 = ctx.m1 ? ctx.m1.length : 0;
+  const sigDir = c.signal ? c.signal.action : null;
+
+  // ── Hard safety rules (unchanged discipline) ──
   if(c.inClusterPause){ out.rationale.push('cluster pause — stand down'); return out; }
   if(!r){
     if(c.consLoss >= 3){ out.rationale.push(c.consLoss+' losses in a row — cool off'); return out; }
@@ -4055,34 +4175,96 @@ function brainDecide(c, cls){
   if(cls.situations.indexOf('DEAD') !== -1){ out.rationale.push('dead tape (cold vol) — stand down'); return out; }
   if(cls.situations.indexOf('DAMAGE') !== -1 && c.consLoss >= 3){ out.rationale.push(c.consLoss+' losses in a row — cool off'); return out; }
   if(cls.situations.indexOf('CONFLICT') !== -1){ out.rationale.push('signal fights the regime — skip'); return out; }
-  const sStat = c.brain.situations ? c.brain.situations[cls.label] : null;
+
+  // ── Directional probability from ALL evidence ──
+  let pUp = prior.upPct !== null ? prior.upPct : 50;          // base rate from full range
   let score = 0;
+  out.rationale.push(`base rate P(up)=${pUp.toFixed(0)}% over ${prior.n||'?'} m1 bars`);
+
+  // MTF alignment: count aligned timeframes
+  let upTF = 0, dnTF = 0;
+  for(const m of mtf){
+    const aligned = m.slopePct > 0.002;
+    if(aligned){ upTF++; if(r.trend === 'up') pUp += 2.2; if(r.trend === 'down') pUp -= 1.5; }
+    else { dnTF++; if(r.trend === 'down') pUp -= 2.2; if(r.trend === 'up') pUp += 1.5; }
+  }
+  out.rationale.push(`mtf ${upTF}up/${dnTF}dn across ${mtf.length} timeframes`);
+
+  // Regime trend
+  if(r.trend === 'up'){ pUp += r.strength * 0.22; score += 14 + r.strength*0.12; }
+  else if(r.trend === 'down'){ pUp -= r.strength * 0.22; score += 14 + r.strength*0.12; }
+
+  // Signal alignment
+  if(sigDir === 'RISE'){ pUp += (c.signal.conf-70)*0.45; if(r.trend!=='down') score += 10; }
+  else if(sigDir === 'FALL'){ pUp -= (c.signal.conf-70)*0.45; if(r.trend!=='up') score += 10; }
+
+  // Statistical follow-through priors
+  if(prior.sigFollowUp !== null){
+    out.rationale.push(`pattern follow-through ${prior.sigFollowUp.toFixed(0)}% (n=${prior.sigCount})`);
+    pUp = pUp*0.6 + prior.sigFollowUp*0.4;
+  }
+  if(prior.bucketFollowUp !== null){
+    const bUp = prior.bucketFollowUp;
+    const bFav = (bUp>=52 && sigDir==='RISE') || (bUp<=48 && sigDir==='FALL');
+    out.rationale.push(`rsi-bucket follow-through ${bUp.toFixed(0)}% (n=${prior.bucketCount}) ${bFav?'':'— against us'}`);
+    if(bFav){ pUp = pUp*0.7 + bUp*0.3; score += 8; }
+    else { pUp = pUp*0.7 + (100-bUp)*0.3; score -= 6; }
+  }
+
+  // Structure: price near resistance while we want RISE, or near support while FALL → penalize
+  if(struct.nearResistPct !== null && struct.nearResistPct < 0.25 && sigDir === 'RISE'){
+    pUp -= 8; score -= 14; out.rationale.push(`price <0.25% under swing resistance — RISE capped`);
+  }
+  if(struct.nearSupportPct !== null && struct.nearSupportPct < 0.25 && sigDir === 'FALL'){
+    pUp += 8; score -= 14; out.rationale.push(`price <0.25% above swing support — FALL capped`);
+  }
+  // Position in full range
+  if(struct.rangePos > 82){ pUp -= 5; out.rationale.push(`price at ${struct.rangePos}% of range — stretched high`); }
+  else if(struct.rangePos < 18){ pUp += 5; out.rationale.push(`price at ${struct.rangePos}% of range — washed out`); }
+
+  // Exhaustion / extension penalties
+  if(cls.situations.indexOf('EXTENSION_UP') !== -1 && sigDir === 'RISE'){ pUp -= 7; score -= 12; }
+  if(cls.situations.indexOf('EXTENSION_DOWN') !== -1 && sigDir === 'FALL'){ pUp += 7; score -= 12; }
+  if(cls.situations.indexOf('EXHAUSTION') !== -1) score -= 8;
+  if(cls.situations.indexOf('CHOP') !== -1) score -= 26;
+  if(cls.situations.indexOf('HOT') !== -1) score += 8;
+  if(cls.situations.indexOf('DAMAGE') !== -1) score -= c.consLoss*6;
+  if(cls.situations.indexOf('VELOCITY') !== -1 && (r.trend==='up'||r.trend==='down')) score += 10;
+
+  // Learned situation performance
+  const sStat = c.brain.situations ? c.brain.situations[cls.label] : null;
   if(sStat && sStat.total >= 8){
-    const wr = sStat.wins / sStat.total;
+    const wr = sStat.wins/sStat.total;
     if(wr < 0.40){ out.rationale.push(`learned "${cls.label}" wins ${(wr*100).toFixed(0)}% — skip`); return out; }
     if(wr > 0.62){ score += 12; out.rationale.push(`learned edge: "${cls.label}" wins ${(wr*100).toFixed(0)}%`); }
   }
-  if(cls.situations.indexOf('TREND_RIDE') !== -1){ score += 30 + Math.min(15, r.strength * 0.15); }
-  if(cls.situations.indexOf('DRIFT') !== -1){ score += 15 + Math.min(10, r.strength * 0.10); }
-  if(cls.situations.indexOf('HOT') !== -1) score += 8;
-  if(cls.situations.indexOf('VELOCITY') !== -1 && (r.trend === 'up' || r.trend === 'down')) score += 10;
-  if(cls.situations.indexOf('CHOP') !== -1) score -= 30;
-  if(cls.situations.indexOf('EXTENSION_UP') !== -1 && c.signal && c.signal.action === 'RISE') score -= 18;
-  if(cls.situations.indexOf('EXTENSION_DOWN') !== -1 && c.signal && c.signal.action === 'FALL') score -= 18;
-  if(cls.situations.indexOf('EXHAUSTION') !== -1) score -= 12;
-  if(cls.situations.indexOf('DAMAGE') !== -1) score -= c.consLoss * 6;
-  if(c.sessionWR !== null && c.sessionWR < 0.45 && c.sessionCount >= 8) score -= 10;
-  if(c.stratWR !== null && c.stratWR < 0.45) score -= 10;
-  if(c.stratWR !== null && c.stratWR > 0.62) score += 8;
+  // Strategy + session context
+  if(c.stratWR !== null){ score += (c.stratWR - 0.5) * 40; }
+  if(c.sessionWR !== null && c.sessionCount >= 8){ score += (c.sessionWR - 0.5) * 30; }
   score += (c.signal ? c.signal.conf : 80) * 0.3;
+
+  // ── Final probability → direction ──
+  pUp = Math.max(35, Math.min(68, pUp));
+  out.pUp = pUp;
+  const pDown = 100 - pUp;
+  const dirUp = sigDir !== 'FALL' ? pUp > pDown : pUp >= pDown;
+  const favP = dirUp ? pUp : pDown;
+  out.action = dirUp ? 'RISE' : 'FALL';
   const confGate = 58;
   out.score = Math.round(score);
-  out.rationale.push(`situational score ${out.score} (gate ${confGate})`);
-  if(score < confGate){ out.rationale.push('insufficient situational edge'); return out; }
-  let conf = Math.min(96, Math.round((c.signal ? c.signal.conf : 80) * 0.75 + score * 0.25));
+  out.rationale.push(`P(up)=${pUp.toFixed(0)}% P(down)=${pDown.toFixed(0)}% → ${out.action} | situational score ${out.score} (gate ${confGate})`);
+  if(favP < 52.5 || score < confGate){
+    out.rationale.push(favP < 52.5 ? 'edge too thin' : 'insufficient situational edge');
+    return out;
+  }
+
+  // ── Confidence, duration, stake ──
+  let conf = Math.min(96, Math.round(favP * 0.75 + score * 0.25));
   let dur = out.dur, unit = out.durUnit;
-  if(cls.situations.indexOf('TREND_RIDE') !== -1){
-    if(r.strength >= 75){ conf = Math.min(96, conf + 2); }
+  // Strong multi-timeframe trend → ride it longer (CFD-style, R_* only)
+  const alignedStrong = upTF >= 2 && r.trend === 'up' || dnTF >= 2 && r.trend === 'down';
+  if(cls.situations.indexOf('TREND_RIDE') !== -1 || (alignedStrong && r.strength >= 70)){
+    if(r.strength >= 75) conf = Math.min(96, conf + 2);
     if(unit === 't') dur = Math.max(6, Math.min(10, dur));
   }
   if(cls.situations.indexOf('VELOCITY') !== -1 && Math.abs(r.drift) < 0.6 && unit === 't'){
@@ -4358,7 +4540,8 @@ function startBot(){
   // Flush tick buffers so the first candle after start forms from fresh ticks only
   for(const sym of Object.keys(G.MARKET?.tickBuf||{})){ G.MARKET.tickBuf[sym]=[]; }
   G._aroonState = {};
-  G._warmup = {};
+  // Keep warmup state so imported/accumulated OHLC history is used immediately
+  // instead of forcing a fresh start (brain reasons over the full imported range).
   G.RUNNING=true;
   G.TRADE_DURATION = tfCfg.tradeTicks;
   G.TRADE_DURATION_UNIT = 't';
