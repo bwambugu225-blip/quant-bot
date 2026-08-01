@@ -1175,6 +1175,7 @@ table tr{border-bottom:1px solid var(--line)}
         <span id="rfStatus"><span class="status-dot gray"></span></span>
         <span id="rfCurrentStake" style="font-size:10px;font-weight:600">$1.00</span>
         <span id="rfSysBadge" style="font-size:7px;color:var(--warn)"></span>
+        <span id="rfRegimeBadge" style="font-size:8px;color:var(--muted);border:1px solid var(--line);border-radius:3px;padding:1px 6px;font-family:monospace">REGIME —</span>
       </div>
       <div style="display:flex;gap:4px;margin-top:6px;align-items:center">
         <label style="display:flex;align-items:center;gap:4px;font-size:8px;color:var(--muted);cursor:pointer">
@@ -3449,8 +3450,11 @@ function handleTick(data){
   processDigit(sym, price);
   // Per-market rolling live buffer so analysis moves every tick (real-time)
   if(!G.MARKET.liveBuf) G.MARKET.liveBuf={};
+  if(!G.MARKET.liveT) G.MARKET.liveT={};
   const lb=G.MARKET.liveBuf[sym]||(G.MARKET.liveBuf[sym]=[]);
   lb.push(price); if(lb.length>120) lb.shift();
+  const lt=G.MARKET.liveT[sym]||(G.MARKET.liveT[sym]=[]);
+  lt.push(Date.now()); if(lt.length>120) lt.shift();
   if(!G.MARKET.lastPrice) G.MARKET.lastPrice={};
   G.MARKET.lastPrice[sym]=price;
   _tickCount++;
@@ -3736,8 +3740,9 @@ function runStrategyAnalysis(sym, candles, liveBuf, tf){
 
       G._tfGate[tfKey] = now;
 
-      const pd = pickOptimalDuration(finalSrc, finalConf, sym);
-      return { action, conf:finalConf, src:finalSrc, dur:pd.dur, durUnit:pd.unit, evidence:{votes:allVotes.length, riseVotes:allVotes.filter(v=>v.action==='RISE').length, fallVotes:allVotes.filter(v=>v.action==='FALL').length, trend:trendDir, adx:Math.round(trendStrength), tf} };
+      const sig = finishInsiderSignal(action, finalConf, finalSrc, sym, candles, liveBuf, tf,
+        { votes:allVotes.length, riseVotes:allVotes.filter(v=>v.action==='RISE').length, fallVotes:allVotes.filter(v=>v.action==='FALL').length, trend:trendDir, adx:Math.round(trendStrength), tf });
+      return sig;
 
     } else {
       // ==========================================
@@ -3831,8 +3836,9 @@ function runStrategyAnalysis(sym, candles, liveBuf, tf){
       if(streak >= 2) return null;
       if(G.WINS > 0 && G.LOSSES === 0) finalConf = Math.min(96, finalConf + 3);
 
-      const pd = pickOptimalDuration(finalSrc, finalConf, sym);
-      return { action, conf:finalConf, src:finalSrc, dur:pd.dur, durUnit:pd.unit, evidence:{votes:votes.length, riseVotes, fallVotes} };
+      const sig = finishInsiderSignal(action, finalConf, finalSrc, sym, candles, liveBuf, tf,
+        { votes:votes.length, riseVotes, fallVotes });
+      return sig;
     }
   } catch(e) {
     log(`[CRASH] runStrategyAnalysis: ${e.message}`,'e');
@@ -3897,8 +3903,117 @@ function evaluateAndTrade(sym, liveBuf){
 }
 
 // ============================================================
+// INSIDER ENGINE — regime-gated CFD-style trend following
+// ============================================================
+function computeRegime(sym, candles, liveBuf, tf){
+  if(!candles || candles.length < 20) return null;
+  const closes = candles.map(c => c.close);
+  const ranges = candles.map(c => Math.max(c.high - c.low, 1e-9));
+  const lastN = closes.slice(-12);
+  const priorN = closes.slice(-24, -12);
+  const sd = a => { if(a.length < 3) return 0; const m=a.reduce((s,v)=>s+v,0)/a.length; return Math.sqrt(a.reduce((s,v)=>s+(v-m)*(v-m),0)/a.length); };
+  const stdLast = sd(lastN), stdPrior = sd(priorN);
+  const expansion = stdPrior > 0 ? stdLast / stdPrior : 1;
+  const avgR = ranges.slice(-12).reduce((s,v)=>s+v,0)/ranges.slice(-12).length;
+  const priorR = ranges.slice(-24,-12).reduce((s,v)=>s+v,0)/ranges.slice(-24,-12).length;
+  const rangeExpansion = priorR > 0 ? avgR / priorR : 1;
+  const driftPx = closes[closes.length-1] - closes[closes.length-13];
+  const drift = avgR > 0 ? driftPx / avgR : 0;
+  let streak = 0;
+  for(let i=closes.length-1;i>Math.max(0,closes.length-9);i--){ if(closes[i] >= closes[i-1]) streak++; else break; }
+  // Tick velocity (ticks/sec) from the timestamp buffer
+  let vel = 0;
+  const lt = G.MARKET.liveT?.[sym];
+  if(lt && lt.length >= 5){
+    const from = Math.max(0, lt.length - 11);
+    const span = (lt[lt.length-1] - lt[from]) / 1000;
+    const cnt = lt.length - 1 - from;
+    vel = span > 0 ? cnt / span : 0;
+  }
+  const trend = drift > 0.25 ? 'up' : drift < -0.25 ? 'down' : 'none';
+  const expanding = expansion > 1.15 || rangeExpansion > 1.2;
+  let type = 'chop';
+  if(expanding && trend !== 'none') type = trend==='up' ? 'trend-up' : 'trend-down';
+  else if(expansion < 0.7) type = 'cold';
+  else if(trend !== 'none') type = trend==='up' ? 'drift-up' : 'drift-down';
+  const adx = calcADX(candles, 14);
+  const adxStr = adx ? adx.strength : 0;
+  const strength = Math.round(Math.min(100, Math.max(0,
+    (expanding ? 35 : 0) + Math.min(40, Math.abs(drift)*25) + Math.min(30, adxStr*0.8) + (streak >= 3 ? 15 : 0)
+  )));
+  return { type, trend, expansion, rangeExpansion, drift, vel, adx: adxStr, strength, streak };
+}
+// CFD-style horizon model: strong+expanding trend → seconds (ride it like a CFD
+// position); shallow or fast regime → short ticks (scalp the burst).
+function deriveDuration(regime, src, conf, sym, tf){
+  const cw = Math.max(0, Math.min(1, (conf-80)/16));
+  if(!regime) return pickOptimalDuration(src, conf, sym);
+  const r = regime;
+  const tickOnly = typeof sym === 'string' && sym.startsWith('1HZ');
+  if(tickOnly){
+    // 1-tick symbols accept ONLY tick durations (1-10t) — never seconds
+    const ticks = Math.round(3 + cw*5);
+    return { dur: Math.max(1, Math.min(10, ticks)), unit:'t' };
+  }
+  if(r.type === 'trend-up' || r.type === 'trend-down' || r.strength >= 75){
+    if(r.vel > 6 && Math.abs(r.drift) < 0.8) return { dur: Math.max(1, Math.min(4, Math.round(2 + cw*2))), unit:'t' };
+    const horizon = Math.min(1, Math.max(0.3, r.strength/100 * 0.7 + cw*0.3));
+    return { dur: Math.round(15 + horizon*45), unit:'s' };
+  }
+  if(r.type === 'drift-up' || r.type === 'drift-down'){
+    if(r.vel > 6) return { dur: Math.max(1, Math.min(5, Math.round(2 + cw*3))), unit:'t' };
+    return { dur: Math.max(2, Math.min(8, Math.round(3 + cw*5))), unit:'t' };
+  }
+  return pickOptimalDuration(src, conf, sym);
+}
+// Applies the regime gate + analysis-driven duration to a signal.
+// Returns null when the bot should stand down (like an insider picking spots).
+function finishInsiderSignal(action, finalConf, src, sym, candles, liveBuf, tf, extra){
+  const regime = computeRegime(sym, candles, liveBuf, tf);
+  if(regime) updateRegimeBadge(regime);
+  if(!regime){
+    const pd = pickOptimalDuration(src, finalConf, sym);
+    return { action, conf: finalConf, src, dur: pd.dur, durUnit: pd.unit, evidence: Object.assign({}, extra) };
+  }
+  const dir = regime.trend === 'up' ? 'RISE' : regime.trend === 'down' ? 'FALL' : null;
+  if(dir){
+    if(action !== dir){
+      log(`[REGIME] ${sym}: ${regime.type} → ${dir} — blocking ${action} (never fade the regime)`,'w');
+      return null;
+    }
+    finalConf = Math.min(96, Math.round(finalConf*1.06 + regime.strength*0.05));
+  }
+  if(regime.type === 'cold'){
+    log(`[REGIME] ${sym}: cold regime — standing down`,'i');
+    return null;
+  }
+  if(regime.type === 'chop'){
+    if(regime.strength < 45){
+      log(`[REGIME] ${sym}: chop (${regime.strength}) — standing down`,'i');
+      return null;
+    }
+    finalConf = Math.min(96, Math.round(finalConf*0.85));
+  }
+  const pd = deriveDuration(regime, src, finalConf, sym, tf);
+  const ev = Object.assign({}, extra, { regime: regime.type, expansion: +regime.expansion.toFixed(2), drift: +regime.drift.toFixed(2), adx: regime.adx, vel: +regime.vel.toFixed(1) });
+  return { action, conf: finalConf, src, dur: pd.dur, durUnit: pd.unit, evidence: ev };
+}
+
+// ============================================================
 // TRADE EXECUTION
 // ============================================================
+function updateRegimeBadge(regime){
+  try{
+    const el = document.getElementById('rfRegimeBadge');
+    if(!el || !regime) return;
+    const cls = { 'trend-up':'#3ec96f', 'trend-down':'#e05555', 'drift-up':'#79d199', 'drift-down':'#d18686', 'chop':'#d4a84b', 'cold':'#555' };
+    const col = cls[regime.type] || '#8a7e6a';
+    const label = regime.type.toUpperCase().replace('-',' ') + ' ' + regime.strength + '%';
+    el.textContent = 'REGIME ' + label;
+    el.style.color = col;
+    el.style.borderColor = col;
+  }catch(e){}
+}
 // Smart duration adapter: maps each strategy to optimal duration
 // based on conviction, volatility, and strategy type.
 // Scalp strategies → fast ticks (1-5t), trend strats → longer (6-10t or 15-60s).
@@ -3921,8 +4036,8 @@ function pickOptimalDuration(src, conf, sym){
     if(vol > 0.8) ticks = Math.max(lo, ticks-1);
     if(vol < 0.3) ticks = Math.min(hi, ticks+1);
   }
-  // strong trend signals → use seconds for longer exposure
-  if((src==='SUPERTREND'||src==='ADX_TREND') && conf >= 90 && ticks >= 6){
+  // strong trend signals → use seconds for longer exposure (R_* only — 1-tick symbols reject seconds)
+  if((src==='SUPERTREND'||src==='ADX_TREND') && conf >= 90 && ticks >= 6 && !(sym && sym.startsWith('1HZ'))){
     const sec = Math.round(20 + (ticks-6)*10);
     return { dur:Math.min(60,sec), unit:'s' };
   }
