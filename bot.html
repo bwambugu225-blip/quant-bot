@@ -1820,6 +1820,7 @@ function collectSettings(){
       baseStake: Martingale.baseStake, currentStake: Martingale.currentStake
     },
     ai_trading_enabled: G.AI_TRADING_ENABLED,
+    brain_stats: G._brainStats || { situations:{} },
     copy_trading_enabled: G.COPYTRADING_ENABLED,
     copy_traders: G.COPY_TRADERS.map(c => ({
       name: c.name, token: c.token, accountType: c.accountType,
@@ -1848,6 +1849,7 @@ function applySettings(s){
     if(s.selected_strategy){ G.SELECTED_STRATEGY = s.selected_strategy; const e=document.getElementById('strategySelect'); if(e) e.value = s.selected_strategy; }
     if(Array.isArray(s.strategy_active)) G.STRATEGY_ACTIVE = s.strategy_active;
     if(Array.isArray(s.trade_history)) G.TRADE_HISTORY = s.trade_history;
+    if(s.brain_stats && typeof s.brain_stats === 'object') G._brainStats = s.brain_stats;
     if(s.stake){ const e1=document.getElementById('rfStake'); if(e1) e1.value=s.stake; const e2=document.getElementById('dgBaseStake'); if(e2) e2.value=s.stake; }
     if(s.duration){ const e=document.getElementById('rfDuration'); if(e) e.value=s.duration; }
     if(s.botstate){
@@ -3943,73 +3945,189 @@ function computeRegime(sym, candles, liveBuf, tf){
   )));
   return { type, trend, expansion, rangeExpansion, drift, vel, adx: adxStr, strength, streak };
 }
-// CFD-style horizon model: strong+expanding trend → seconds (ride it like a CFD
-// position); shallow or fast regime → short ticks (scalp the burst).
-function deriveDuration(regime, src, conf, sym, tf){
-  const cw = Math.max(0, Math.min(1, (conf-80)/16));
-  if(!regime) return pickOptimalDuration(src, conf, sym);
-  const r = regime;
-  const tickOnly = typeof sym === 'string' && sym.startsWith('1HZ');
-  if(tickOnly){
-    // 1-tick symbols accept ONLY tick durations (1-10t) — never seconds
-    const ticks = Math.round(3 + cw*5);
-    return { dur: Math.max(1, Math.min(10, ticks)), unit:'t' };
-  }
-  if(r.type === 'trend-up' || r.type === 'trend-down' || r.strength >= 75){
-    if(r.vel > 6 && Math.abs(r.drift) < 0.8) return { dur: Math.max(1, Math.min(4, Math.round(2 + cw*2))), unit:'t' };
-    const horizon = Math.min(1, Math.max(0.3, r.strength/100 * 0.7 + cw*0.3));
-    return { dur: Math.round(15 + horizon*45), unit:'s' };
-  }
-  if(r.type === 'drift-up' || r.type === 'drift-down'){
-    if(r.vel > 6) return { dur: Math.max(1, Math.min(5, Math.round(2 + cw*3))), unit:'t' };
-    return { dur: Math.max(2, Math.min(8, Math.round(3 + cw*5))), unit:'t' };
-  }
-  return pickOptimalDuration(src, conf, sym);
-}
 // Applies the regime gate + analysis-driven duration to a signal.
 // Returns null when the bot should stand down (like an insider picking spots).
 function finishInsiderSignal(action, finalConf, src, sym, candles, liveBuf, tf, extra){
   const regime = computeRegime(sym, candles, liveBuf, tf);
   if(regime) updateRegimeBadge(regime);
-  if(!regime){
-    const pd = pickOptimalDuration(src, finalConf, sym);
-    return { action, conf: finalConf, src, dur: pd.dur, durUnit: pd.unit, evidence: Object.assign({}, extra) };
-  }
-  const dir = regime.trend === 'up' ? 'RISE' : regime.trend === 'down' ? 'FALL' : null;
-  if(dir){
-    if(action !== dir){
-      log(`[REGIME] ${sym}: ${regime.type} → ${dir} — blocking ${action} (never fade the regime)`,'w');
-      return null;
-    }
-    finalConf = Math.min(96, Math.round(finalConf*1.06 + regime.strength*0.05));
-  }
-  if(regime.type === 'cold'){
-    log(`[REGIME] ${sym}: cold regime — standing down`,'i');
+  const base = pickOptimalDuration(src, finalConf, sym);
+  const baseSignal = { action, conf: finalConf, src, dur: base.dur, durUnit: base.unit };
+  const ctx = brainAssess(sym, candles, liveBuf, tf, baseSignal, regime);
+  const cls = brainClassifySituation(ctx);
+  if(regime) updateRegimeBadge(regime, cls.label);
+  const dec = brainDecide(ctx, cls);
+  if(!dec.trade){
+    const why = dec.rationale[dec.rationale.length-1] || 'low situational edge';
+    log(`[BRAIN] ${sym}: ${cls.label} → STAND DOWN — ${why}`,'w');
     return null;
   }
-  if(regime.type === 'chop'){
-    if(regime.strength < 45){
-      log(`[REGIME] ${sym}: chop (${regime.strength}) — standing down`,'i');
-      return null;
-    }
-    finalConf = Math.min(96, Math.round(finalConf*0.85));
-  }
-  const pd = deriveDuration(regime, src, finalConf, sym, tf);
-  const ev = Object.assign({}, extra, { regime: regime.type, expansion: +regime.expansion.toFixed(2), drift: +regime.drift.toFixed(2), adx: regime.adx, vel: +regime.vel.toFixed(1) });
-  return { action, conf: finalConf, src, dur: pd.dur, durUnit: pd.unit, evidence: ev };
+  const ev = Object.assign({}, extra, {
+    regime: regime ? regime.type : '?',
+    situation: cls.label,
+    expansion: regime ? +regime.expansion.toFixed(2) : 0,
+    drift: regime ? +regime.drift.toFixed(2) : 0,
+    adx: regime ? regime.adx : 0,
+    vel: regime ? +regime.vel.toFixed(1) : 0,
+    brain: dec.rationale.join(' • ')
+  });
+  log(`[BRAIN] ${sym}: ${cls.label} → ${dec.action} ${dec.conf}% ${dec.dur}${dec.durUnit} | ${dec.rationale[dec.rationale.length-1]}`,'i');
+  return { action: dec.action, conf: dec.conf, src, dur: dec.dur, durUnit: dec.durUnit, evidence: ev,
+           brain: { situation: cls.label, rationale: dec.rationale, stakeFactor: dec.stakeFactor } };
 }
+
+// ============================================================
+// SUPER AI REASONING BRAIN — situational decision engine
+// ============================================================
+function brainAssess(sym, candles, liveBuf, tf, signal, regime){
+  if(!G._brainStats) G._brainStats = { situations:{} };
+  const closes = candles ? candles.map(c => c.close) : [];
+  const last = closes[closes.length-1];
+  const sma20 = sma(closes, 20);
+  const sd20 = stddev(closes, 20);
+  const z = (sma20 !== null && sd20 !== null && sd20 > 0) ? (last - sma20) / sd20 : null;
+  const rsi14 = rsi(closes, 14);
+  const wins = G.WINS || 0, losses = G.LOSSES || 0;
+  const sessionWR = (wins + losses) >= 5 ? wins / (wins + losses) : null;
+  const stat = G.STRATEGY_STATS ? G.STRATEGY_STATS[signal ? signal.src : ''] : null;
+  const stratWR = stat && stat.total >= 5 ? stat.wins / stat.total : null;
+  return {
+    sym, tf, regime, signal, z, rsi14,
+    velocity: regime ? regime.vel : 0,
+    consLoss: G.CONS_LOSS || 0,
+    sessionWR, stratWR,
+    hotStreak: wins > 0 && losses === 0,
+    sessionCount: wins + losses,
+    inClusterPause: (G._clusterUntil || 0) > Date.now(),
+    brain: G._brainStats,
+    todayPnl: G.DAILY && G.DAILY.pnl
+  };
+}
+function brainClassifySituation(c){
+  const out = { situations: [], label: 'NEUTRAL', reasons: [] };
+  const r = c.regime;
+  if(!r){ out.situations.push('UNKNOWN'); out.label = 'UNKNOWN'; out.reasons.push('insufficient candle history'); return out; }
+  const sigDir = c.signal ? c.signal.action : null;
+  if(r.trend !== 'none' && sigDir && ((r.trend==='up'&&sigDir==='FALL')||(r.trend==='down'&&sigDir==='RISE'))){
+    out.situations.push('CONFLICT');
+    out.reasons.push(`signal ${sigDir} fights ${r.trend} regime drift ${(+r.drift).toFixed(2)}`);
+  }
+  if(r.type === 'cold'){ out.situations.push('DEAD'); out.reasons.push('vol collapsed, expansion '+r.expansion.toFixed(2)+'x'); }
+  else if(r.type === 'chop'){ out.situations.push('CHOP'); out.reasons.push('range-bound, no directional drift'); }
+  else if(r.type === 'trend-up' || r.type === 'trend-down'){
+    out.situations.push('TREND_RIDE');
+    out.reasons.push(`${r.type} expanding vol ${r.expansion.toFixed(2)}x, ADX ${r.adx.toFixed(0)}`);
+  }
+  else if(r.type === 'drift-up' || r.type === 'drift-down'){
+    out.situations.push('DRIFT');
+    out.reasons.push(`directional drift ${(+r.drift).toFixed(2)} at ${r.strength}% strength`);
+  }
+  if(c.z !== null && Math.abs(c.z) >= 2){
+    out.situations.push(c.z > 0 ? 'EXTENSION_UP' : 'EXTENSION_DOWN');
+    out.reasons.push(`price ${c.z>0?'far above':'far below'} 20-bar mean (z=${(+c.z).toFixed(1)})`);
+  }
+  if(c.rsi14 !== null && (c.rsi14 > 78 || c.rsi14 < 22)){
+    out.situations.push('EXHAUSTION');
+    out.reasons.push(`RSI ${(+c.rsi14).toFixed(0)} — momentum spent`);
+  }
+  if(c.velocity >= 6){ out.situations.push('VELOCITY'); out.reasons.push(`tape ${c.velocity.toFixed(1)} ticks/s`); }
+  if(c.hotStreak){ out.situations.push('HOT'); out.reasons.push('session win streak alive'); }
+  if(c.consLoss >= 2){ out.situations.push('DAMAGE'); out.reasons.push(`${c.consLoss} consecutive losses`); }
+  if(c.inClusterPause){ out.situations.push('PAUSE'); out.reasons.push('cluster-loss pause active'); }
+  out.situations = out.situations.filter((v,i,a)=>a.indexOf(v)===i);
+  out.label = out.situations.length ? out.situations.join('+') : 'NEUTRAL';
+  return out;
+}
+function brainDecide(c, cls){
+  const out = { trade:false, action:c.signal?c.signal.action:'RISE', conf:c.signal?c.signal.conf:80,
+                dur:c.signal?c.signal.dur:5, durUnit:c.signal?c.signal.durUnit:'t',
+                stakeFactor:1, rationale:[], situation:cls.label, score:0 };
+  const r = c.regime;
+  if(c.inClusterPause){ out.rationale.push('cluster pause — stand down'); return out; }
+  if(!r){
+    if(c.consLoss >= 3){ out.rationale.push(c.consLoss+' losses in a row — cool off'); return out; }
+    const sStat = c.brain.situations ? c.brain.situations[cls.label] : null;
+    if(sStat && sStat.total >= 8 && sStat.wins/sStat.total < 0.40){ out.rationale.push(`learned "${cls.label}" weak — skip`); return out; }
+    if(!c.signal || c.signal.conf < 85){ out.rationale.push('no regime data and conviction below 85% — skip'); return out; }
+    out.trade = true;
+    out.rationale.push('no regime data — trusting ensemble conviction ' + c.signal.conf + '%');
+    return out;
+  }
+  if(cls.situations.indexOf('DEAD') !== -1){ out.rationale.push('dead tape (cold vol) — stand down'); return out; }
+  if(cls.situations.indexOf('DAMAGE') !== -1 && c.consLoss >= 3){ out.rationale.push(c.consLoss+' losses in a row — cool off'); return out; }
+  if(cls.situations.indexOf('CONFLICT') !== -1){ out.rationale.push('signal fights the regime — skip'); return out; }
+  const sStat = c.brain.situations ? c.brain.situations[cls.label] : null;
+  let score = 0;
+  if(sStat && sStat.total >= 8){
+    const wr = sStat.wins / sStat.total;
+    if(wr < 0.40){ out.rationale.push(`learned "${cls.label}" wins ${(wr*100).toFixed(0)}% — skip`); return out; }
+    if(wr > 0.62){ score += 12; out.rationale.push(`learned edge: "${cls.label}" wins ${(wr*100).toFixed(0)}%`); }
+  }
+  if(cls.situations.indexOf('TREND_RIDE') !== -1){ score += 30 + Math.min(15, r.strength * 0.15); }
+  if(cls.situations.indexOf('DRIFT') !== -1){ score += 15 + Math.min(10, r.strength * 0.10); }
+  if(cls.situations.indexOf('HOT') !== -1) score += 8;
+  if(cls.situations.indexOf('VELOCITY') !== -1 && (r.trend === 'up' || r.trend === 'down')) score += 10;
+  if(cls.situations.indexOf('CHOP') !== -1) score -= 30;
+  if(cls.situations.indexOf('EXTENSION_UP') !== -1 && c.signal && c.signal.action === 'RISE') score -= 18;
+  if(cls.situations.indexOf('EXTENSION_DOWN') !== -1 && c.signal && c.signal.action === 'FALL') score -= 18;
+  if(cls.situations.indexOf('EXHAUSTION') !== -1) score -= 12;
+  if(cls.situations.indexOf('DAMAGE') !== -1) score -= c.consLoss * 6;
+  if(c.sessionWR !== null && c.sessionWR < 0.45 && c.sessionCount >= 8) score -= 10;
+  if(c.stratWR !== null && c.stratWR < 0.45) score -= 10;
+  if(c.stratWR !== null && c.stratWR > 0.62) score += 8;
+  score += (c.signal ? c.signal.conf : 80) * 0.3;
+  const confGate = 58;
+  out.score = Math.round(score);
+  out.rationale.push(`situational score ${out.score} (gate ${confGate})`);
+  if(score < confGate){ out.rationale.push('insufficient situational edge'); return out; }
+  let conf = Math.min(96, Math.round((c.signal ? c.signal.conf : 80) * 0.75 + score * 0.25));
+  let dur = out.dur, unit = out.durUnit;
+  if(cls.situations.indexOf('TREND_RIDE') !== -1){
+    if(r.strength >= 75){ conf = Math.min(96, conf + 2); }
+    if(unit === 't') dur = Math.max(6, Math.min(10, dur));
+  }
+  if(cls.situations.indexOf('VELOCITY') !== -1 && Math.abs(r.drift) < 0.6 && unit === 't'){
+    dur = Math.max(1, Math.min(4, dur));
+  }
+  if(typeof c.sym === 'string' && c.sym.startsWith('1HZ')){
+    if(unit !== 't'){ dur = 5; unit = 't'; }
+    dur = Math.max(1, Math.min(10, dur));
+  }
+  let stakeFactor = 1.0;
+  if(score >= 75) stakeFactor = 1.25;
+  else if(score >= 68) stakeFactor = 1.1;
+  else if(score <= 62) stakeFactor = 0.8;
+  if(cls.situations.indexOf('DAMAGE') !== -1) stakeFactor *= 0.6;
+  out.trade = true; out.conf = conf; out.dur = dur; out.durUnit = unit; out.stakeFactor = stakeFactor;
+  out.rationale.push(`${out.action} @ ${conf}% for ${dur}${unit} (stake x${stakeFactor})`);
+  return out;
+}
+function brainLearn(signal, won){
+  const b = signal && signal.brain;
+  if(!b || !b.situation) return;
+  if(!G._brainStats) G._brainStats = { situations:{} };
+  if(!G._brainStats.situations) G._brainStats.situations = {};
+  const key = b.situation;
+  if(!G._brainStats.situations[key]) G._brainStats.situations[key] = { wins:0, losses:0, total:0 };
+  const s = G._brainStats.situations[key];
+  s.total++;
+  if(won) s.wins++; else s.losses++;
+  if(s.total === 8 || s.total % 25 === 0){
+    log(`[BRAIN-L] "${key}" → ${(s.wins/s.total*100).toFixed(0)}% (${s.wins}/${s.total})`,'i');
+  }
+}
+
 
 // ============================================================
 // TRADE EXECUTION
 // ============================================================
-function updateRegimeBadge(regime){
+function updateRegimeBadge(regime, situation){
   try{
     const el = document.getElementById('rfRegimeBadge');
     if(!el || !regime) return;
     const cls = { 'trend-up':'#3ec96f', 'trend-down':'#e05555', 'drift-up':'#79d199', 'drift-down':'#d18686', 'chop':'#d4a84b', 'cold':'#555' };
     const col = cls[regime.type] || '#8a7e6a';
     const label = regime.type.toUpperCase().replace('-',' ') + ' ' + regime.strength + '%';
-    el.textContent = 'REGIME ' + label;
+    el.textContent = 'REGIME ' + label + (situation ? '  →  ' + situation : '');
     el.style.color = col;
     el.style.borderColor = col;
   }catch(e){}
@@ -4069,6 +4187,7 @@ function execTrade(signal, asset){
     const baseStake = parseFloat(document.getElementById('rfStake')?.value||1);
     const kellyStake = +(baseStake * Math.min(4, kellyFrac * 5)).toFixed(2);
     stake = Math.max(0.35, Math.min(200, kellyStake));
+    if(signal.brain && signal.brain.stakeFactor) stake = Math.max(0.35, Math.min(200, +(stake * signal.brain.stakeFactor).toFixed(2)));
     log(`[KELLY] pWin=${(pWin*100).toFixed(0)}% f=${(kellyFrac*100).toFixed(0)}% stake=$${stake.toFixed(2)}`,'i');
   }
 
@@ -4141,7 +4260,7 @@ function handleContract(c){
     showToast(`${won?'WIN':'LOSS'} ${profitStr}`, won?'win':'loss');
     log(`[${won?'WIN':'LOSS'}] ${fmt$(c.profit)}`, won?'s':'e');
     haxPush(`${won?'WIN':'LOSS'} ${profitStr} ${c.contract_type||''} :: streak=${G.CONS_LOSS}`, won?'p':'n');
-    if(G.LAST_SIGNAL && G.TRADE_MODE!=='DIGITS'){ updateStrategyStats(G.LAST_SIGNAL, won); learnFromTrade(G.LAST_SIGNAL, won); }
+    if(G.LAST_SIGNAL && G.TRADE_MODE!=='DIGITS'){ updateStrategyStats(G.LAST_SIGNAL, won); learnFromTrade(G.LAST_SIGNAL, won); brainLearn(G.LAST_SIGNAL, won); }
     if(won){
       G.WINS++; G.CONS_LOSS=0;
       // Anti-martingale: after 3 consecutive wins, reduce stake to lock profits
