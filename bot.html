@@ -5778,13 +5778,15 @@ function watchContracts(){
         continue;
       }
       // Real contract id: if no stream update arrived, ask Deriv for its state.
-      if(age > 45000){
+      // Fixed-duration trades are 1–10 ticks (seconds), so 20s of silence
+      // means the proposal_open_contract stream is lost — probe for the result.
+      if(age > 20000){
         G._contProbed = G._contProbed || {};
         if(!G._contProbed[k]){
           G._contProbed[k] = true;
           log(`[WATCH] Contract #${k} silent ${(age/1000).toFixed(0)}s — probing final result`,'w');
           if(G.WS && G.WS.readyState===WebSocket.OPEN){
-            G.WS.send(JSON.stringify({ proposal_open_contract:1, contract_id:+k, req_id:genId() }));
+            G.WS.send(JSON.stringify({ proposal_open_contract:1, contract_id:k, req_id:genId() }));
           }
         } else if(age > 90000){
           G.ACTIVE_CONTRACTS.delete(k);
