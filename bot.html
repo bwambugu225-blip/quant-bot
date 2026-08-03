@@ -944,7 +944,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
       </div>
     </div>
     <div class="section">
-      <details open>
+      <details>
         <summary style="font-family: var(--font-serif); font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; font-size: 9px;">Chart Settings</summary>
         <div style="display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; align-items: center;">
           <div style="display: flex; flex-direction: column; gap: 4px;">
@@ -957,7 +957,7 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
             <label class="switch" title="EMA 20">
-              <input type="checkbox" id="settingEma20" checked onchange="updateChartSetting('ema20', this.checked)">
+              <input type="checkbox" id="settingEma20" onchange="updateChartSetting('ema20', this.checked)">
               <span class="slider"></span>
             </label>
             <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">EMA 20</span>
@@ -971,49 +971,49 @@ body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
             <label class="switch" title="EMA 9">
-              <input type="checkbox" id="settingEma9" checked onchange="updateChartSetting('ema9', this.checked)">
+              <input type="checkbox" id="settingEma9" onchange="updateChartSetting('ema9', this.checked)">
               <span class="slider"></span>
             </label>
             <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">EMA 9</span>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
             <label class="switch" title="EMA 30">
-              <input type="checkbox" id="settingEma30" checked onchange="updateChartSetting('ema30', this.checked)">
+              <input type="checkbox" id="settingEma30" onchange="updateChartSetting('ema30', this.checked)">
               <span class="slider"></span>
             </label>
             <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">EMA 30</span>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
             <label class="switch" title="Fractals">
-              <input type="checkbox" id="settingFractals" checked onchange="updateChartSetting('fractals', this.checked)">
+              <input type="checkbox" id="settingFractals" onchange="updateChartSetting('fractals', this.checked)">
               <span class="slider"></span>
             </label>
             <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">Fractals</span>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
             <label class="switch" title="HA Patterns">
-              <input type="checkbox" id="settingHaPatterns" checked onchange="updateChartSetting('haPatterns', this.checked)">
+              <input type="checkbox" id="settingHaPatterns" onchange="updateChartSetting('haPatterns', this.checked)">
               <span class="slider"></span>
             </label>
             <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">HA Pat</span>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
             <label class="switch" title="Awesome Oscillator">
-              <input type="checkbox" id="settingAO" checked onchange="updateChartSetting('ao', this.checked)">
+              <input type="checkbox" id="settingAO" onchange="updateChartSetting('ao', this.checked)">
               <span class="slider"></span>
             </label>
             <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">AO</span>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
             <label class="switch" title="BB (20,2)">
-              <input type="checkbox" id="settingBB" checked onchange="updateChartSetting('bb', this.checked)">
+              <input type="checkbox" id="settingBB" onchange="updateChartSetting('bb', this.checked)">
               <span class="slider"></span>
             </label>
             <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">BB (20,2)</span>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
             <label class="switch" title="Aroon (25)">
-              <input type="checkbox" id="settingAroon" checked onchange="updateChartSetting('aroon', this.checked)">
+              <input type="checkbox" id="settingAroon" onchange="updateChartSetting('aroon', this.checked)">
               <span class="slider"></span>
             </label>
             <span style="font-size: 9px; color: var(--muted); text-transform: uppercase; font-weight: 700;">Aroon(25)</span>
@@ -2460,15 +2460,15 @@ async function saveAdminPassword(){
 // Global Chart Settings
 const ChartSettings = {
   type: 'standard', // 'standard' or 'heiken-ashi'
-  ema9: true,
-  ema20: true,
-  ema30: true,
+  ema9: false,
+  ema20: false,
+  ema30: false,
   ema50: false,
-  bb: true,
-  aroon: true,
-  fractals: true,
-  haPatterns: true,
-  ao: true,
+  bb: false,
+  aroon: false,
+  fractals: false,
+  haPatterns: false,
+  ao: false,
   grid: true,
   bodyRatio: 0.6
 };
@@ -7702,13 +7702,13 @@ function saveState(){
 }
 function updateChartSetting(key, val) {
   ChartSettings[key] = val;
-  localStorage.setItem('deriv_chart_settings', JSON.stringify(ChartSettings));
+  localStorage.setItem('deriv_chart_settings_v2', JSON.stringify(ChartSettings));
   drawChart();
 }
 
 function restoreState(){
   try {
-    const cs = localStorage.getItem('deriv_chart_settings');
+    const cs = localStorage.getItem('deriv_chart_settings_v2');
     if(cs){
       try {
         const saved = JSON.parse(cs);
