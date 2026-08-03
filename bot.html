@@ -5641,7 +5641,7 @@ function handleProp(data){
   const p=data.proposal;
   log(`[PROP] ${p.id} ask=${p.ask_price}`,'i');
   G.ACTIVE_CONTRACTS.delete('sending');
-  G.ACTIVE_CONTRACTS.set('pending',{ id:p.id, price:p.ask_price });
+  G.ACTIVE_CONTRACTS.set('pending',{ id:p.id, price:p.ask_price, time:Date.now() });
   if(G.WS?.readyState===WebSocket.OPEN){
     G.WS.send(JSON.stringify({ buy:p.id, price:p.ask_price, subscribe:1, req_id:genId() }));
   } else { log('[PROP] WS not open for buy','e'); }
@@ -5756,6 +5756,45 @@ function handleContract(c){
   } catch(e){ log(`[CRASH] handleContract: ${e.message}`,'e'); console.error(e); }
 }
 
+// ── Contract watchdog ─────────────────────────────────────────────
+// A lost buy response or a dropped proposal_open_contract stream can leave a
+// stale entry in ACTIVE_CONTRACTS forever. Every trade gate checks
+// ACTIVE_CONTRACTS.size, so that single orphan silently deadlocks the whole
+// engine: no more trades fire AND the last trade's result never shows.
+// This watchdog releases orphaned "sending"/"pending" placeholders and re-probes
+// stuck real contracts so their final WIN/LOSS still gets processed.
+function watchContracts(){
+  try {
+    const now = Date.now();
+    for(const [k, v] of G.ACTIVE_CONTRACTS.entries()){
+      if(!v || typeof v.time !== 'number') continue;
+      const age = now - v.time;
+      if(k === 'sending' || k === 'pending'){
+        if(age > 20000){
+          G.ACTIVE_CONTRACTS.delete(k);
+          if(G.SENDING_TIMEOUT){ clearTimeout(G.SENDING_TIMEOUT); G.SENDING_TIMEOUT=null; }
+          log(`[WATCH] Stale "${k}" entry (${(age/1000).toFixed(0)}s, no reply) — released`,'w');
+        }
+        continue;
+      }
+      // Real contract id: if no stream update arrived, ask Deriv for its state.
+      if(age > 45000){
+        G._contProbed = G._contProbed || {};
+        if(!G._contProbed[k]){
+          G._contProbed[k] = true;
+          log(`[WATCH] Contract #${k} silent ${(age/1000).toFixed(0)}s — probing final result`,'w');
+          if(G.WS && G.WS.readyState===WebSocket.OPEN){
+            G.WS.send(JSON.stringify({ proposal_open_contract:1, contract_id:+k, req_id:genId() }));
+          }
+        } else if(age > 90000){
+          G.ACTIVE_CONTRACTS.delete(k);
+          log(`[WATCH] Contract #${k} unresponsive — released after ${(age/1000).toFixed(0)}s`,'w');
+        }
+      }
+    }
+  } catch(e){ log(`[CRASH] watchContracts: ${e.message}`,'e'); console.error(e); }
+}
+
 // ============================================================
 // BOT CONTROL
 // ============================================================
@@ -5782,6 +5821,7 @@ function startBot(){
   G.TRADE_DURATION_UNIT = 't';
   G.CONS_LOSS=0; G.CONS_LOSS_COOLDOWN=0;
   G.PROCESSED_CONTRACTS = new Set();
+  G._contProbed = {};
   G.SESSION_START_SENT = false;
   Martingale.baseStake = parseFloat(document.getElementById('rfStake')?.value || 1);
   Martingale.currentStake = Martingale.baseStake;
@@ -8709,6 +8749,8 @@ document.addEventListener('DOMContentLoaded', () => {
   updateAnalysisPanel();
   setInterval(updateWatchlist, 3000);
   setInterval(calibrateThresholds, 120000);
+  // Contract watchdog: prevent a lost buy/stream from deadlocking the engine
+  setInterval(watchContracts, 5000);
   // Constantly back settings up to the database (cross-device persistence)
   setInterval(() => { if(G.ACCOUNT_ID && (G.RUNNING || BotState.isTrading || G.AUTH)) saveSettingsToDB(); }, 20000);
   startTgPolling();
