@@ -5641,6 +5641,10 @@ function handleProp(data){
   const p=data.proposal;
   log(`[PROP] ${p.id} ask=${p.ask_price}`,'i');
   G.ACTIVE_CONTRACTS.delete('sending');
+  // Idempotent buy: the proposal was requested with subscribe:1, so Deriv streams
+  // repeated proposal updates. Ignore any beyond the first until the buy reply lands,
+  // otherwise we fire duplicate buys for one contract and lose track of results.
+  if(G.ACTIVE_CONTRACTS.has('pending')){ log('[PROP] Buy already in flight — skip duplicate','w'); return; }
   G.ACTIVE_CONTRACTS.set('pending',{ id:p.id, price:p.ask_price, time:Date.now() });
   if(G.WS?.readyState===WebSocket.OPEN){
     G.WS.send(JSON.stringify({ buy:p.id, price:p.ask_price, subscribe:1, req_id:genId() }));
