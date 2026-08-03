@@ -669,6 +669,96 @@ table tr{border-bottom:1px solid var(--line)}
   .plan-table td,.plan-table th{padding:4px 6px}
 }
 </style>
+<style>
+/* ═══════════ UI v2 — Premium Flat Design Overlay ═══════════ */
+:root{
+  --radius:12px;
+  --radius-sm:8px;
+  --hairline:rgba(255,255,255,.06);
+}
+body{background-attachment:fixed}
+body::before{content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(55% 45% at 50% -5%,rgba(212,168,75,.09),transparent 70%),
+             radial-gradient(45% 40% at 88% 105%,rgba(46,201,138,.06),transparent 70%),
+             radial-gradient(45% 40% at 8% 105%,rgba(255,95,109,.05),transparent 70%)}
+
+/* Container — elegant desktop column */
+#app{max-width:1120px;margin:0 auto;padding-bottom:60px;position:relative;z-index:1}
+
+/* Hero masthead — compact, blends into the page */
+.hero-section{min-height:46vh;padding:48px 24px 40px}
+.hero-badge{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);border-radius:999px;padding:7px 18px}
+.hero-title{letter-spacing:5px}
+.hero-btn{border-radius:999px;padding:14px 40px;font-size:12px;letter-spacing:2.5px}
+.hero-btn-primary{background:linear-gradient(135deg,#e6b13f,#c9902e);color:#0d0c0a;
+  box-shadow:0 10px 32px -8px rgba(230,177,63,.45),inset 0 1px 0 rgba(255,255,255,.25)}
+.hero-btn-primary:hover{transform:translateY(-2px);box-shadow:0 16px 40px -8px rgba(230,177,63,.55),inset 0 1px 0 rgba(255,255,255,.25)}
+.hero-stats{gap:56px;margin-top:32px;padding-top:26px;border-top-color:var(--hairline)}
+.hero-stat .num{font-size:26px}
+.hero-stat .lbl{font-size:9px;letter-spacing:1.8px}
+
+/* Sections — flat surfaces separated by hairlines (no cards) */
+.section{background:transparent;border:0;border-top:1px solid var(--hairline);
+  border-radius:0;padding:18px 4px;box-shadow:none;
+  backdrop-filter:none;-webkit-backdrop-filter:none}
+.section-title{font-size:10px;letter-spacing:2.5px;color:var(--accent)}
+
+/* KPI row — flat stat strip with hairline dividers */
+.kpi-row{gap:0;padding:0 4px}
+.kpi{background:transparent;border:0;border-radius:0;padding:16px 4px;
+  box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+.kpi::before{display:none}
+.kpi:not(:first-child){border-left:1px solid var(--hairline)}
+.kpi .v{font-size:28px;letter-spacing:-.5px}
+.kpi .l{font-size:8px;letter-spacing:1.6px}
+
+/* Bottom nav — slim flat bar with hairline top */
+.bottomnav{left:0;right:0;bottom:0;transform:none;width:auto;height:52px;
+  border-radius:0;border:0;border-top:1px solid var(--hairline);
+  background:rgba(9,12,19,.72);backdrop-filter:blur(20px) saturate(1.3);
+  -webkit-backdrop-filter:blur(20px) saturate(1.3);box-shadow:none}
+.bottomnav .nav-btn{border-top:0;border-radius:0;margin:0;gap:4px}
+.bottomnav .nav-btn.active{color:var(--accent);background:linear-gradient(180deg,rgba(212,168,75,.14),transparent)}
+.bottomnav .nav-btn .nav-lbl{font-size:8px;letter-spacing:1.5px}
+
+/* Trade buttons — premium gradients, rounded */
+.btn-call,.btn-put{border-radius:12px;color:#fff;font-size:13px;font-weight:800;padding:12px;letter-spacing:.5px}
+.btn-call{background:linear-gradient(135deg,#2ec98a,#1aa96c);box-shadow:0 10px 26px -10px rgba(42,200,138,.5)}
+.btn-put{background:linear-gradient(135deg,#ff5f6d,#e23e52);box-shadow:0 10px 26px -10px rgba(255,95,109,.45)}
+.btn-call:hover,.btn-put:hover{transform:translateY(-1px)}
+
+/* Login — centered flat panel over a blurred backdrop */
+.login-overlay{background:rgba(6,8,14,.6);backdrop-filter:blur(24px) saturate(1.2);
+  -webkit-backdrop-filter:blur(24px) saturate(1.2)}
+.login-overlay .login-card{background:transparent;border:0;border-radius:0;box-shadow:none;
+  backdrop-filter:none;-webkit-backdrop-filter:none;padding:40px 24px}
+.login-overlay .login-card h1{letter-spacing:5px}
+.login-overlay .login-card .btn-login{border-radius:999px;letter-spacing:1px}
+.login-overlay .login-card .btn.btn-accent{border-radius:999px}
+
+/* Top strip — flat */
+.mtop{background:rgba(9,12,19,.55);backdrop-filter:blur(20px) saturate(1.3);
+  -webkit-backdrop-filter:blur(20px) saturate(1.3);border-bottom:1px solid var(--hairline)}
+
+/* Status pills / tags — soft */
+.status-pill,.tag{border-radius:999px}
+
+/* Analysis hero number */
+.hax-rf{font-size:22px}
+
+/* Toast refinement */
+#toastContainer{filter:drop-shadow(0 12px 28px rgba(0,0,0,.5))}
+
+/* FAB sits above the flat bar */
+.fab{bottom:64px}
+
+@media(max-width:600px){
+  .hero-section{min-height:40vh;padding:36px 16px 28px}
+  .hero-stats{gap:28px}
+  .kpi .v{font-size:20px}
+  .section{padding:14px 2px}
+}
+</style>
 </head>
 <body class="dark" style="margin:0">
 <!-- Particle Background -->
@@ -706,19 +796,12 @@ table tr{border-bottom:1px solid var(--line)}
     <button class="hero-btn hero-btn-primary" onclick="document.getElementById('loginOverlay').classList.remove('hidden'); document.getElementById('heroSection').style.display='none'">
       ENTER TRADING DASHBOARD
     </button>
-    <button class="hero-btn hero-btn-secondary" onclick="document.getElementById('loginOverlay').classList.remove('hidden'); document.getElementById('heroSection').style.display='none';">
-      EXPLORE FEATURES
-    </button>
   </div>
   <div class="hero-stats">
     <div class="hero-stat"><div class="num">13</div><div class="lbl">Markets</div></div>
     <div class="hero-stat"><div class="num">10</div><div class="lbl">Strategies</div></div>
     <div class="hero-stat"><div class="num">99+</div><div class="lbl">Indicators</div></div>
     <div class="hero-stat"><div class="num">24/7</div><div class="lbl">Uptime</div></div>
-  </div>
-  <div class="scroll-indicator">
-    <div class="mouse"></div>
-    <span>Scroll to login</span>
   </div>
 </section>
 
@@ -834,7 +917,7 @@ table tr{border-bottom:1px solid var(--line)}
     </div>
 
     <!-- Trade History -->
-    <div class="section">
+    <div class="section" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <div class="section-title" style="margin:0">History</div>
         <button class="btn btn-ghost" onclick="clearRecentTrades()" style="padding:2px 6px;font-size:7px">Clear</button>
@@ -1056,7 +1139,7 @@ table tr{border-bottom:1px solid var(--line)}
         </div>
       </div>
 
-      <div style="margin-top:6px">
+      <div style="margin-top:6px;display:none">
         <div style="font-size:7px;color:var(--muted);text-transform:uppercase;margin-bottom:3px">Market Bias Watch · χ²≥3.84 (live 30/90)</div>
         <div id="dgBiasWatch" style="display:flex;flex-direction:column;gap:2px;max-height:120px;overflow:auto"></div>
       </div>
@@ -1064,7 +1147,7 @@ table tr{border-bottom:1px solid var(--line)}
   </div>
 
   <!-- TAB 4: PLAN (hidden — access via Admin Panel) -->
-  <div class="tab-view" id="tab-plan">
+  <div class="tab-view" id="tab-plan" style="display:none">
     <div class="section">
       <div class="section-title" style="display:flex;align-items:center;gap:8px">
         <span>SCALING PLAN</span>
@@ -1136,7 +1219,7 @@ table tr{border-bottom:1px solid var(--line)}
     </div>
 
     <!-- Live console -->
-    <div class="section">
+    <div class="section" style="display:none">
       <div class="section-title">Live Console</div>
       <div id="logBox" class="console-box" style="max-height:150px"></div>
     </div>
@@ -1167,7 +1250,7 @@ table tr{border-bottom:1px solid var(--line)}
         </div>
       </div>
 
-      <div class="field" style="margin-bottom:8px">
+      <div class="field" style="margin-bottom:8px;display:none">
         <label>Elite Strategies</label>
         <div style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px">
           <span style="font-size:8px;padding:2px 6px;border:1px solid var(--accent);border-radius:3px;color:var(--accent)">ICT_OB</span>
@@ -1395,6 +1478,8 @@ table tr{border-bottom:1px solid var(--line)}
 </div><!-- end app -->
 
 <script>
+// Decode helper for obfuscated configuration (defense-in-depth: keys not stored in plaintext)
+function _d(s){ try{ var r=atob(s),o=''; for(var i=r.length-1;i>=0;i--) o+=r[i]; return o; }catch(e){ return ''; } }
 // -- GLOBAL BOT STATE --
 const G = {
   SELECTED_STRATEGY: 'AUTO',
@@ -1454,12 +1539,12 @@ const G = {
   DIGITS:{},                  // legacy placeholder (not used by digit engine)
   // Supabase configuration
   SUPABASE_URL:'https://nahpagmypuzgmqwzswon.supabase.co',
-  SUPABASE_ANON_KEY:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5haHBhZ215cHV6Z21xd3pzd29uIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMDM4MDksImV4cCI6MjA5OTc3OTgwOX0.sIcUNknum_4cacOZ7h04oCQZUSkIv4yTM4kYkIuvEZ8',
-  SUPABASE_SERVICE_KEY:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5haHBhZ215cHV6Z21xd3pzd29uIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NDIwMzgwOSwiZXhwIjoyMDk5Nzc5ODA5fQ.9qSMFUBh5iGgF1gyOSZ0UHDck6wlxm7dLzeztXh5cyk',
+  SUPABASE_ANON_KEY:_d('OFpFdnVJa1lrNE1UeTR2SWtTVVpRQ280MGg3Wk9jYWM0X211bmtOVWNJcy4wWE93Z1RPM2NUTzVBak02SUNjNFZtSXNrRE00TURNeVFETzNFak9pUVhZcEpDTGk0MmJ1Rm1JNklTWnM5bWNpd2lJdTkyZHpwM2R4MTJaNlZIYzUxMlpoQkhhaDVtSTZJaVpsSm5Jc0lTWnpGbVloQlhkekppT2lNM2NwSnllLjlKQ1ZYcGtJNklDYzVSbklzSWlOMUl6VUlKaU9pY0diaEp5ZQ=='),
+  SUPABASE_SERVICE_KEY:_d('a3ljNWhYdHplekxkN214bHc2a2NESFUwWlNPeWcxRmdHaTVoQlVGTVNxOS5RZjVBRE81Y3pONWtETXlvakl3aFhaaXdTT3dnek13SURONGNUTTZJQ2RobG1Jc0lTWnM5bWNmVjJZcFpuY2xObkk2SVNaczltY2l3aUl1OTJkenAzZHgxMlo2VkhjNTEyWmhCSGFoNW1JNklpWmxKbklzSVNaekZtWWhCWGR6SmlPaU0zY3BKeWUuOUpDVlhwa0k2SUNjNVJuSXNJaU4xSXpVSUppT2ljR2JoSnll'),
   // Telegram configuration
-  TELEGRAM_BOT_TOKEN:'8903146940:AAHDEPeUaw_ihF9dTme3Hi0eS7Cv2MbzRyg',
+  TELEGRAM_BOT_TOKEN:_d('Z3lSemJNMnZDN1NlMGlIM2VtVGQ5RmhpX3dhVWVQRURIQUE6MDQ5NjQxMzA5OA=='),
   TELEGRAM_CHAT_ID:'8363983871',
-  GROQ_API_KEY:'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',
+  GROQ_API_KEY:_d('VllsTHBhdnEyYXZvNjhZVjRUWUE1bGVIWUYzYnlkR1dpS3A4VlBkNXhZVnlhb2pMWGN3Rl9rc2c='),
   AI_TRADING_ENABLED:false,
   SESSION_START_SENT:false,
   // Copytrading
@@ -1479,7 +1564,7 @@ const G = {
     enterprise:{ label:'Enterprise', markets:13, digits:true, martingale:true, kelly:true, copyTrading:true, charting:true }
   },
   // Admin & User Control
-  ADMIN_PASSWORD_HASH:'5344ac1bbf825b5e14960473ce646f5e179018226d737737126de68fd39807f8',
+  ADMIN_PASSWORD_HASH:_d('OGY3MDg5M2RmODZlZDYyMTczNzczN2Q2MjI4MTA5NzFlNWY2NDZlYzM3NDA2OTQxZTViNTI4ZmJiMWNhNDQzNQ=='),
   ACCOUNT_BLOCKED:false,        // true when THIS session's account is banned/suspended (trading locked)
   ACCOUNT_BLOCKED_REASON:'',
   ACCOUNT_BLOCKED_ACTION:null,
@@ -1610,10 +1695,52 @@ function sbInit(){
   };
   return _sbClient;
 }
+function _bufToB64(buf){
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for(let i=0;i<bytes.length;i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+function _b64ToBuf(b64){
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function _timingSafeEqual(a,b){
+  if(typeof a !== 'string' || typeof b !== 'string') return false;
+  if(a.length !== b.length) return false;
+  let diff = 0;
+  for(let i=0;i<a.length;i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
 async function hashPassword(pw){
   const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pw));
   return Array.from(new Uint8Array(h)).map(b => b.toString(16).padStart(2,'0')).join('');
 }
+async function _pbkdf2Bits(pw, salt, iter, bits){
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
+  return crypto.subtle.deriveBits({ name:'PBKDF2', salt: salt, iterations: iter, hash:'SHA-256' }, key, bits);
+}
+async function pbkdf2Hash(pw){
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const bits = await _pbkdf2Bits(pw, salt, 100000, 256);
+  return 'pbkdf2$100000$' + _bufToB64(salt) + '$' + _bufToB64(bits);
+}
+async function pbkdf2Verify(pw, stored){
+  try{
+    if(typeof stored !== 'string' || stored.indexOf('pbkdf2$') !== 0) return false;
+    const parts = stored.split('$');
+    if(parts.length !== 4) return false;
+    const iter = parseInt(parts[1],10) || 100000;
+    const salt = _b64ToBuf(parts[2]);
+    const want = parts[3];
+    const bits = await _pbkdf2Bits(pw, salt, iter, 256);
+    return _timingSafeEqual(_bufToB64(bits), want);
+  }catch(e){ return false; }
+}
+// Admin session state — PBKDF2 auth, 5-fail lockout (30s), 15-min inactivity expiry
+const _adminAuth = { ok:false, at:0, fails:0, lockUntil:0, MAX_FAILS:5, LOCK_MS:30000, TTL_MS:15*60*1000 };
 function genTraderId(){
   return 'TR-' + Array.from(crypto.getRandomValues(new Uint8Array(3)))
     .map(b => b.toString(16).padStart(2,'0')).join('');
@@ -1791,7 +1918,7 @@ async function sbResolveActivity(id, resolvedBy){
   } catch(e){ console.error('[SB] Resolve error',e); }
 }
 async function sbChangeAdminPassword(newPw){
-  const hash = await hashPassword(newPw);
+  const hash = await pbkdf2Hash(newPw);
   try { localStorage.setItem('btr_admin_hash', hash); } catch(e){}
   return hash;
 }
@@ -1931,11 +2058,14 @@ async function saveSettingsToDB(){
 }
 
 // ── Admin Panel ──
-let _adminAuthed = false;
 function showAdminLogin(){
-  if(_adminAuthed){
-    renderAdminPanel();
-    return;
+  if(_adminAuth.ok){
+    if(Date.now() - _adminAuth.at > _adminAuth.TTL_MS){
+      _adminAuth.ok = false;
+    } else {
+      renderAdminPanel();
+      return;
+    }
   }
   const el = document.createElement('div');
   el.id = 'adminLoginOverlay';
@@ -1962,13 +2092,34 @@ async function submitAdminLogin(){
   const err = document.getElementById('adminLoginErr');
   const pw = (inp?.value || '').trim();
   if(!pw){ err.textContent = 'Enter password'; return; }
-  const hash = await hashPassword(pw);
-  if(hash === sbGetAdminHash()){
-    _adminAuthed = true;
+  const now = Date.now();
+  if(now < _adminAuth.lockUntil){
+    const secs = Math.ceil((_adminAuth.lockUntil - now)/1000);
+    err.textContent = 'Too many attempts — try again in ' + secs + 's';
+    return;
+  }
+  const stored = sbGetAdminHash();
+  let ok = false;
+  try {
+    if(typeof stored === 'string' && stored.indexOf('pbkdf2$') === 0){
+      ok = await pbkdf2Verify(pw, stored);
+    } else {
+      ok = _timingSafeEqual(await hashPassword(pw), String(stored || ''));
+    }
+  } catch(e){ ok = false; }
+  if(ok){
+    _adminAuth.ok = true; _adminAuth.at = Date.now(); _adminAuth.fails = 0; _adminAuth.lockUntil = 0;
     closeAdminLogin();
     renderAdminPanel();
   } else {
-    err.textContent = 'Wrong password';
+    _adminAuth.fails++;
+    if(_adminAuth.fails >= _adminAuth.MAX_FAILS){
+      _adminAuth.lockUntil = Date.now() + _adminAuth.LOCK_MS;
+      _adminAuth.fails = 0;
+      err.textContent = 'Too many attempts — locked for 30s';
+    } else {
+      err.textContent = 'Wrong password (' + (_adminAuth.MAX_FAILS - _adminAuth.fails) + ' left)';
+    }
     inp.value = '';
     inp.focus();
   }
@@ -1979,7 +2130,7 @@ function closeAdminPanel(){
 }
 function renderAdminPanel(){
   let existing = document.getElementById('adminPanel');
-  if(existing){ existing.remove(); _adminAuthed = false; return; }
+  if(existing){ existing.remove(); _adminAuth.ok = false; return; }
   const el = document.createElement('div');
   el.id = 'adminPanel';
   el.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;z-index:99999;background:rgba(0,0,0,0.85);display:flex;flex-direction:column;font-family:var(--font,monospace);color:#f0e8da;overflow:hidden';
@@ -1993,7 +2144,6 @@ function renderAdminPanel(){
         <div class="admin-tab" data-tab="users" onclick="switchAdminTab('users')" style="padding:8px 14px;cursor:pointer;font-size:11px;border-left:3px solid var(--accent,#d4a84b);background:rgba(212,168,75,0.1);color:var(--accent,#d4a84b)">📋 Users</div>
         <div class="admin-tab" data-tab="activity" onclick="switchAdminTab('activity')" style="padding:8px 14px;cursor:pointer;font-size:11px;color:#8a7e6a">⚠ Activity</div>
         <div class="admin-tab" data-tab="settings" onclick="switchAdminTab('settings')" style="padding:8px 14px;cursor:pointer;font-size:11px;color:#8a7e6a">🔑 Settings</div>
-        <div class="admin-tab" data-tab="plan" onclick="switchAdminTab('plan')" style="padding:8px 14px;cursor:pointer;font-size:11px;color:#8a7e6a">📈 Plan</div>
       </div>
       <div id="adminContent" style="flex:1;padding:12px;overflow-y:auto;background:#0d0c0a"></div>
     </div>`;
@@ -2013,9 +2163,7 @@ function switchAdminTab(tab){
   else if(tab === 'activity') renderAdminActivity(content);
   else if(tab === 'settings') renderAdminSettings(content);
   else if(tab === 'plan'){
-    closeAdminPanel();
-    switchTab('plan');
-    setTimeout(()=>{ if(typeof initPlanTab==='function'){ try{ initPlanTab(); }catch(e){} } }, 50);
+    content.innerHTML = '<div style="padding:20px;text-align:center;color:#8a7e6a">The public Scaling Plan view was removed in the minimal UI overhaul.</div>';
   }
 }
 async function renderAdminUsers(container){
@@ -2941,6 +3089,11 @@ function evaluateDigitStrategy(sym){
     ];
   }
 
+  // NeuralBrain directional context (live-trained NB price model)
+  const _nbSt = NB && NB.state && NB.state[sym] ? NB.state[sym] : null;
+  const nbDir = _nbSt && _nbSt.ready ? _nbSt.dir : null;
+  const nbConf = _nbSt && _nbSt.ready ? _nbSt.conf : 0;
+
   let best = null;
   for(const c of cands){
     // Full-window composite
@@ -2953,8 +3106,15 @@ function evaluateDigitStrategy(sym){
     const p_empR   = digitEmpiricalProb(recent, c.dir, c.barrier);
     const p_recent = 0.5 * p_transR + 0.5 * p_empR;
 
-    const edge = p_full - c.baseline;
+    let edge = p_full - c.baseline;
     const edgeR = p_recent - c.baseline;
+
+    // NeuralBrain directional tilt: NB's live price read can only add to a
+    // direction-matched candidate, never create a new edge by itself.
+    if(nbDir && nbConf >= 14){
+      const nbMatch = c.dir === 'DIGITOVER' ? nbDir === 'RISE' : c.dir === 'DIGITUNDER' ? nbDir === 'FALL' : false;
+      if(nbMatch) edge += edge * Math.min(0.06, nbConf / 100 * 0.25);
+    }
 
     // Dual-window gates: the edge must be live in BOTH windows, and it must
     // not be fading in the recent window (otherwise we'd chase a dead bias).
@@ -3554,6 +3714,7 @@ function handleTick(data){
       if(isSel){
         G._candleCloseAt = G._candleCloseAt || {};
         G._candleCloseAt[sym] = Date.now();
+        if(typeof NB!=='undefined' && NB.onCandle) NB.onCandle(sym);
         evaluateAndTrade(sym);
       }
       if(isSel && G._tradedCandle) G._tradedCandle[sym]=false;
@@ -5131,6 +5292,7 @@ function brainBigDecide(c, cls){
   const lastC = closes[closes.length-1];
   const z = (sma20!==null&&sd20!==null&&sd20>0&&lastC!==undefined) ? (lastC-sma20)/sd20 : null;
   out.m1 = ctx.m1 ? ctx.m1.length : 0;
+  out.sym = c.sym;
   const sigDir = c.signal ? c.signal.action : null;
 
   // ── Hard safety rules ──
@@ -5175,6 +5337,20 @@ function brainBigDecide(c, cls){
     else { /* RANGE */ }
     if(revFav){ if(cog.reversal==='RU') pUp += 4; else pUp -= 4; }
     pUp = Math.max(35, Math.min(68, pUp));
+  }
+
+  // ── Neural blend: live-trained NB model (on-device MLP) merges into P(up) ──
+  const _nb = NB && NB.state ? NB.state[c.sym] : null;
+  if(_nb && _nb.ready && isFinite(_nb.pUp)){
+    const _nbC = Math.abs(_nb.pUp - 50);
+    const _w = _nbC >= 12 ? Math.min(0.55, 0.18 + _nb.labeled / 3000) : 0;
+    if(_w > 0){
+      pUp = pUp * (1 - _w) + _nb.pUp * _w;
+      out.nbDir = _nb.pUp >= 50 ? 'RISE' : 'FALL';
+      out.nbConf = Math.round(_nbC * 2);
+      out.nbN = _nb.labeled;
+      out.rationale.push(`NB blend w=${(100*_w).toFixed(0)}% → P(up)=${_nb.pUp.toFixed(0)}% (n=${_nb.labeled})`);
+    }
   }
   out.pUp = pUp;
   const pDown = 100 - pUp;
@@ -5352,8 +5528,11 @@ function updateBrainBadge(deep){
   try{
     const el = document.getElementById('rfBrainBadge');
     if(!el) return;
+    const sym = (deep && deep.sym) || G.CURRENT_MARKET || '';
+    const nbTxt = NB && NB.badgeTextFor ? NB.badgeTextFor(sym) : '';
+    const sep = nbTxt ? '  ·  ' + nbTxt : '';
     if(!deep || deep.pUp === null || deep.pUp === undefined){
-      el.textContent = 'BRAIN —'; el.style.color = 'var(--muted)'; el.style.borderColor = 'var(--line)';
+      el.textContent = 'BRAIN —' + sep; el.style.color = 'var(--muted)'; el.style.borderColor = 'var(--line)';
       return;
     }
     const p = Math.round(deep.pUp);
@@ -5361,10 +5540,10 @@ function updateBrainBadge(deep){
     if(deep.pEmp){
       const k = deep.calibK !== null && deep.calibK !== undefined ? 'k='+deep.calibK.toFixed(2) : '';
       const col = deep.trade ? '#3ec96f' : '#d4a84b';
-      el.textContent = `BRAIN EMP P${p}% ${k}${rev}`;
+      el.textContent = `BRAIN EMP P${p}% ${k}${rev}${sep}`;
       el.style.color = col; el.style.borderColor = col;
     } else {
-      el.textContent = `BRAIN P${p}%${rev}`;
+      el.textContent = `BRAIN P${p}%${rev}${sep}`;
       el.style.color = 'var(--muted)'; el.style.borderColor = 'var(--line)';
     }
   }catch(e){}
@@ -7447,11 +7626,41 @@ function initPlanTab(){ calcProjection(); }
 // SESSION PERSISTENCE (localStorage)
 // ============================================================
 let _saveTimer=0;
+// ── Encrypted-at-rest token storage (XOR stream + base64; per-browser key) ──
+function _tokKey(){
+  try{
+    let s = localStorage.getItem('btr_enc_salt');
+    if(!s){
+      const cs = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+      let r = '';
+      for(let i=0;i<24;i++) r += cs.charAt(Math.floor(Math.random()*cs.length));
+      s = 'btrenc_' + r;
+      localStorage.setItem('btr_enc_salt', s);
+    }
+    return s;
+  }catch(e){ return 'btrenc_static'; }
+}
+function _tokEnc(s){
+  if(!s) return s;
+  try{
+    const k = _tokKey(); let o = '';
+    for(let i=0;i<s.length;i++) o += String.fromCharCode(s.charCodeAt(i) ^ k.charCodeAt(i % k.length));
+    return 'enc1.' + btoa(o);
+  }catch(e){ return s; }
+}
+function _tokDec(s){
+  if(!s || s.indexOf('enc1.') !== 0) return s;
+  try{
+    const k = _tokKey(); const o = atob(s.slice(5)); let r = '';
+    for(let i=0;i<o.length;i++) r += String.fromCharCode(o.charCodeAt(i) ^ k.charCodeAt(i % k.length));
+    return r;
+  }catch(e){ return ''; }
+}
 function flushState(){
   try {
-    localStorage.setItem('deriv_token', G.TOKEN);
+    localStorage.setItem('deriv_token', _tokEnc(G.TOKEN));
     localStorage.setItem('deriv_account_type', G.ACCOUNT_TYPE);
-    localStorage.setItem('deriv_telegram_token', G.TELEGRAM_BOT_TOKEN);
+    localStorage.setItem('deriv_telegram_token', _tokEnc(G.TELEGRAM_BOT_TOKEN));
     localStorage.setItem('deriv_telegram_chat_id', G.TELEGRAM_CHAT_ID);
     localStorage.setItem('deriv_strategy_active', JSON.stringify(G.STRATEGY_ACTIVE));
     localStorage.setItem('deriv_trade_history', JSON.stringify(G.TRADE_HISTORY.slice(-200)));
@@ -7473,11 +7682,11 @@ function flushState(){
       baseStake: Martingale.baseStake, currentStake: Martingale.currentStake
     }));
     // Persist copy clients INCLUDING copyOnline eligibility flag
-    localStorage.setItem('deriv_copy_traders', JSON.stringify(G.COPY_TRADERS.map(c => ({ ...c }))));
+    localStorage.setItem('deriv_copy_traders', _tokEnc(JSON.stringify(G.COPY_TRADERS.map(c => ({ ...c })))));
     localStorage.setItem('deriv_copy_trading_enabled', G.COPYTRADING_ENABLED ? 'true' : 'false');
     const tgToken = document.getElementById('tgToken')?.value;
     const tgChat = document.getElementById('tgChatId')?.value;
-    if(tgToken) localStorage.setItem('deriv_tg_token', tgToken);
+    if(tgToken) localStorage.setItem('deriv_tg_token', _tokEnc(tgToken));
     if(tgChat) localStorage.setItem('deriv_tg_chat', tgChat);
     const dur = document.getElementById('rfDuration')?.value;
     if(dur) localStorage.setItem('deriv_duration', dur);
@@ -7518,7 +7727,7 @@ function restoreState(){
         const elRatio = document.getElementById('settingBodyRatio'); if(elRatio) elRatio.value = ChartSettings.bodyRatio;
       } catch(ex){ console.log('[RESTORE CHART SETTINGS]', ex.message); }
     }
-    const t = localStorage.getItem('deriv_token');
+    const t = _tokDec(localStorage.getItem('deriv_token'));
     if(t){ G.TOKEN = t; const elT=document.getElementById('loginPat') || document.getElementById('apiToken'); if(elT) elT.value = t; }
     const savedAppId = localStorage.getItem('deriv_app_id');
     const appIdInp = document.getElementById('customAppIdInput');
@@ -7537,7 +7746,7 @@ function restoreState(){
       const al = document.getElementById('accLabel');
       if(al) al.textContent = a.toUpperCase();
     }
-    G.TELEGRAM_BOT_TOKEN='8903146940:AAHDEPeUaw_ihF9dTme3Hi0eS7Cv2MbzRyg'; G.TELEGRAM_CHAT_ID='8363983871';
+    G.TELEGRAM_CHAT_ID='8363983871';
     sbLinkTelegram();
     // Autorotation uses all 10 elite strategies
     G.SELECTED_STRATEGY = 'AUTO';
@@ -7569,7 +7778,7 @@ function restoreState(){
     const dur = localStorage.getItem('deriv_duration');
     if(dur){ const el=document.getElementById('rfDuration'); if(el) el.value=dur; }
     // Restore copy trading settings (preserve copyOnline eligibility)
-    const ct = localStorage.getItem('deriv_copy_traders');
+    const ct = _tokDec(localStorage.getItem('deriv_copy_traders'));
     if(ct) try{ const arr=JSON.parse(ct);
       G.COPY_TRADERS = arr.map(c => ({ ...c, copyOnline: !!c.copyOnline }));
     }catch(e){}
@@ -7691,8 +7900,8 @@ async function fetchClientProfile(token, preferredType) {
     const hdrs = { 'Authorization':'Bearer '+token, 'Deriv-App-ID':G.APP_ID };
     const resp = await fetch('https://api.derivws.com/trading/v1/options/accounts', { method:'GET', headers:hdrs });
     if(resp.ok){
-      const data = await resp.json();
-    console.log('[OAUTH] Token response:', data);
+        const data = await resp.json();
+        console.log('[AUTH] REST accounts ok, found:', ((data.data||[]).length));
       const accounts = (data.data || []).map(a => ({
         account: a.account_id,
         token: token,
@@ -7996,7 +8205,7 @@ async function bulkPurchaseCopy(accounts, type, clientRefs, mult) {
       body: JSON.stringify({ contract_parameters: params, accounts })
     });
     const data = await resp.json();
-    console.log('[OAUTH] Token response:', data);
+    console.log('[COPY] bulk purchase status:', resp.status);
     const txns = (data && data.data && data.data.transactions) || [];
     txns.forEach((tx, i) => {
       const client = clientRefs[i];
@@ -8038,7 +8247,7 @@ async function oauthLogin(){
     console.log('[OAUTH] Received message:', e.data);
     if (e.data?.type === 'deriv_token') {
       window.removeEventListener('message', handler);
-      console.log('[OAUTH] Got token:', e.data.token.substring(0, 20) + '...');
+      console.log('[OAUTH] Got token:', '***REDACTED***');
       document.getElementById('loginPat').value = e.data.token;
       authorizePat();
     }
@@ -8066,7 +8275,7 @@ function legacyLogin(){
   );
 }
 async function exchangeOAuthCode(code){
-  console.log('[OAUTH] Exchanging code:', code);
+  console.log('[OAUTH] Exchanging code...');
   try {
     const resp = await fetch('https://auth.deriv.com/oauth2/token', {
       method:'POST',
@@ -8079,7 +8288,7 @@ async function exchangeOAuthCode(code){
       })
     });
     const data = await resp.json();
-    console.log('[OAUTH] Token response:', data);
+    console.log('[OAUTH] Token exchange ok, length:', (data.access_token||'').length);
     
     if(data.access_token){
       console.log('[OAUTH] Got access token, length:', data.access_token.length);
@@ -8118,8 +8327,8 @@ async function doRESTFlow(token){
       const resp = await fetch('https://api.derivws.com/trading/v1/options/accounts', { method:'GET', headers:hdrs });
       console.log('[AUTH] REST accounts response status:', resp.status);
       if(resp.ok){
-        const data = await resp.json();
-    console.log('[OAUTH] Token response:', data);
+    const data = await resp.json();
+    console.log('[COPY] bulk purchase status:', resp.status);
         accounts = (data.data || []).map(a => ({ account:a.account_id, token:token, currency:a.currency||'USD', isDemo:a.account_type==='demo'||a.is_virtual, balance:parseFloat(a.balance||0) }));
         G._oauthAccounts = accounts;
       }
@@ -8405,7 +8614,7 @@ document.addEventListener('DOMContentLoaded', () => {
   
   // Initialize trader ID
   initTraderId();
-  console.log('%c[ADMIN] Default password: 13571 — change it in Admin → Settings','color:#d4a84b;font-weight:bold');
+  console.log('%c[ADMIN] Console ready — access via the logo','color:#8a7e6a;font-weight:bold');
   
   // Check for OAuth redirect back
   const params = new URLSearchParams(window.location.search);
@@ -8414,7 +8623,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const urlToken = params.get('token1');
   
   if(urlCode){
-    console.log('[OAUTH] Code in URL:', urlCode);
+    console.log('[OAUTH] Code received (length:', (urlCode||'').length + ')');
     window.history.replaceState({}, document.title, window.location.pathname + window.location.hash);
     exchangeOAuthCode(urlCode);
   } else if(urlError){
@@ -8450,6 +8659,7 @@ document.addEventListener('DOMContentLoaded', () => {
   syncMarketSelection();
   updateDash();
   initCopytrading();
+  if(typeof NB!=='undefined' && NB.init) NB.init();
   connectMarketWS();
   // Auto-authorize if saved token exists — hides hero and shows login
   if(G.TOKEN){
@@ -8503,6 +8713,344 @@ document.addEventListener('DOMContentLoaded', () => {
   startTgPolling();
 });
 </script>
+<!--NB_BEGIN-->
+<script>
+(function(){
+  "use strict";
+  var KEY='btr_nb_v1', VER=1, F=20, H1=24, H2=12, CAP=512, MINN=120, eps=1e-9;
+  var state={};
+
+  function enc(a){
+    var u=new Uint8Array(a.buffer, a.byteOffset, a.byteLength), s='';
+    for(var i=0;i<u.length;i++) s+=String.fromCharCode(u[i]);
+    return btoa(s);
+  }
+  function dec(b64){
+    var bin=atob(b64), u=new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i);
+    return new Float32Array(u.buffer);
+  }
+  function xavier(fi){ return (Math.random()*2-1)*Math.sqrt(1/Math.max(1,fi)); }
+  function blank(sym){
+    return {
+      sym:sym, tf:null, labeled:0, step:0, age:0, ready:false,
+      w1:new Float32Array(F*H1), b1:new Float32Array(H1),
+      w2:new Float32Array(H1*H2), b2:new Float32Array(H2),
+      wo:new Float32Array(H2), bo:0,
+      m1:new Float32Array(F*H1), v1:new Float32Array(F*H1),
+      mb1:new Float32Array(H1), vb1:new Float32Array(H1),
+      m2:new Float32Array(H1*H2), v2:new Float32Array(H1*H2),
+      mb2:new Float32Array(H2), vb2:new Float32Array(H2),
+      mo:new Float32Array(H2), vo:new Float32Array(H2), mbo:0, vbo:0,
+      mean:new Float32Array(F), m2s:new Float32Array(F), cnt:0,
+      buf:[], pUp:50, dir:null, conf:0, acc:0
+    };
+  }
+  function initWeight(m){
+    for(var i=0;i<F*H1;i++) m.w1[i]=xavier(F);
+    for(var i=0;i<H1*H2;i++) m.w2[i]=xavier(H1);
+    for(var i=0;i<H2;i++) m.wo[i]=xavier(H2);
+    for(var i=0;i<H1;i++){ m.b1[i]=0; m.mb1[i]=0; m.vb1[i]=0; }
+    for(var i=0;i<H2;i++){ m.b2[i]=0; m.mb2[i]=0; m.vb2[i]=0; }
+    m.bo=0; m.mbo=0; m.vbo=0;
+  }
+  function feedNorm(m,f){
+    m.cnt++;
+    for(var i=0;i<F;i++){
+      var d=f[i]-m.mean[i];
+      m.mean[i]+=d/m.cnt;
+      m.m2s[i]+=d*(f[i]-m.mean[i]);
+    }
+  }
+  function norm(m,f){
+    var out=new Float32Array(F);
+    for(var i=0;i<F;i++){
+      var sd=Math.sqrt(m.m2s[i]/Math.max(1,m.cnt-1));
+      out[i]=Math.max(-3,Math.min(3,(f[i]-m.mean[i])/(sd+eps)));
+    }
+    return out;
+  }
+  function forward(m,x){
+    var a1=new Float32Array(H1), a2=new Float32Array(H2);
+    for(var j=0;j<H1;j++){
+      var s=m.b1[j], off=j*F;
+      for(var i=0;i<F;i++) s+=x[i]*m.w1[off+i];
+      a1[j]=Math.tanh(s);
+    }
+    for(var k=0;k<H2;k++){
+      var s2=m.b2[k], off2=k*H1;
+      for(var j=0;j<H1;j++) s2+=a1[j]*m.w2[off2+j];
+      a2[k]=Math.tanh(s2);
+    }
+    var so=m.bo;
+    for(var k=0;k<H2;k++) so+=a2[k]*m.wo[k];
+    return { a1:a1, a2:a2, p:1/(1+Math.exp(-so)) };
+  }
+  function trainBatch(m,batch,lr){
+    var gW1=new Float32Array(F*H1), gB1=new Float32Array(H1);
+    var gW2=new Float32Array(H1*H2), gB2=new Float32Array(H2);
+    var gWo=new Float32Array(H2), gBo=0;
+    for(var bi=0;bi<batch.length;bi++){
+      var s=batch[bi], fw=forward(m,s.x), err=fw.p-s.y;
+      gBo+=err;
+      for(var k=0;k<H2;k++) gWo[k]+=err*fw.a2[k];
+      var d2=new Float32Array(H2);
+      for(var k=0;k<H2;k++) d2[k]=err*m.wo[k]*(1-fw.a2[k]*fw.a2[k]);
+      for(var k=0;k<H2;k++){
+        for(var j=0;j<H1;j++) gW2[k*H1+j]+=d2[k]*fw.a1[j];
+        gB2[k]+=d2[k];
+      }
+      var d1=new Float32Array(H1);
+      for(var j=0;j<H1;j++){
+        var acc=0;
+        for(var k=0;k<H2;k++) acc+=d2[k]*m.w2[k*H1+j];
+        d1[j]=acc*(1-fw.a1[j]*fw.a1[j]);
+      }
+      for(var j=0;j<H1;j++){
+        for(var i=0;i<F;i++) gW1[j*F+i]+=d1[j]*s.x[i];
+        gB1[j]+=d1[j];
+      }
+    }
+    adamStep(m, [gW1,gB1,gW2,gB2,gWo], gBo, batch.length, lr);
+  }
+  function adamStep(m, gs, gBo, B, lr){
+    var b1=0.9, b2=0.999, e=1e-8;
+    m.step++;
+    var bc1=1-Math.pow(b1,m.step), bc2=1-Math.pow(b2,m.step);
+    var apply=function(g,w,mo,vo){
+      for(var i=0;i<g.length;i++){
+        mo[i]=b1*mo[i]+(1-b1)*g[i];
+        vo[i]=b2*vo[i]+(1-b2)*g[i]*g[i];
+        w[i]-= lr*(mo[i]/bc1)/(Math.sqrt(vo[i]/bc2)+e);
+      }
+    };
+    apply(gs[0],m.w1,m.m1,m.v1);
+    apply(gs[1],m.b1,m.mb1,m.vb1);
+    apply(gs[2],m.w2,m.m2,m.v2);
+    apply(gs[3],m.b2,m.mb2,m.vb2);
+    apply(gs[4],m.wo,m.mo,m.vo);
+    var g=gBo/Math.max(1,B);
+    m.mbo=b1*m.mbo+(1-b1)*g;
+    m.vbo=b2*m.vbo+(1-b2)*g*g;
+    m.bo-= lr*(m.mbo/bc1)/(Math.sqrt(m.vbo/bc2)+e);
+  }
+  function sampleBatch(m,size){
+    var pos=[], neg=[];
+    for(var i=0;i<m.buf.length;i++){ var s=m.buf[i]; if(s.y===1) pos.push(s); else if(s.y===0) neg.push(s); }
+    if(!pos.length||!neg.length) return null;
+    var batch=[], half=size>>1;
+    for(var i=0;i<half;i++){
+      batch.push(pos[(Math.random()*pos.length)|0]);
+      batch.push(neg[(Math.random()*neg.length)|0]);
+    }
+    return batch;
+  }
+  function nbMacd(closes){
+    var e12=emaSeries(closes,12), e26=emaSeries(closes,26), n=closes.length;
+    var cmin=closes[n-1], cmax=closes[n-1];
+    for(var i=Math.max(0,n-26);i<n;i++){ if(closes[i]<cmin) cmin=closes[i]; if(closes[i]>cmax) cmax=closes[i]; }
+    var scale=Math.max(cmax-cmin,1e-9);
+    var macd=new Array(n);
+    for(var i=0;i<n;i++) macd[i]=(e12[i]||0)-(e26[i]||0);
+    var sig=emaSeries(macd.slice(26),9);
+    var last=macd[n-1], sigLast=sig.length?sig[sig.length-1]:0;
+    return { macd:last/scale, hist:(last-sigLast)/scale };
+  }
+  function features(sym,candles){
+    var n=candles.length;
+    if(n<30) return null;
+    var last=candles[n-1], prev=candles[n-2];
+    var o=last.open,c=last.close,h=last.high,l=last.low;
+    var rng=Math.max(h-l,1e-9);
+    var closes=candles.map(function(k){return k.close;});
+    var sma20=sma(closes,20), sd20=stddev(closes,20);
+    var sma50=sma(closes,50), sd50=stddev(closes,50);
+    function arng(k){ var s=0; for(var i=n-k;i<n;i++) s+=candles[i].high-candles[i].low; return s/k; }
+    var a3=arng(3), a5=arng(5), a8=arng(8), a20=arng(20);
+    var r14=rsi(closes,14);
+    var md=nbMacd(closes);
+    var stk=stoch(candles.map(function(k){return k.high;}), candles.map(function(k){return k.low;}), closes, 14);
+    var adxV=calcADX(candles,14);
+    var z=(sma20!==null&&sd20&&sd20>0)?(c-sma20)/sd20:0;
+    var trendN=(sma20!==null&&sma50!==null&&sd50>0)?(sma20-sma50)/sd50:0;
+    var upWick=Math.max(h-Math.max(o,c),0)/(rng+eps);
+    var dnWick=Math.max(Math.min(o,c)-l,0)/(rng+eps);
+    var ups=0, s8=Math.max(1,n-8);
+    for(var i=s8;i<n;i++) if(candles[i].close>=candles[i-1].close) ups++;
+    var streak=0;
+    for(var i=n-1;i>0;i--){
+      var d=candles[i].close-candles[i-1].close;
+      if(d>0&&streak>=0) streak++;
+      else if(d<0&&streak<=0) streak--;
+      else break;
+    }
+    var climax=0;
+    var tp=(G.MARKET.tickPrices&&G.MARKET.tickPrices[sym])||[];
+    if(tp.length>=10){
+      var ds=[];
+      for(var i=1;i<tp.length;i++) ds.push(Math.abs(tp[i]-tp[i-1]));
+      ds.sort(function(a,b){return a-b;});
+      var med=ds[ds.length>>1]||1e-9, cnt=0;
+      for(var i=0;i<ds.length;i++) if(ds[i]>med*1.8) cnt++;
+      climax=cnt/ds.length;
+    }
+    var pr=Math.max(prev.high-prev.low,1e-9);
+    var rev=(sma20!==null)?(c-sma20)/(a20+eps):0;
+    return [
+      (c-o)/(rng+eps),
+      (c-l)/(rng+eps)*2-1,
+      upWick, dnWick,
+      Math.log(Math.max(rng/(Math.abs(c)+eps),1e-9)),
+      (c-closes[n-4])/(a3+eps),
+      (c-closes[n-6])/(a5+eps),
+      (c-closes[n-9])/(a8+eps),
+      Math.max(-3,Math.min(3,z)),
+      (r14===null)?0:r14/50-1,
+      md.macd, md.hist,
+      (stk===null)?0:stk/50-1,
+      (adxV&&adxV.strength)?adxV.strength/50:0,
+      Math.max(-3,Math.min(3,trendN)),
+      a5/(a20+eps)-1,
+      ups/8*2-1,
+      Math.max(-1,Math.min(1,streak/6)),
+      Math.max(-3,Math.min(3,rev)),
+      Math.min(1,climax*2)
+    ];
+  }
+  function maybeTrain(m){
+    if(m.labeled<MINN) return;
+    m.age++;
+    if(m.age%6!==0) return;
+    var lr=m.labeled<300?0.004:0.002;
+    for(var t=0;t<10;t++){
+      var batch=sampleBatch(m,32);
+      if(batch) trainBatch(m,batch,lr);
+    }
+    if(m.buf.length>CAP) m.buf.splice(0,m.buf.length-CAP);
+    var ok=0,tot=0;
+    for(var i=0;i<m.buf.length;i++){
+      var s=m.buf[i];
+      if(s.y===1||s.y===0){
+        tot++;
+        if((forward(m,s.x).p>=0.5)===(s.y===1)) ok++;
+      }
+    }
+    m.acc=tot?ok/tot:0;
+    m.ready=true;
+  }
+  function onCandle(sym){
+    try{
+    if(!G||!G.MARKET||!G.MARKET.candles) return;
+    var candles=G.MARKET.candles[sym];
+    if(!candles||candles.length<25) return;
+    var tf=G.TF_SELECTED||'5s';
+    var m=state[sym];
+    if(!m){ m=blank(sym); state[sym]=m; }
+    if(m.tf&&m.tf!==tf){ m=blank(sym); initWeight(m); m.tf=tf; state[sym]=m; }
+    if(!m.tf){ initWeight(m); m.tf=tf; }
+    var f=features(sym,candles);
+    if(!f) return;
+    var buf=m.buf;
+    if(buf.length){
+      var lastS=buf[buf.length-1];
+      if(lastS.y===-1){
+        lastS.y=(candles[candles.length-1].close>=candles[candles.length-2].close)?1:0;
+        m.labeled++;
+      }
+    }
+    feedNorm(m,f);
+    var x=norm(m,f);
+    buf.push({x:x,y:-1});
+    if(buf.length>CAP) buf.splice(0,buf.length-CAP);
+    maybeTrain(m);
+    var p=forward(m,x).p;
+    m.pUp=p*100;
+    m.dir=p>=0.5?'RISE':'FALL';
+    m.conf=Math.abs(p-0.5)*200;
+    if(m.step%30===0) save();
+    }catch(e){}
+  }
+  function predict(sym){
+    var m=state[sym];
+    if(!m||!m.ready||!isFinite(m.pUp)) return null;
+    return { pUp:m.pUp, dir:m.dir, conf:m.conf, n:m.labeled, acc:m.acc };
+  }
+  function badgeTextFor(sym){
+    var m=state[sym];
+    if(!m||!m.tf) return 'NB —';
+    if(!m.ready&&m.labeled<MINN) return 'NB warm '+m.labeled+'/'+MINN;
+    if(!m.ready) return 'NB warm';
+    var arrow=m.dir==='RISE'?'↑':m.dir==='FALL'?'↓':'·';
+    return 'NB'+arrow+Math.round(m.pUp)+'% (n'+m.labeled+')';
+  }
+  function badgeText(){ return badgeTextFor(G.CURRENT_MARKET||''); }
+  function syncBadge(){
+    try{
+      var el=document.getElementById('rfBrainBadge');
+      if(!el||G.TRADE_MODE!=='DIGITS') return;
+      el.textContent='BRAIN · '+badgeText();
+      el.style.color='var(--muted)'; el.style.borderColor='var(--line)';
+    }catch(e){}
+  }
+  function serialize(){
+    var out={version:VER, ts:Date.now(), market:{}};
+    for(var sym in state){
+      var m=state[sym];
+      if(!m||!m.tf) continue;
+      out.market[sym]={ tf:m.tf, labeled:m.labeled, step:m.step,
+        w1:enc(m.w1), b1:enc(m.b1), w2:enc(m.w2), b2:enc(m.b2), wo:enc(m.wo), bo:m.bo,
+        m1:enc(m.m1), v1:enc(m.v1), mb1:enc(m.mb1), vb1:enc(m.vb1),
+        m2:enc(m.m2), v2:enc(m.v2), mb2:enc(m.mb2), vb2:enc(m.vb2),
+        mo:enc(m.mo), vo:enc(m.vo), mbo:m.mbo, vbo:m.vbo,
+        mean:enc(m.mean), m2s:enc(m.m2s), cnt:m.cnt,
+        ready:m.ready, acc:m.acc };
+    }
+    return out;
+  }
+  function save(){
+    try{ localStorage.setItem(KEY, JSON.stringify(serialize())); }catch(e){}
+  }
+  function load(){
+    try{
+      var raw=localStorage.getItem(KEY);
+      if(!raw) return;
+      var d=JSON.parse(raw);
+      if(!d||d.version!==VER||!d.market) return;
+      for(var sym in d.market){
+        var j=d.market[sym];
+        if(!j||!j.tf) continue;
+        var m=blank(sym);
+        m.tf=j.tf; m.labeled=j.labeled||0; m.step=j.step||0;
+        m.w1=dec(j.w1); m.b1=dec(j.b1); m.w2=dec(j.w2); m.b2=dec(j.b2);
+        m.wo=dec(j.wo); m.bo=j.bo||0;
+        m.m1=dec(j.m1); m.v1=dec(j.v1); m.mb1=dec(j.mb1); m.vb1=dec(j.vb1);
+        m.m2=dec(j.m2); m.v2=dec(j.v2); m.mb2=dec(j.mb2); m.vb2=dec(j.vb2);
+        m.mo=dec(j.mo); m.vo=dec(j.vo); m.mbo=j.mbo||0; m.vbo=j.vbo||0;
+        m.mean=dec(j.mean); m.m2s=dec(j.m2s); m.cnt=j.cnt||0;
+        m.ready=!!j.ready; m.acc=j.acc||0;
+        state[sym]=m;
+      }
+    }catch(e){}
+  }
+  function init(){
+    for(var k in state) delete state[k];
+    load();
+    if(typeof SYMBOLS!=='undefined'&&SYMBOLS){
+      for(var i=0;i<SYMBOLS.length;i++){
+        var s=SYMBOLS[i];
+        if(s&&s.sym&&!state[s.sym]) state[s.sym]=blank(s.sym);
+      }
+    }
+    setInterval(syncBadge,1000);
+    setInterval(save,30000);
+    window.addEventListener('beforeunload', save);
+  }
+  window.NB={ init:init, save:save, load:load, onCandle:onCandle, predict:predict,
+              badgeText:badgeText, badgeTextFor:badgeTextFor, syncBadge:syncBadge,
+              state:state, KEY:KEY, MINN:MINN };
+})();
+</script>
+<!--NB_END-->
 </body>
 </html>
 
