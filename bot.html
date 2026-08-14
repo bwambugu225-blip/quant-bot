@@ -2663,7 +2663,7 @@ function initStrategies(){
   // not a blind band touch — clarity is the strategy.
   S.push({name:'Bollinger Reversal',code:'REV_BB',analyze:(c,sym,tf)=>{
     const n=c.length; if(n<25) return null;
-    const k=c[n-1], prevK=c[n-2];
+    const k=c[n-1];
     const closes=c.map(x=>x.close);
     const last=closes[n-1], prev=closes[n-2];
     const per=20;
@@ -2674,32 +2674,30 @@ function initStrategies(){
     if(width < 0.0006) return null;            // need volatility to revert into
     const r=rsi(closes,14)||50;
     const sdN=sd||1e-9;
+    const bodyR = (kr)=> Math.abs(kr.close-kr.open)/((kr.high-kr.low)||1e-9);
 
-    // REAL EDGE = confluence, not a blind band touch:
-    //   1) price PIERCED the outer band (exhaustion / wick or prior close)
-    //   2) this candle CLOSED back INSIDE the band AND turned the right way
-    //      → the market rejected the extreme (the actual reversal)
-    //   3) RSI is in genuine overbought/oversold territory
-    //   4) the rejection candle is decisively directional (real body, not a doji)
+    // REAL EDGE — a true exhaustion reversal, not a blind band touch:
+    //   • the PRIOR candle CLOSED outside the band (genuine overstretch, not a
+    //     stray wick that prints every other tick)
+    //   • THIS candle rejects it: closes back INSIDE the band and turns the
+    //     right way with a strong directional body (conviction, not a doji)
+    //   • RSI is deeply overbought/oversold
+    //   • we ride the snap-back for several ticks (the edge needs room to pay)
 
-    // REVERSAL UP — exhaustion below the band, confirmed rejection.
-    const piercedLow = (k.low <= bbL) || (prev <= bbL);
-    const rejectedUp = last > prev && last > bbL && last > k.open;
-    if(piercedLow && rejectedUp && r < 45){
-      const depth = Math.max(0, (bbL - Math.min(prev, k.low)) / sdN);
-      const body  = Math.abs(last - k.open) / ((k.high - k.low) || 1e-9);
-      const conf  = Math.round(82 + Math.min(13, depth*5 + body*4));
-      return {action:'RISE', conf, src:'REV_BB'};
+    // REVERSAL UP
+    if(prev <= bbL && last > prev && last > k.open && last > bbL && r < 38 && bodyR(k) > 0.5){
+      const depth = (bbL - prev) / sdN;
+      const dur = Math.max(3, Math.min(12, Math.round(4 + depth*3)));
+      const conf = Math.round(80 + Math.min(15, depth*6 + bodyR(k)*5));
+      return {action:'RISE', conf, src:'REV_BB', dur, durUnit:'t'};
     }
 
-    // REVERSAL DOWN — exhaustion above the band, confirmed rejection.
-    const piercedHigh = (k.high >= bbU) || (prev >= bbU);
-    const rejectedDn  = last < prev && last < bbU && last < k.open;
-    if(piercedHigh && rejectedDn && r > 55){
-      const depth = Math.max(0, (Math.max(prev, k.high) - bbU) / sdN);
-      const body  = Math.abs(last - k.open) / ((k.high - k.low) || 1e-9);
-      const conf  = Math.round(82 + Math.min(13, depth*5 + body*4));
-      return {action:'FALL', conf, src:'REV_BB'};
+    // REVERSAL DOWN
+    if(prev >= bbU && last < prev && last < k.open && last < bbU && r > 62 && bodyR(k) > 0.5){
+      const depth = (prev - bbU) / sdN;
+      const dur = Math.max(3, Math.min(12, Math.round(4 + depth*3)));
+      const conf = Math.round(80 + Math.min(15, depth*6 + bodyR(k)*5));
+      return {action:'FALL', conf, src:'REV_BB', dur, durUnit:'t'};
     }
     return null;
   }});
@@ -3731,20 +3729,18 @@ function runStrategyAnalysis(sym, candles, liveBuf, tf){
     const c = candles;
     if(!c || c.length < 30) return null;
 
-    // SIMPLE ULTRA-EFFICIENT RISE/FALL ENGINE
-    // Run the single clean EMA-trend strategy and trade its signal directly.
-    // No ensemble voting, no regime gate, no AI brain — just a clear edge.
-    let action=null, conf=0, src='EMA_TREND';
+    // SIMPLE ULTRA-EFFICIENT REVERSAL ENGINE
+    // Run the single reversal strategy and trade its signal directly. No
+    // ensemble voting, no regime gate, no AI brain — the edge is confluence.
+    let v=null;
     for(const st of G.STRATEGIES){
-      try { const v = st.analyze(c, sym, tf); if(v){ action=v.action; conf=v.conf; src=v.src; break; } } catch(e){}
+      try { const r = st.analyze(c, sym, tf); if(r){ v=r; break; } } catch(e){}
     }
-    if(action){
-      conf = Math.min(95, Math.max(70, Math.round(conf)));
-      // Reversal bot trades exactly ONE tick (one candle stick) — the snap-back
-      // is captured immediately, no exposure to trend continuation.
-      const dur = src === 'REV_BB' ? 1 : (G.TRADE_DURATION || 1);
-      const durUnit = src === 'REV_BB' ? 't' : (G.TRADE_DURATION_UNIT || 't');
-      return { action, conf, src, dur, durUnit };
+    if(v){
+      const conf = Math.min(95, Math.max(70, Math.round(v.conf)));
+      // The strategy sets its own duration (multi-tick) so the mean-reversion
+      // edge has room to realise — a 1-tick trade would be a coin flip.
+      return { action:v.action, conf, src:v.src, dur:v.dur, durUnit:v.durUnit };
     }
     return null;
 
