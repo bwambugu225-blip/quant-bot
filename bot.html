@@ -3740,7 +3740,11 @@ function runStrategyAnalysis(sym, candles, liveBuf, tf){
     }
     if(action){
       conf = Math.min(95, Math.max(70, Math.round(conf)));
-      return { action, conf, src };
+      // Reversal bot trades exactly ONE tick (one candle stick) — the snap-back
+      // is captured immediately, no exposure to trend continuation.
+      const dur = src === 'REV_BB' ? 1 : (G.TRADE_DURATION || 1);
+      const durUnit = src === 'REV_BB' ? 't' : (G.TRADE_DURATION_UNIT || 't');
+      return { action, conf, src, dur, durUnit };
     }
     return null;
 
