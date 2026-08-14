@@ -2661,31 +2661,27 @@ function initStrategies(){
   // One clean signal: EMA(5)/EMA(13) cross + RSI filter. No ensemble, no
   // voting, no regime/brain gating. Fast, transparent, robust, and easy to
   // reason about — clarity is the strategy.
-  S.push({name:'EMA + Bollinger Trend',code:'EMA_TREND',analyze:(c,sym,tf)=>{
-    const n=c.length; if(n<30) return null;
+  S.push({name:'Bollinger Reversal',code:'REV_BB',analyze:(c,sym,tf)=>{
+    const n=c.length; if(n<25) return null;
     const closes=c.map(k=>k.close);
-    const last=closes[n-1];
-    const fast=ema(closes,5), slow=ema(closes,13);
-    if(fast===null||slow===null) return null;
-    const pf=ema(closes.slice(0,-1),5), ps=ema(closes.slice(0,-1),13);
-    if(pf===null||ps===null) return null;
-    const r=rsi(closes,14)||50;
-    // Bollinger Band(20,2): use the basis (middle) line as trend confirmation
-    // so we only enter WITH the band, never fade a moving market.
+    const last=closes[n-1], prev=closes[n-2];
     const per=20;
     const m=sma(closes,per); if(m===null) return null;
     const sd=stddev(closes,per); if(sd===null||sd<1e-9) return null;
     const bbU=m+2*sd, bbL=m-2*sd;
-    const width=(bbU-bbL)/((m||1e-9));        // band width as % of price
-    if(width < 0.0004) return null;            // skip dead/squeezed markets
-    const sep=Math.abs(fast-slow)/((Math.abs(slow)||1e-9));
-    const confBoost=Math.min(18, sep*1000);
-    // RISE: EMA golden cross + price holding ABOVE the BB basis (uptrend confirmed)
-    if(pf<=ps && fast>slow && last>=fast && last>m && r<78)
-      return {action:'RISE',conf:Math.round(74+confBoost),src:'EMA_TREND'};
-    // FALL: EMA death cross + price holding BELOW the BB basis (downtrend confirmed)
-    if(pf>=ps && fast<slow && last<=fast && last<m && r>22)
-      return {action:'FALL',conf:Math.round(74+confBoost),src:'EMA_TREND'};
+    if((bbU-bbL)/((m||1e-9)) < 0.0004) return null;   // skip dead/squeezed markets
+    const r=rsi(closes,14)||50;
+    const sdN=sd||1e-9;
+    // REVERSAL UP: prior candle stretched to the LOWER band, now closing up.
+    if(prev <= bbL && last > prev && r < 50){
+      const stretch=(bbL-prev)/sdN;
+      return {action:'RISE', conf:Math.round(80+Math.min(13, stretch*6)), src:'REV_BB'};
+    }
+    // REVERSAL DOWN: prior candle stretched to the UPPER band, now closing down.
+    if(prev >= bbU && last < prev && r > 50){
+      const stretch=(prev-bbU)/sdN;
+      return {action:'FALL', conf:Math.round(80+Math.min(13, stretch*6)), src:'REV_BB'};
+    }
     return null;
   }});
 
@@ -5249,7 +5245,7 @@ function pickOptimalDuration(src, conf, sym){
   const map = {
     ICT_OB:[3,6], FVG:[2,5], BB_BOUNCE:[5,8], MSB:[4,7],
     SUPERTREND:[6,10], S_D_FLIP:[3,6], RSI_DIV:[3,6],
-    KELTNER_SQZ:[4,7], MOMENTUM:[2,5], ADX_TREND:[7,10]
+    KELTNER_SQZ:[4,7], MOMENTUM:[2,5], ADX_TREND:[7,10], REV_BB:[1,3]
   };
   const [lo,hi] = map[src] || [3,6];
   const cw = Math.max(0, Math.min(1, (conf-80)/16));
