@@ -2657,30 +2657,49 @@ function initStrategies(){
   const S = G.STRATEGIES;
   G._stratWR = function(code){const p=G.STRATEGY_STATS?.[code];if(!p||p.total<3)return-1;return p.wins/p.total;};
 
-  // ── SIMPLE ULTRA-EFFICIENT TREND STRATEGY ──
-  // One clean signal: EMA(5)/EMA(13) cross + RSI filter. No ensemble, no
-  // voting, no regime/brain gating. Fast, transparent, robust, and easy to
-  // reason about — clarity is the strategy.
+  // ── SIMPLE ULTRA-EFFICIENT REVERSAL STRATEGY ──
+  // One clean signal: Bollinger-band exhaustion + confirmed rejection. No
+  // ensemble, no voting, no regime/brain gating. The edge is confluence,
+  // not a blind band touch — clarity is the strategy.
   S.push({name:'Bollinger Reversal',code:'REV_BB',analyze:(c,sym,tf)=>{
     const n=c.length; if(n<25) return null;
-    const closes=c.map(k=>k.close);
+    const k=c[n-1], prevK=c[n-2];
+    const closes=c.map(x=>x.close);
     const last=closes[n-1], prev=closes[n-2];
     const per=20;
     const m=sma(closes,per); if(m===null) return null;
     const sd=stddev(closes,per); if(sd===null||sd<1e-9) return null;
     const bbU=m+2*sd, bbL=m-2*sd;
-    if((bbU-bbL)/((m||1e-9)) < 0.0004) return null;   // skip dead/squeezed markets
+    const width=(bbU-bbL)/((m||1e-9));
+    if(width < 0.0006) return null;            // need volatility to revert into
     const r=rsi(closes,14)||50;
     const sdN=sd||1e-9;
-    // REVERSAL UP: prior candle stretched to the LOWER band, now closing up.
-    if(prev <= bbL && last > prev && r < 50){
-      const stretch=(bbL-prev)/sdN;
-      return {action:'RISE', conf:Math.round(80+Math.min(13, stretch*6)), src:'REV_BB'};
+
+    // REAL EDGE = confluence, not a blind band touch:
+    //   1) price PIERCED the outer band (exhaustion / wick or prior close)
+    //   2) this candle CLOSED back INSIDE the band AND turned the right way
+    //      → the market rejected the extreme (the actual reversal)
+    //   3) RSI is in genuine overbought/oversold territory
+    //   4) the rejection candle is decisively directional (real body, not a doji)
+
+    // REVERSAL UP — exhaustion below the band, confirmed rejection.
+    const piercedLow = (k.low <= bbL) || (prev <= bbL);
+    const rejectedUp = last > prev && last > bbL && last > k.open;
+    if(piercedLow && rejectedUp && r < 45){
+      const depth = Math.max(0, (bbL - Math.min(prev, k.low)) / sdN);
+      const body  = Math.abs(last - k.open) / ((k.high - k.low) || 1e-9);
+      const conf  = Math.round(82 + Math.min(13, depth*5 + body*4));
+      return {action:'RISE', conf, src:'REV_BB'};
     }
-    // REVERSAL DOWN: prior candle stretched to the UPPER band, now closing down.
-    if(prev >= bbU && last < prev && r > 50){
-      const stretch=(prev-bbU)/sdN;
-      return {action:'FALL', conf:Math.round(80+Math.min(13, stretch*6)), src:'REV_BB'};
+
+    // REVERSAL DOWN — exhaustion above the band, confirmed rejection.
+    const piercedHigh = (k.high >= bbU) || (prev >= bbU);
+    const rejectedDn  = last < prev && last < bbU && last < k.open;
+    if(piercedHigh && rejectedDn && r > 55){
+      const depth = Math.max(0, (Math.max(prev, k.high) - bbU) / sdN);
+      const body  = Math.abs(last - k.open) / ((k.high - k.low) || 1e-9);
+      const conf  = Math.round(82 + Math.min(13, depth*5 + body*4));
+      return {action:'FALL', conf, src:'REV_BB'};
     }
     return null;
   }});
