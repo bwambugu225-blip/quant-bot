@@ -2657,124 +2657,25 @@ function initStrategies(){
   const S = G.STRATEGIES;
   G._stratWR = function(code){const p=G.STRATEGY_STATS?.[code];if(!p||p.total<3)return-1;return p.wins/p.total;};
 
-  // ── 1. ICT Order Block ──
-  S.push({name:'ICT Order Block',code:'ICT_OB',analyze:(c,sym,tf)=>{
-    tf=tf||'5s';const n=c.length;if(n<10)return null;
-    const last=c[n-1],lk=Math.min(n,30);
-    for(let i=lk-1;i>=5;i--){
-      const k=c[i];const bd=Math.abs(k.close-k.open),rg=k.high-k.low;
-      if(rg<0.0001||bd/rg<0.6)continue;
-      const d=k.close>k.open?1:-1,a=c[i-1],b=c[i-2];
-      if(!a||!b)continue;
-      if((a.close>a.open&&b.close>b.open&&d>0)||(a.close<a.open&&b.close<b.open&&d<0)){
-        const gap=k.high-k.low,tol=last.close*0.002;
-        const dist=d>0?Math.abs(last.close-k.low):Math.abs(last.close-k.high);
-        if(dist<gap*0.6&&dist<tol)return{action:d>0?'RISE':'FALL',conf:85,src:'ICT_OB'};
-      }
-    }
-    return null;
-  }});
-
-  // ── 2. Fair Value Gap ──
-  S.push({name:'Fair Value Gap',code:'FVG',analyze:(c,sym,tf)=>{
-    const n=c.length;if(n<6)return null;const last=c[n-1];
-    for(let i=Math.min(n-4,25);i>=2;i--){
-      const a=c[i],b=c[i+1],d=c[i+2];if(!a||!b||!d)continue;
-      if(a.high<d.low&&last.close>=a.high&&last.close<=d.low)return{action:'RISE',conf:84,src:'FVG'};
-      if(a.low>d.high&&last.close<=a.low&&last.close>=d.high)return{action:'FALL',conf:84,src:'FVG'};
-    }
-    return null;
-  }});
-
-  // ── 3. Bollinger Band Bounce (mean reversion — synthetics excel) ──
-  S.push({name:'BB Bounce',code:'BB_BOUNCE',analyze:(c,sym,tf)=>{
-    const n=c.length;if(n<25)return null;
-    const p=c.map(x=>x.close),per=20;
-    const m=sma(p,per);if(m===null)return null;
-    const sd=Math.sqrt(p.slice(-per).reduce((s,v)=>s+(v-m)**2,0)/per);
-    if(sd<0.0001)return null;
-    const bbU=m+2*sd,bbL=m-2*sd,last=c[n-1],prev=c[n-2];
-    if(prev.low<=bbL&&last.close>prev.close&&last.close>last.open&&prev.close<prev.open)return{action:'RISE',conf:84,src:'BB_BOUNCE'};
-    if(prev.high>=bbU&&last.close<prev.close&&last.close<last.open&&prev.close>prev.open)return{action:'FALL',conf:84,src:'BB_BOUNCE'};
-    return null;
-  }});
-
-  // ── 4. Market Structure Break ──
-  S.push({name:'Market Structure Break',code:'MSB',analyze:(c,sym,tf)=>{
-    const n=c.length;if(n<12)return null;const last=c[n-1];let sh=null,sl=null;
-    for(let i=n-6;i<n-1;i++){const k=c[i],p=c[i-1],nx=c[i+1];if(!p||!nx)continue;if(k.high>p.high&&k.high>=nx.high)sh=k.high;if(k.low<p.low&&k.low<=nx.low)sl=k.low;}
-    const tol=last.close*0.0005;
-    if(sh!==null&&last.high>sh+tol&&Math.abs(last.close-sh)<tol)return{action:'RISE',conf:86,src:'MSB'};
-    if(sl!==null&&last.low<sl-tol&&Math.abs(last.close-sl)<tol)return{action:'FALL',conf:86,src:'MSB'};
-    return null;
-  }});
-
-  // ── 5. SuperTrend ──
-  S.push({name:'SuperTrend',code:'SUPERTREND',analyze:(c,sym,tf)=>{
-    const n=c.length;if(n<15)return null;const tr=[];
-    for(let i=1;i<n;i++){const p=c[i-1];tr.push(Math.max(c[i].high-c[i].low,Math.abs(c[i].high-p.close),Math.abs(c[i].low-p.close)));}
-    const atr=tr.slice(-10).reduce((s,v)=>s+v,0)/10;
-    const last=c[n-1],prev=c[n-2];
-    const hl=(h,l)=>(h+l)/2;
-    if(prev.close<=hl(prev.high,prev.low)+2*atr&&last.close>hl(last.high,last.low)+2*atr)return{action:'RISE',conf:83,src:'SUPERTREND'};
-    if(prev.close>=hl(prev.high,prev.low)-2*atr&&last.close<hl(last.high,last.low)-2*atr)return{action:'FALL',conf:83,src:'SUPERTREND'};
-    return null;
-  }});
-
-  // ── 6. Supply & Demand Flip ──
-  S.push({name:'Supply & Demand Flip',code:'S_D_FLIP',analyze:(c,sym,tf)=>{
-    const n=c.length;if(n<20)return null;const last=c[n-1];let dz=null,sz=null;
-    for(let i=n-15;i<n-1;i++){const k=c[i],p=i>0?c[i-1]:null;if(!p)continue;
-    if(k.close>k.open&&p.close<p.open&&k.close>p.high&&(!dz||Math.abs(last.close-k.low)<Math.abs(last.close-dz.low)))dz={h:k.high,l:k.low};
-    if(k.close<k.open&&p.close>p.open&&k.close<p.low&&(!sz||Math.abs(last.close-k.high)<Math.abs(last.close-sz.high)))sz={h:k.high,l:k.low};}
-    const tol=last.close*0.0008;
-    if(dz&&last.low<=dz.h+tol&&last.low>=dz.l-tol&&last.close>dz.h)return{action:'RISE',conf:85,src:'S_D_FLIP'};
-    if(sz&&last.high>=sz.l-tol&&last.high<=sz.h+tol&&last.close<sz.l)return{action:'FALL',conf:85,src:'S_D_FLIP'};
-    return null;
-  }});
-
-  // ── 7. RSI Divergence (oversold/overbought + candle confirmation) ──
-  S.push({name:'RSI Divergence',code:'RSI_DIV',analyze:(c,sym,tf)=>{
-    const n=c.length;if(n<20)return null;
-    const cl=c.map(x=>x.close),r=rsi(cl,14);
-    if(r===null)return null;
-    const last=c[n-1],prev=c[n-2];
-    if(r<30&&last.close>prev.close&&last.close>last.open&&prev.close<prev.open)return{action:'RISE',conf:85,src:'RSI_DIV'};
-    if(r>70&&last.close<prev.close&&last.close<last.open&&prev.close>prev.open)return{action:'FALL',conf:85,src:'RSI_DIV'};
-    return null;
-  }});
-
-  // ── 8. Keltner Squeeze ──
-  S.push({name:'Keltner Squeeze',code:'KELTNER_SQZ',analyze:(c,sym,tf)=>{
-    const n=c.length;if(n<25)return null;const p=c.map(x=>x.close),per=20;
-    const sma=p.slice(-per).reduce((s,v)=>s+v,0)/per;
-    const std=Math.sqrt(p.slice(-per).reduce((s,v)=>s+(v-sma)**2,0)/per);
-    const bbU=sma+2*std,bbL=sma-2*std;const last=c[n-1],prev=c[n-2];
-    if((bbU-bbL)<std*2.5){
-      if(last.close>bbU&&prev.close<=bbU)return{action:'RISE',conf:87,src:'KELTNER_SQZ'};
-      if(last.close<bbL&&prev.close>=bbL)return{action:'FALL',conf:87,src:'KELTNER_SQZ'};
-    }
-    return null;
-  }});
-
-  // ── 9. Momentum Burst ──
-  S.push({name:'Momentum Burst',code:'MOMENTUM',analyze:(c,sym,tf)=>{
-    const n=c.length;if(n<5)return null;const l=c[n-1],a=c[n-2],b=c[n-3],d=c[n-4];
-    if(!a||!b||!d)return null;
-    const bd=Math.abs(d.close-d.open),bb=Math.abs(b.close-b.open),ba=Math.abs(a.close-a.open),bl=Math.abs(l.close-l.open);
-    if(l.close>l.open&&a.close>a.open&&b.close>b.open&&bl>ba&&ba>bb&&bb>bd*0.5)return{action:'RISE',conf:86,src:'MOMENTUM'};
-    if(l.close<l.open&&a.close<a.open&&b.close<b.open&&bl>ba&&ba>bb&&bb>bd*0.5)return{action:'FALL',conf:86,src:'MOMENTUM'};
-    return null;
-  }});
-
-  // ── 10. ADX Trend Following (strong trend + DI+ > DI- confirmation) ──
-  S.push({name:'ADX Trend',code:'ADX_TREND',analyze:(c,sym,tf)=>{
-    const n=c.length;if(n<20)return null;
-    const tfP=tf==='5s'?14:tf==='15s'?12:tf==='30s'?10:8;
-    const d=calcADX(c,tfP);if(!d||d.adx<25)return null;
-    const last=c[n-1],prev=c[n-2];
-    if(d.pDI>d.nDI&&last.close>prev.close&&last.close>last.open)return{action:'RISE',conf:86,src:'ADX_TREND'};
-    if(d.nDI>d.pDI&&last.close<prev.close&&last.close<last.open)return{action:'FALL',conf:86,src:'ADX_TREND'};
+  // ── SIMPLE ULTRA-EFFICIENT TREND STRATEGY ──
+  // One clean signal: EMA(5)/EMA(13) cross + RSI filter. No ensemble, no
+  // voting, no regime/brain gating. Fast, transparent, robust, and easy to
+  // reason about — clarity is the strategy.
+  S.push({name:'EMA Trend',code:'EMA_TREND',analyze:(c,sym,tf)=>{
+    const n=c.length; if(n<30) return null;
+    const closes=c.map(k=>k.close);
+    const last=closes[n-1];
+    const fast=ema(closes,5), slow=ema(closes,13);
+    if(fast===null||slow===null) return null;
+    const pf=ema(closes.slice(0,-1),5), ps=ema(closes.slice(0,-1),13);
+    if(pf===null||ps===null) return null;
+    const r=rsi(closes,14)||50;
+    const sep=Math.abs(fast-slow)/((Math.abs(slow)||1e-9));
+    const confBoost=Math.min(18, sep*1000);
+    if(pf<=ps && fast>slow && last>=fast && r<78)
+      return {action:'RISE',conf:Math.round(74+confBoost),src:'EMA_TREND'};
+    if(pf>=ps && fast<slow && last<=fast && r>22)
+      return {action:'FALL',conf:Math.round(74+confBoost),src:'EMA_TREND'};
     return null;
   }});
 
@@ -3031,7 +2932,7 @@ function evaluateDigitStrategy(sym){
   }
 
   const hist = (G.MARKET.digHist && G.MARKET.digHist[sym]) || [];
-  if(hist.length < 150) return;   // warm-up: need at least 150 ticks to make Markov estimates stable
+  if(hist.length < 50) return;   // warm-up: need a small sample to read the bias
 
   // Base stake and martingale calculations
   BotState.baseStake = parseFloat(document.getElementById('dgBaseStake')?.value || 1);
@@ -3043,107 +2944,68 @@ function evaluateDigitStrategy(sym){
   const stake = +(BotState.baseStake * factor).toFixed(2);
   BotState.currentStake = stake;
 
-  // Two windows: full (1000) for the stable estimate, recent (300) to sense
-  // regime changes. Trading requires BOTH to agree — this is what stops the
-  // bot from "tiring" (keeping a stale edge after the market reverts).
+  // ── SIMPLE ULTRA-EFFICIENT DIGIT STRATEGY ──
+  // Trade the real, repeated statistical bias. If recent digits land on one
+  // side of a barrier well beyond the 50/50 (or 10% match) baseline, take it.
+  // No Markov matrices, no Shannon entropy, no chi-square, no neural brain —
+  // just a clean, empirically measured edge on a rolling window.
   const buf = hist.slice(-1000);
   const len = buf.length;
-  if(len < 150) return;
-  const recent = buf.slice(-300);
-  const rLen = recent.length;
+  if(len < 50) return;
 
-  // ── Accuracy: bias-significance gate ──
-  // If the recent digit distribution is statistically indistinguishable from
-  // random (χ² < 16.92, df=9, p=0.05), any apparent edge is noise — sit out.
-  const chi2 = chiSquareBias(recent);
-  if(chi2 < 16.92) return;
+  // Rolling window sized for responsiveness vs. stability.
+  const W = Math.min(len, 120);
+  const win = buf.slice(-W);
+  const n = win.length;
 
-  // Fresh + full Markov matrices
-  const M  = buildMarkov(buf);
-  const Mr = buildMarkov(recent);
-  const nowDigit = buf[len - 1];
+  // Most over-represented digit (for the MATCH candidate).
+  const freq = Array(10).fill(0);
+  for(const d of win) freq[d]++;
+  let md = 0, mf = 0;
+  for(let d = 0; d < 10; d++){ if(freq[d] > mf){ mf = freq[d]; md = d; } }
 
-  // ── Candidate set ─────────────────────────────────────────────
-  // If the user locked a fixed barrier (AUTO ONLY), evaluate ONLY that
-  // selection. Otherwise scan the elite statistical candidate set.
-  const fixedSel = (document.getElementById('dgFixedBarrier')?.checked)
-    ? getDigitSelection()
-    : null;
-
-  let cands;
-  if(fixedSel){
-    const t = fixedSel.type, b = fixedSel.barrier;
-    let baseline = 0.5;
-    if(t === 'DIGITOVER') baseline = (9 - b) / 10;
-    else if(t === 'DIGITUNDER') baseline = b / 10;
-    else if(t === 'DIGITMATCH') baseline = 0.1;
-    else if(t === 'DIGITDIFF') baseline = 0.9;
-    cands = [{ dir:t, barrier:b, baseline, minComposite: baseline + 0.045 }];
-  } else {
-    cands = [
-      { dir:'DIGITOVER',  barrier:1, baseline: 0.80, minComposite: 0.835 }, // 80% baseline
-      { dir:'DIGITOVER',  barrier:2, baseline: 0.70, minComposite: 0.745 }, // 70% baseline
-      { dir:'DIGITOVER',  barrier:3, baseline: 0.60, minComposite: 0.645 }, // 60% baseline
-      { dir:'DIGITUNDER', barrier:6, baseline: 0.60, minComposite: 0.645 }, // 60% baseline
-      { dir:'DIGITUNDER', barrier:7, baseline: 0.70, minComposite: 0.745 }, // 70% baseline
-      { dir:'DIGITUNDER', barrier:8, baseline: 0.80, minComposite: 0.835 }  // 80% baseline
-    ];
-  }
-
-  // NeuralBrain directional context (live-trained NB price model)
-  const _nbSt = NB && NB.state && NB.state[sym] ? NB.state[sym] : null;
-  const nbDir = _nbSt && _nbSt.ready ? _nbSt.dir : null;
-  const nbConf = _nbSt && _nbSt.ready ? _nbSt.conf : 0;
+  // Elite candidate set: high-baseline over/under barriers + hottest digit.
+  const cands = [
+    { dir:'DIGITOVER',  barrier:2, baseline:0.70 },
+    { dir:'DIGITOVER',  barrier:3, baseline:0.60 },
+    { dir:'DIGITOVER',  barrier:4, baseline:0.50 },
+    { dir:'DIGITUNDER', barrier:5, baseline:0.50 },
+    { dir:'DIGITUNDER', barrier:6, baseline:0.60 },
+    { dir:'DIGITUNDER', barrier:7, baseline:0.70 },
+    { dir:'DIGITMATCH', barrier:md, baseline:0.10 }
+  ];
 
   let best = null;
   for(const c of cands){
-    // Full-window composite
-    const p_trans  = digitTransitionProb(M,  nowDigit, c.dir, c.barrier);
-    const p_emp    = digitEmpiricalProb(buf, c.dir, c.barrier);
-    const p_full   = 0.5 * p_trans + 0.5 * p_emp;
-
-    // Recent-window composite (regime freshness)
-    const p_transR = digitTransitionProb(Mr, nowDigit, c.dir, c.barrier);
-    const p_empR   = digitEmpiricalProb(recent, c.dir, c.barrier);
-    const p_recent = 0.5 * p_transR + 0.5 * p_empR;
-
-    let edge = p_full - c.baseline;
-    const edgeR = p_recent - c.baseline;
-
-    // NeuralBrain directional tilt: NB's live price read can only add to a
-    // direction-matched candidate, never create a new edge by itself.
-    if(nbDir && nbConf >= 14){
-      const nbMatch = c.dir === 'DIGITOVER' ? nbDir === 'RISE' : c.dir === 'DIGITUNDER' ? nbDir === 'FALL' : false;
-      if(nbMatch) edge += edge * Math.min(0.06, nbConf / 100 * 0.25);
+    let w = 0;
+    for(const d of win){
+      if(c.dir === 'DIGITOVER'  && d >  c.barrier) w++;
+      else if(c.dir === 'DIGITUNDER' && d < c.barrier) w++;
+      else if(c.dir === 'DIGITMATCH' && d === c.barrier) w++;
     }
-
-    // Dual-window gates: the edge must be live in BOTH windows, and it must
-    // not be fading in the recent window (otherwise we'd chase a dead bias).
-    if(p_full < c.minComposite) continue;
-    if(p_recent < c.minComposite) continue;
-    if(edge <= 0.035) continue;
-    if(edgeR <= 0.015) continue;
-    if(p_recent < p_full - 0.025) continue;
-
-    if(!best || edge > best.edge){
-      best = { ...c, p_transition:p_trans, p_empirical:p_emp, p_composite:p_full, p_recent, edge, edgeRecent:edgeR };
-    }
+    const p = w / n;
+    const edge = p - c.baseline;
+    // Require a meaningful, statistically solid edge: enough hits AND a real
+    // margin above the noise floor.
+    if(w < Math.ceil(n * (c.baseline + 0.04))) continue;
+    if(edge < 0.045) continue;
+    if(!best || edge > best.edge) best = { dir:c.dir, barrier:c.barrier, p, edge };
   }
 
-  // Log rolling analytics to the console (incl. bias significance)
+  // Rolling analytics to the console.
   const o2 = buf.filter(d => d > 2).length / len;
   const o3 = buf.filter(d => d > 3).length / len;
   const u6 = buf.filter(d => d < 6).length / len;
   const u7 = buf.filter(d => d < 7).length / len;
-  log(`[DIG·ANAL] ${sym}: O2=${(o2*100).toFixed(0)}% O3=${(o3*100).toFixed(0)}% U6=${(u6*100).toFixed(0)}% U7=${(u7*100).toFixed(0)}% H=${shannonEntropy(buf).toFixed(3)} χ²=${chi2.toFixed(1)}` ,'i');
+  log(`[DIG·ANAL] ${sym}: O2=${(o2*100).toFixed(0)}% O3=${(o3*100).toFixed(0)}% U6=${(u6*100).toFixed(0)}% U7=${(u7*100).toFixed(0)}% n=${n} edge=${best?('+'+(best.edge*100).toFixed(1)+'%'):'none'}` ,'i');
 
   if(!best){
-    // No elite mathematical edge found - stay silent to preserve capital
+    // No real bias right now — stay silent to preserve capital.
     return;
   }
 
   const dirLabel = best.dir.replace('DIGIT','');
-  const label = `Markov ${sym}: ${dirLabel} ${best.barrier} (P_comp = ${(best.p_composite*100).toFixed(1)}%, Edge = +${(best.edge*100).toFixed(1)}%, R=${(best.p_recent*100).toFixed(1)}%)`;
+  const label = `BIAS ${sym}: ${dirLabel} ${best.barrier} (P=${(best.p*100).toFixed(1)}%, Edge=+${(best.edge*100).toFixed(1)}%)`;
 
   const orderPayload = {
     contract_type: best.dir,
@@ -3841,6 +3703,23 @@ function calibrateThresholds(){
 function runStrategyAnalysis(sym, candles, liveBuf, tf){
   try {
     tf = tf || G.TF_SELECTED || '5s';
+    const c = candles;
+    if(!c || c.length < 30) return null;
+
+    // SIMPLE ULTRA-EFFICIENT RISE/FALL ENGINE
+    // Run the single clean EMA-trend strategy and trade its signal directly.
+    // No ensemble voting, no regime gate, no AI brain — just a clear edge.
+    let action=null, conf=0, src='EMA_TREND';
+    for(const st of G.STRATEGIES){
+      try { const v = st.analyze(c, sym, tf); if(v){ action=v.action; conf=v.conf; src=v.src; break; } } catch(e){}
+    }
+    if(action){
+      conf = Math.min(95, Math.max(70, Math.round(conf)));
+      return { action, conf, src };
+    }
+    return null;
+
+    /* legacy ensemble pipeline below — disabled (simplicity in perfection)
     const tfCfg = G.TF[tf];
     if(!candles || candles.length < (tf==='5s'?28:tf==='15s'?20:tf==='30s'?15:12)) return null;
     const prices = candles.map(c => c.close);
@@ -3851,7 +3730,7 @@ function runStrategyAnalysis(sym, candles, liveBuf, tf){
 
     const votes = [];
 
-    if (G.DURATION_MODE === 'fixed') {
+    if (G.DURATION_MODE === 'fixed') { */
       // ==========================================
       // PIPELINE 1: TF-ADAPTED STRATEGY ENGINE
       // ==========================================
