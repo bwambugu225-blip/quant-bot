@@ -2661,7 +2661,7 @@ function initStrategies(){
   // One clean signal: EMA(5)/EMA(13) cross + RSI filter. No ensemble, no
   // voting, no regime/brain gating. Fast, transparent, robust, and easy to
   // reason about — clarity is the strategy.
-  S.push({name:'EMA Trend',code:'EMA_TREND',analyze:(c,sym,tf)=>{
+  S.push({name:'EMA + Bollinger Trend',code:'EMA_TREND',analyze:(c,sym,tf)=>{
     const n=c.length; if(n<30) return null;
     const closes=c.map(k=>k.close);
     const last=closes[n-1];
@@ -2670,11 +2670,21 @@ function initStrategies(){
     const pf=ema(closes.slice(0,-1),5), ps=ema(closes.slice(0,-1),13);
     if(pf===null||ps===null) return null;
     const r=rsi(closes,14)||50;
+    // Bollinger Band(20,2): use the basis (middle) line as trend confirmation
+    // so we only enter WITH the band, never fade a moving market.
+    const per=20;
+    const m=sma(closes,per); if(m===null) return null;
+    const sd=stddev(closes,per); if(sd===null||sd<1e-9) return null;
+    const bbU=m+2*sd, bbL=m-2*sd;
+    const width=(bbU-bbL)/((m||1e-9));        // band width as % of price
+    if(width < 0.0004) return null;            // skip dead/squeezed markets
     const sep=Math.abs(fast-slow)/((Math.abs(slow)||1e-9));
     const confBoost=Math.min(18, sep*1000);
-    if(pf<=ps && fast>slow && last>=fast && r<78)
+    // RISE: EMA golden cross + price holding ABOVE the BB basis (uptrend confirmed)
+    if(pf<=ps && fast>slow && last>=fast && last>m && r<78)
       return {action:'RISE',conf:Math.round(74+confBoost),src:'EMA_TREND'};
-    if(pf>=ps && fast<slow && last<=fast && r>22)
+    // FALL: EMA death cross + price holding BELOW the BB basis (downtrend confirmed)
+    if(pf>=ps && fast<slow && last<=fast && last<m && r>22)
       return {action:'FALL',conf:Math.round(74+confBoost),src:'EMA_TREND'};
     return null;
   }});
