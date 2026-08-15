@@ -7984,7 +7984,6 @@ async function authorizePat(){
   if(!token){ err.textContent='Paste an API token from app.deriv.com/account/api-token'; return; }
   err.textContent='';
   inp.disabled=true;
-  document.getElementById('oauthBtn')?.textContent='Connecting...';
   console.log('[AUTH] Token length:', token?.length);
   await doRESTFlow(token);
 }
@@ -8018,7 +8017,6 @@ async function doRESTFlow(token){
   if(!accounts || !accounts.length){
     document.getElementById('loginError').textContent = 'Could not fetch Deriv accounts — check your token';
     document.getElementById('loginPat').disabled=false;
-    document.getElementById('oauthBtn')?.textContent='Login with Deriv';
     return;
   }
   // Step 3: Pick preferred account
@@ -8146,7 +8144,6 @@ function connectDirectWS(token){
         saveState();
         showApp();
         document.getElementById('loginPat').disabled=false;
-        document.getElementById('oauthBtn')?.textContent='Login with Deriv';
         document.getElementById('loginError').textContent='';
         document.getElementById('connDot').className='conn g';
         document.getElementById('engineStatus').textContent='ONLINE';
@@ -8166,7 +8163,6 @@ function connectDirectWS(token){
     log('[AUTH] WebSocket connection failed','e');
     document.getElementById('loginError').textContent = 'WebSocket connection failed';
     document.getElementById('loginPat').disabled=false;
-    document.getElementById('oauthBtn')?.textContent='Login with Deriv';
   };
   
   ws.onclose = () => { 
