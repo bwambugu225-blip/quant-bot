@@ -44,6 +44,7 @@ export class Engine {
     this.martingale = { enabled: false, baseStake: 1, currentStake: 1, mult: 2 };
     this._tickCount = 0;
     this._watchdog = null;
+    this._marketSubscribed = new Set();
     this._listeners = {};
 
     this.store.setSelectedTf('5s');
@@ -73,6 +74,7 @@ export class Engine {
     });
     client.on('subscribe-market', () => this._subscribeMarkets());
     client.on('market-open', () => {
+      this._marketSubscribed.clear();
       this.log('[MARKET] Socket connected — subscribing to 13 markets', 's');
       this._subscribeMarkets();
     });
@@ -84,10 +86,13 @@ export class Engine {
 
   _subscribeMarkets() {
     if (!this.client) return;
-    if (this.client.auth && this.client.ws?.readyState === WebSocket.OPEN) {
-      this.client.subscribeMarket(SYMBOLS, 'ws');
-    }
-    this.client.subscribeMarket(SYMBOLS, 'mws');
+    // Market data always rides the public socket (like bot.html). The trading
+    // socket is reserved for balance/proposals/buys/contracts, so ticks are
+    // never duplicated across two subscriptions.
+    const pending = SYMBOLS.filter(s => !this._marketSubscribed.has(s.sym));
+    if (!pending.length) return;
+    pending.forEach(s => this._marketSubscribed.add(s.sym));
+    this.client.subscribeMarket(pending, 'mws');
   }
 
   snapshot() {
