@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
 
-// Lightweight tick-line chart, styled to match Deriv's dark chart surface:
-// coral accent line, faint grid, live price dot at the leading edge.
-export default function Chart({ market, tick, up }) {
+// Tick-line chart styled to match Deriv's dark chart surface: coral/green/red
+// accent line, faint grid, and a live price dot at the leading edge.
+export default function ChartArea({ market, tick, up, height = 300 }) {
   const W = 480;
   const H = 320;
   const PAD = 18;
@@ -30,18 +30,15 @@ export default function Chart({ market, tick, up }) {
     };
   }, [tick, market]);
 
-  const lineColor = up ? '#4bb4b3' : '#ec3f3f';
+  const lineColor = up ? 'var(--buy)' : '#ec3f3f';
 
   return (
-    <div className="chart-wrap">
-      <div className="chart-badge">
-        <span className="live-dot" /> Live
-      </div>
-      <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+    <div className="chart-area" style={{ height }}>
+      <svg className="chart-area__svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
         <defs>
           <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={lineColor} stopOpacity="0.22" />
-            <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
+            <stop offset="0%" stopColor={up ? '#4bb4b3' : '#ec3f3f'} stopOpacity="0.22" />
+            <stop offset="100%" stopColor={up ? '#4bb4b3' : '#ec3f3f'} stopOpacity="0" />
           </linearGradient>
         </defs>
         {[0, 1, 2, 3, 4].map(i => (

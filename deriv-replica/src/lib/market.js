@@ -81,6 +81,26 @@ export function formatMoney(v, currency = 'USD') {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency }).format(Number(v) || 0);
 }
 
+// Deriv renders amounts as "10.00 USD" (value + spaced code), not via Intl
+// currency style, so keep a dedicated formatter for that convention.
+export function addComma(value, decimals = 2) {
+  return Number(value).toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
+// Digit-based payouts follow real Deriv odds rather than a flat multiplier:
+// matches ~11% of digit outcomes, differs ~90%, over/under 5/9 vs 4/9.
+export function digitPayout(stake, subId, digit, isOver) {
+  let multiplier;
+  if (subId === 'match_diff') multiplier = 1 / 0.1;
+  else if (subId === 'even_odd') multiplier = 1 / 0.5;
+  else if (subId === 'over_under') multiplier = digit == null ? 2 : 1 / (isOver ? (9 - digit) / 10 : (digit + 1) / 10);
+  else multiplier = 1.94;
+  return +(stake * multiplier).toFixed(2);
+}
+
 export function formatPrice(v, decimals) {
   return Number(v).toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }

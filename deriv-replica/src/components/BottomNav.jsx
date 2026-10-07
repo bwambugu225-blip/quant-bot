@@ -1,32 +1,58 @@
 import React from 'react';
+import { Navigation } from '@deriv-com/quill-ui';
 import {
   LegacyHomeNewIcon,
-  LegacySettings2pxIcon,
-  LegacyProfileSmIcon,
-  LegacyOpenPositionIcon,
+  StandaloneClockThreeRegularIcon,
+  StandaloneClockThreeFillIcon,
+  StandaloneFileRegularIcon,
+  StandaloneFileFillIcon,
+  LabelPairedGrid2LgRegularIcon,
+  StandaloneCircleUserRegularIcon,
+  StandaloneCircleUserFillIcon,
 } from '@deriv/quill-icons';
 
-const ITEMS = [
-  { key: 'home', label: 'Home', Icon: LegacyHomeNewIcon },
-  { key: 'clock', label: 'Positions', Icon: LegacyOpenPositionIcon },
-  { key: 'profile', label: 'My account', Icon: LegacyProfileSmIcon },
-  { key: 'settings', label: 'Settings', Icon: LegacySettings2pxIcon },
-];
+// quill-ui exposes the bottom navigation bar as Navigation.Bottom / BottomAction,
+// not Navigation.BottomBar.
+const { Bottom: BottomBar, BottomAction } = Navigation;
 
+// Deriv's mobile bottom navigation: Home, Positions, Reports, Menu, Account.
 export default function BottomNav({ tab, setTab, openCount }) {
   return (
-    <nav className="bottom-nav">
-      {ITEMS.map(({ key, label, Icon }, i) => (
-        <button
-          key={key}
-          className={`nav-item${tab === i ? ' active' : ''}`}
-          onClick={() => setTab(i)}
-        >
-          <Icon width={22} height={22} fill="currentColor" />
-          <span>{label}</span>
-          {key === 'clock' && openCount > 0 && <span className="nav-badge">{openCount}</span>}
-        </button>
-      ))}
-    </nav>
+    <BottomBar
+      value={tab}
+      onChange={(_event, value) => setTab(value)}
+      showLabels
+      className="app-bottom-nav"
+    >
+      <BottomAction
+        value="home"
+        label="Home"
+        icon={<LegacyHomeNewIcon fill="currentColor" iconSize="sm" />}
+      />
+      <BottomAction
+        value="positions"
+        label="Positions"
+        icon={<StandaloneClockThreeRegularIcon fill="currentColor" iconSize="sm" />}
+        activeIcon={<StandaloneClockThreeFillIcon fill="currentColor" iconSize="sm" />}
+        badge={openCount > 0 ? String(openCount) : undefined}
+      />
+      <BottomAction
+        value="reports"
+        label="Reports"
+        icon={<StandaloneFileRegularIcon fill="currentColor" iconSize="sm" />}
+        activeIcon={<StandaloneFileFillIcon fill="currentColor" iconSize="sm" />}
+      />
+      <BottomAction
+        value="menu"
+        label="Menu"
+        icon={<LabelPairedGrid2LgRegularIcon fill="currentColor" iconSize="sm" />}
+      />
+      <BottomAction
+        value="account"
+        label="Account"
+        icon={<StandaloneCircleUserRegularIcon fill="currentColor" iconSize="sm" />}
+        activeIcon={<StandaloneCircleUserFillIcon fill="currentColor" iconSize="sm" />}
+      />
+    </BottomBar>
   );
 }
