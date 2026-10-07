@@ -10,9 +10,9 @@ import BottomNav from './components/BottomNav.jsx';
 import Positions from './components/Positions.jsx';
 import SymbolSheet from './components/SymbolSheet.jsx';
 import Sheet from './components/Sheet.jsx';
-import { AccountScreen, MenuScreen, Reports, LoginScreen, EnginePanel } from './components/screens.jsx';
+import { AccountScreen, MenuScreen, Reports, LoginScreen } from './components/screens.jsx';
 import { TRADE_TYPES, findTradeType, isDigitContract } from './lib/contracts.js';
-import { SYMBOLS, TF_LIST, isDigitSymbol } from './lib/marketStore.js';
+import { SYMBOLS } from './lib/marketStore.js';
 import { addComma } from './lib/format.js';
 import { useEngine } from './lib/useEngine.js';
 
@@ -25,7 +25,7 @@ const DIGIT_CONTRACT = {
 };
 
 export default function App() {
-  const { engine, state, tick, logs, toast, login, logout, reconnectMarket } = useEngine();
+  const { engine, state, tick, logs, toast, login, logout } = useEngine();
 
   const [tab, setTab] = React.useState('home');
   const [marketIdx, setMarketIdx] = React.useState(0);
@@ -95,6 +95,9 @@ export default function App() {
 
   const onTrade = (_action, sideIdx) => {
     if (!state?.auth) { setShowLogin(true); return; }
+    // Manual trades ride the same engine loop (contract tracking, win/loss
+    // bookkeeping, watchdog), so ensure it is running even if AUTO is off.
+    if (!engine.running) engine.start();
     if (isDigit) {
       const [over, under] = DIGIT_CONTRACT[subContractId];
       const type = sideIdx === 0 ? over : under === undefined ? over : under;
@@ -141,22 +144,8 @@ export default function App() {
                 onOpen={() => setSymbolSheet(true)}
               />
             </div>
-            <div className="home__toolbar">
-              <TimeframeChips
-                value={engine.store.selectedTf || '5s'}
-                onChange={tf => { engine.store.setSelectedTf(tf); engine.emit('state', engine.snapshot()); }}
-              />
-              <button className="home__refresh" onClick={reconnectMarket} type="button" title="Reconnect market feed">⟳</button>
-            </div>
             {isDigit && <CurrentSpot price={price} lastDigit={lastDigit} />}
             <ChartArea prices={livePrices} up={up} height={isDigit ? 264 : 300} />
-
-            <EnginePanel
-              state={state}
-              engine={engine}
-              onLogin={() => setShowLogin(true)}
-              onSetStake={(kind, v) => engine.setStake(kind, v)}
-            />
 
             <div className="trade-params-dock-wrap">
               <TradeParameters
@@ -194,7 +183,12 @@ export default function App() {
         )}
         {tab === 'menu' && (
           <div className="app__scroll">
-            <MenuScreen logs={logs} engine={engine} onToast={m => engine.toast(m, 'info')} />
+            <MenuScreen
+              engine={engine}
+              state={state}
+              onLogin={() => setShowLogin(true)}
+              onToast={m => engine.toast(m, 'info')}
+            />
           </div>
         )}
         {tab === 'account' && (
@@ -277,23 +271,6 @@ export default function App() {
       )}
 
       {toast && <div className={`toast toast--${toast.kind || 'info'}`}>{toast.msg}</div>}
-    </div>
-  );
-}
-
-function TimeframeChips({ value, onChange }) {
-  return (
-    <div className="tf-chips">
-      {TF_LIST.map(tf => (
-        <button
-          key={tf}
-          className={`tf-chip${tf === value ? ' is-active' : ''}`}
-          onClick={() => onChange(tf)}
-          type="button"
-        >
-          {tf}
-        </button>
-      ))}
     </div>
   );
 }

@@ -5,12 +5,22 @@
 // market socket (MWS) for unauthenticated tick history. Auth follows the same
 // ladder: REST accounts → WS authorize → OTP URL → direct WS with token.
 
-const APP_ID = '1089';
+// Authenticated flows (authorize / REST / OTP / trading) need a registered
+// app id — the public 1089 app only serves unauthenticated market data and is
+// rejected by `authorize`. Default matches the working app id used by bot.html;
+// overridable via localStorage like the original.
+const MARKET_APP_ID = '1089';
 const WS_BASE = 'wss://ws.derivws.com/websockets/v3';
 const REST_ACCOUNTS = 'https://api.derivws.com/trading/v1/options/accounts';
 
+function appId() {
+  try { return localStorage.getItem('deriv_app_id') || '33JFxN3sbe2usdFigbMb8'; }
+  catch (e) { return '33JFxN3sbe2usdFigbMb8'; }
+}
+
 export class DerivClient {
   constructor() {
+    this.appId = appId();
     this.ws = null;          // authenticated trading socket
     this.mws = null;         // public market socket
     this.rid = 0;
@@ -36,7 +46,7 @@ export class DerivClient {
   connectMarket() {
     if (this.mws && (this.mws.readyState === WebSocket.OPEN || this.mws.readyState === WebSocket.CONNECTING)) return;
     if (this._mwsReconn) { clearTimeout(this._mwsReconn); this._mwsReconn = null; }
-    const mws = new WebSocket(`${WS_BASE}?app_id=${APP_ID}`);
+    const mws = new WebSocket(`${WS_BASE}?app_id=${MARKET_APP_ID}`);
     this.mws = mws;
     mws.onopen = () => {
       this.mwsAttempts = 0;
@@ -65,19 +75,23 @@ export class DerivClient {
   async authorize(token) {
     this.token = token;
     let accounts = this._oauthAccounts;
+    let restError = null;
     try {
       if (!accounts || !accounts.length) {
         const resp = await fetch(REST_ACCOUNTS, {
           method: 'GET',
-          headers: { Authorization: `Bearer ${token}`, 'Deriv-App-ID': APP_ID },
+          headers: { Authorization: `Bearer ${token}`, 'Deriv-App-ID': this.appId },
         });
+        const body = await resp.json().catch(() => null);
         if (resp.ok) {
-          const data = await resp.json();
-          accounts = (data.data || []).map(a => ({
+          accounts = (body?.data || []).map(a => ({
             account: a.account_id, token, currency: a.currency || 'USD',
             isDemo: a.account_type === 'demo' || a.is_virtual, balance: parseFloat(a.balance || 0),
           }));
           this._oauthAccounts = accounts;
+        } else {
+          restError = body?.errors?.[0]?.message || body?.error?.message || `HTTP ${resp.status}`;
+          this.emit('log', { t: `[AUTH] REST accounts: ${restError}`, k: 'w' });
         }
       }
     } catch (e) { this.emit('log', { t: '[AUTH] REST accounts failed, trying WS…', k: 'w' }); }
@@ -86,9 +100,12 @@ export class DerivClient {
       try {
         const wsAuth = await this._wsAuthorize(token);
         if (wsAuth && wsAuth.length) { accounts = wsAuth; this._oauthAccounts = accounts; }
-      } catch (e) { this.emit('log', { t: '[AUTH] WS authorize also failed', k: 'e' }); }
+      } catch (e) {
+        this.emit('log', { t: `[AUTH] WS authorize failed: ${e.message}`, k: 'e' });
+        throw new Error(e.message || restError || 'Authorization failed — check your token');
+      }
     }
-    if (!accounts || !accounts.length) throw new Error('Could not fetch Deriv accounts — check your token');
+    if (!accounts || !accounts.length) throw new Error(restError || 'Could not fetch Deriv accounts — check your token');
 
     const isDemo = a => a.account.startsWith('VR') || a.isDemo === true;
     const preferred = 'real';
@@ -104,7 +121,7 @@ export class DerivClient {
     try {
       const otpResp = await fetch(`${REST_ACCOUNTS}/${account.account}/otp`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Deriv-App-ID': APP_ID },
+        headers: { Authorization: `Bearer ${token}`, 'Deriv-App-ID': this.appId },
         body: '{}',
       });
       if (otpResp.ok) {
@@ -118,7 +135,7 @@ export class DerivClient {
 
   _wsAuthorize(token) {
     return new Promise((resolve, reject) => {
-      const ws = new WebSocket(`${WS_BASE}?app_id=${APP_ID}`);
+      const ws = new WebSocket(`${WS_BASE}?app_id=${this.appId}`);
       let done = false;
       const t = setTimeout(() => { if (!done) { done = true; ws.close(); reject(new Error('timeout')); } }, 8000);
       ws.onmessage = e => {
@@ -128,8 +145,8 @@ export class DerivClient {
           const acc = msg.authorize;
           const isVirtual = acc.is_virtual === 1 || acc.is_virtual === true || acc.loginid?.startsWith('VR');
           resolve([{ account: acc.loginid, token, currency: acc.currency || 'USD', isDemo: isVirtual, balance: parseFloat(acc.balance || 0) }]);
-        } else if (msg.error && msg.error.code === 'AuthorizationFailed') {
-          if (!done) { done = true; clearTimeout(t); ws.close(); reject(new Error(msg.error.message)); }
+        } else if (msg.error) {
+          if (!done) { done = true; clearTimeout(t); ws.close(); reject(new Error(msg.error.message || msg.error.code || 'authorize error')); }
         }
       };
       ws.onopen = () => ws.send(JSON.stringify({ authorize: token }));
@@ -138,7 +155,7 @@ export class DerivClient {
   }
 
   _connectDirect(token) {
-    const url = `${WS_BASE}?app_id=${APP_ID}&token=${encodeURIComponent(token)}&l=EN`;
+    const url = `${WS_BASE}?app_id=${this.appId}&token=${encodeURIComponent(token)}&l=EN`;
     const ws = new WebSocket(url);
     this.ws = ws;
     let authorized = false;
@@ -267,4 +284,4 @@ export class DerivClient {
   }
 }
 
-export { APP_ID };
+export { MARKET_APP_ID };

@@ -59,9 +59,8 @@ export function LoginScreen({ onSubmit, onClose }) {
   );
 }
 
-// Compact engine control strip shown on Home: balance/connection, stake, the
-// auto-engine toggle and the live log tail.
-export function EnginePanel({ state, engine, onLogin, onSetStake }) {
+// Compact engine control strip. Shown under Menu (kept off the trading page).
+export function EngineControls({ state, engine, onLogin }) {
   const running = !!state?.running;
   const auth = !!state?.auth;
   const isDigit = engine.tradeMode === 'DIGITS';
@@ -72,7 +71,7 @@ export function EnginePanel({ state, engine, onLogin, onSetStake }) {
       <div className="engine-panel__row">
         <span className={`engine-dot${auth ? ' is-on' : ''}`} />
         <span className="engine-panel__status">
-          {auth ? `${state.accountId} · ${state.accountType.toUpperCase()}` : 'Market feed only — log in to trade'}
+          {auth ? `${state.accountId} · ${state.accountType.toUpperCase()}` : 'Not connected'}
         </span>
         {!auth && <button className="engine-panel__login" onClick={onLogin} type="button">Log in</button>}
       </div>
@@ -80,9 +79,9 @@ export function EnginePanel({ state, engine, onLogin, onSetStake }) {
       <div className="engine-panel__row engine-panel__row--controls">
         <div className="engine-stake">
           <span className="engine-stake__label">Stake</span>
-          <button onClick={() => onSetStake(isDigit ? 'dg' : 'rf', stake - 1)} type="button">−</button>
+          <button onClick={() => engine.setStake(isDigit ? 'dg' : 'rf', stake - 1)} type="button">−</button>
           <span className="engine-stake__value">{stake.toFixed(2)}</span>
-          <button onClick={() => onSetStake(isDigit ? 'dg' : 'rf', stake + 1)} type="button">+</button>
+          <button onClick={() => engine.setStake(isDigit ? 'dg' : 'rf', stake + 1)} type="button">+</button>
         </div>
         <button
           className={`engine-run${running ? ' is-running' : ''}`}
@@ -161,7 +160,7 @@ export function Reports({ reports, currency = 'USD' }) {
   );
 }
 
-export function MenuScreen({ engine, onToast }) {
+export function MenuScreen({ engine, state, onLogin, onToast }) {
   const [mode, setMode] = React.useState(engine.tradeMode);
   const [mart, setMart] = React.useState(engine.martingale.enabled);
   const rows = [
@@ -177,6 +176,7 @@ export function MenuScreen({ engine, onToast }) {
 
       <div className="menu-section">
         <div className="menu-section__title">Trading engine</div>
+        <EngineControls state={state} engine={engine} onLogin={onLogin} />
         <div className="menu-toggle">
           <span>Mode</span>
           <div className="menu-seg">

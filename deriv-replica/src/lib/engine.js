@@ -72,7 +72,12 @@ export class Engine {
       this.emit('state', this.snapshot());
     });
     client.on('subscribe-market', () => this._subscribeMarkets());
-    client.on('market-open', () => this._subscribeMarkets());
+    client.on('market-open', () => {
+      this.log('[MARKET] Socket connected — subscribing to 13 markets', 's');
+      this._subscribeMarkets();
+    });
+    client.on('market-close', () => this.log('[MARKET] Socket closed — retrying', 'w'));
+    client.on('market-error', () => this.log('[MARKET] Socket error — check network/firewall', 'e'));
     client.on('log', ({ t, k }) => this.log(t, k));
     client.on('close', () => this.emit('state', this.snapshot()));
   }
@@ -130,9 +135,13 @@ export class Engine {
   _onHistory(msg) {
     const sym = msg.echo_req?.ticks_history;
     if (msg.subscription?.id && sym) this.store.tickSubs[msg.subscription.id] = sym;
-    if (msg.error) { this.log(`[MARKET] ${sym || 'history'}: ${msg.error.message}`, 'e'); return; }
+    if (msg.error) {
+      this.log(`[MARKET] ${sym || 'history'} rejected: ${msg.error.message}`, 'e');
+      this.emit('market-data', msg);
+      return;
+    }
     this.store.onHistory(sym, msg.history?.times || [], msg.history?.prices || []);
-    this.log(`[HIST] ${sym}: ${(this.store.candles[sym] || []).length} candles`, 'i');
+    this.log(`[HIST] ${sym}: ${(this.store.candles[sym] || []).length} candles loaded`, 'i');
     this.emit('market-data', msg);
   }
 
