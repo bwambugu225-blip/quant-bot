@@ -79,7 +79,18 @@ export class Engine {
       this._subscribeMarkets();
     });
     client.on('market-close', () => this.log('[MARKET] Socket closed — retrying', 'w'));
-    client.on('market-error', (info) => this.log(`[MARKET] Socket error (app ${info?.appId || '?'}) — check network/firewall`, 'e'));
+    client.on('market-error', (info) => {
+      this.log(`[MARKET] Socket error (app ${info?.appId || '?'}) — check network/firewall`, 'e');
+      this._marketErrors = (this._marketErrors || 0) + 1;
+      // Safety net: if the standalone market socket keeps failing but the
+      // authenticated trading socket is up, stream market data there instead.
+      if (this._marketErrors === 3 && client.ws?.readyState === WebSocket.OPEN) {
+        this.log('[MARKET] Falling back to the trading socket for ticks', 'w');
+        this._marketSubscribed.clear();
+        this._marketOnTrading = true;
+        this._subscribeMarkets();
+      }
+    });
     client.on('accounts', accounts => { this.accounts = accounts; this.emit('state', this.snapshot()); });
     client.on('log', ({ t, k }) => this.log(t, k));
     client.on('close', () => this.emit('state', this.snapshot()));
@@ -90,13 +101,12 @@ export class Engine {
 
   _subscribeMarkets() {
     if (!this.client) return;
-    // Market data always rides the public socket (like bot.html). The trading
-    // socket is reserved for balance/proposals/buys/contracts, so ticks are
-    // never duplicated across two subscriptions.
+    // Normally market data rides the public socket (like bot.html). If that
+    // socket cannot connect, `_marketOnTrading` streams on the trading socket.
     const pending = SYMBOLS.filter(s => !this._marketSubscribed.has(s.sym));
     if (!pending.length) return;
     pending.forEach(s => this._marketSubscribed.add(s.sym));
-    this.client.subscribeMarket(pending, 'mws');
+    this.client.subscribeMarket(pending, this._marketOnTrading ? 'ws' : 'mws');
   }
 
   snapshot() {
