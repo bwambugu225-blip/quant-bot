@@ -79,9 +79,57 @@ API (same transport as `bot.html`).
 - `src/lib/engine.js` — execution: proposals, buys, contract lifecycle,
   auto-engine run/stop, manual Rise/Fall and digit trades, martingale, Kelly
   sizing, win/loss bookkeeping.
+- `src/lib/autoStrategies.js` — the per-contract strategy registry (55
+  contracts). Each contract carries its own signal function, tuned thresholds
+  and defaults. `ACCURACY_LEVELS` (Max/High/Balanced) maps one UI choice onto
+  the three gates every signal is checked against: `minConf`, `minEdge` and a
+  `zMult` multiplier on the per-barrier z gate. Max is the default.
 - `src/lib/useEngine.js` — React binding. Boots the public market feed on load
   (live prices without login) and restores a saved token from `localStorage`
   to reconnect on reload.
+
+### Automate tab: defaults over knobs
+
+The Automate tab exposes only the two decisions that change the outcome — stake
+and accuracy. Duration, barrier, digit, growth rate and multiplier are per-
+contract defaults (`entry.defaults`), and risk/martingale knobs live behind an
+Advanced toggle. The engine stores just `stake` + `accuracy` per contract
+(`defaultParamsFor`), so switching contracts can never leave a stale barrier
+behind.
+
+Accuracy gates, in order of strictness:
+
+| Level | minConf | minEdge | zMult | maxLosses |
+|-------|---------|---------|-------|-----------|
+| Max | 70 | 0.035 | 1.30 | 3 |
+| High | 65 | 0.025 | 1.12 | 5 |
+| Balanced | 60 | 0.015 | 1.00 | 8 |
+
+`minConf` sits below the confidence ceiling of the high-probability contracts
+(Differs, Accumulators cap around 76–79%), so `minEdge` and `zMult` do the real
+work. All three levels stay silent on a 60% digit stream and fire on a 75%+ one.
+
+### Execution speed
+
+- Digit contracts are evaluated on the tick that just printed — no waiting for
+  a candle to close. Directional contracts still wait for a completed candle.
+- The auto-engine proposal request omits `subscribe`, so it gets a single
+  response instead of a streaming subscription that would leave the contract
+  map populated with duplicates.
+- Proposal timeout is 6s (`PROPOSAL_TIMEOUT`), so a dropped request costs at
+  most one tick instead of stalling the engine.
+
+### Auto market switching
+
+`autoSwitch` (on by default) scores every eligible market for the selected
+contract and rotates to a clearly better one. Digit contracts are symbol-
+agnostic, so the choice is *when* to bet: the engine watches each market's
+digit stream and moves to whichever shows the strongest, most stable bias. It
+only moves when the new market beats the current one by `_switchMargin` (15%)
+and `_switchInterval` (40s) has elapsed, so it never thrashes. `_marketEdge()`
+scores a market by its live signal confidence, falling back to raw distance
+from break-even before a signal appears.
+
 
 To trade, click Log in and paste a Deriv API token with Read + Trade scope.
 Market data needs no login. Notation: the engine speaks `RISE`/`FALL`

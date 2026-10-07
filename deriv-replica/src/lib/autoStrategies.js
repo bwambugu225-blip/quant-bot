@@ -38,6 +38,24 @@ function markovRow(digits) {
   return counts[cur].map(v => (v + 0.5) / (rowTot[cur] + 5));
 }
 
+// ── accuracy presets ─────────────────────────────────────────────────────
+//
+// One control instead of a dozen knobs. Each level raises or lowers the same
+// three gates: the confidence a signal must reach, the minimum edge over
+// break-even, and a multiplier on the per-barrier z gate. "max" is the default
+// because the engine's job is the highest achievable win rate, not trade
+// volume — it simply trades less often.
+export const ACCURACY_LEVELS = [
+  { id: 'max', label: 'Max', minConf: 70, minEdge: 0.035, zMult: 1.3, maxLosses: 3 },
+  { id: 'high', label: 'High', minConf: 65, minEdge: 0.025, zMult: 1.12, maxLosses: 5 },
+  { id: 'balanced', label: 'Balanced', minConf: 60, minEdge: 0.015, zMult: 1.0, maxLosses: 8 },
+];
+
+export function accuracyParams(levelId) {
+  const l = ACCURACY_LEVELS.find(x => x.id === levelId) || ACCURACY_LEVELS[0];
+  return { accuracy: l.id, minConf: l.minConf, minEdge: l.minEdge, zMult: l.zMult, maxLosses: l.maxLosses };
+}
+
 // ── digit tuning, one row per barrier ────────────────────────────────────
 //
 // baseline = the fair win probability of that exact contract, so the strategy
@@ -101,7 +119,7 @@ function digitSignal(digits, kind, barrier, tune, params) {
   const p = mk == null ? emp : 0.6 * emp + 0.4 * mk;
   const base = tune.baseline;
   const z = zScore(p, base, n);
-  const zMin = params.zMin > 0 ? params.zMin : tune.zMin;
+  const zMin = (params.zMin > 0 ? params.zMin : tune.zMin) * (params.zMult || 1);
   if (z < zMin) return null;
 
   const edge = p - base;
@@ -110,6 +128,8 @@ function digitSignal(digits, kind, barrier, tune, params) {
   if (kind === 'match' && w.slice(-20).filter(d => d === barrier).length < 3) return null;
 
   const conf = Math.round(Math.max(60, Math.min(96, 60 + z * 5 + edge * 70)));
+  const minConf = params.minConf ?? 0;
+  if (conf < minConf) return null;
   return {
     conf, p, z,
     rationale: `${kind}${barrier} · p=${(p * 100).toFixed(1)}% (break-even ${(base * 100).toFixed(0)}%, z=${z.toFixed(1)})`,
@@ -354,11 +374,13 @@ function evenOddSignal(digits, want, params) {
   const even = w.filter(d => d % 2 === 0).length;
   const p = want === 'even' ? even / n : 1 - even / n;
   const z = zScore(p, 0.5, n);
-  const zMin = params.zMin > 0 ? params.zMin : tune.zMin;
+  const zMin = tune.zMin * (params.zMult || 1);
   if (z < zMin) return null;
   const edge = p - 0.5;
   if (edge < (params.minEdge ?? 0.01)) return null;
   const conf = Math.round(Math.max(60, Math.min(96, 60 + z * 5 + edge * 70)));
+  const minConf = params.minConf ?? 0;
+  if (conf < minConf) return null;
   return { conf, p, z, rationale: `${want} · p=${(p * 100).toFixed(1)}% (z=${z.toFixed(1)})` };
 }
 

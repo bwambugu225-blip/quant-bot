@@ -6,31 +6,35 @@
 // changes the strategy, not just the label.
 import { MarketStore, SYMBOLS, isDigitSymbol, digitOf, decimalsFor } from './marketStore.js';
 import { buildProposal } from './contracts.js';
-import { findAutoContract, buildAutoValue } from './autoStrategies.js';
+import { findAutoContract, buildAutoValue, accuracyParams } from './autoStrategies.js';
 
 const MIN_STAKE = 0.35;
 const MAX_STAKE = 200;
 
-// Defaults every contract parameter set starts from. `stake`, `duration`,
-// `unit`, `growthRate` and `multiplier` are then overridden by the contract's
-// own defaults; the rest are the shared strategy/risk knobs.
-const PARAM_DEFAULTS = {
-  stake: 1,
-  minConf: 0,
-  window: 0,      // 0 = use the contract's tuned window
-  zMin: 0,        // 0 = use the contract's tuned z gate
-  minEdge: 0.01,
-  martingale: false,
-  martMult: 2,
-  martSteps: 6,
-  takeProfit: 0,
-  stopLoss: 0,
-  maxTrades: 0,
-  maxLosses: 8,
-};
+// A proposal that never comes back would otherwise block the engine for good.
+// 6s is long enough for a slow round trip and short enough that a dropped
+// request costs at most one tick.
+const PROPOSAL_TIMEOUT = 6000;
 
+// Only the two inputs worth exposing are stored per contract: the stake and
+// the accuracy level. Everything else (duration, barrier, digit, martingale,
+// risk caps) is a per-family default, so switching contracts never leaves a
+// stale value behind.
 function defaultParamsFor(entry) {
-  return { ...PARAM_DEFAULTS, ...entry.defaults };
+  return {
+    stake: 1,
+    accuracy: 'max',
+    ...accuracyParams('max'),
+    ...entry.defaults,
+    takeProfit: 0,
+    stopLoss: 0,
+    maxTrades: 0,
+    martingale: false,
+    martMult: 2,
+    martSteps: 3,
+    window: 0,
+    zMin: 0,
+  };
 }
 
 export class Engine {
@@ -47,6 +51,14 @@ export class Engine {
     this.activeContracts = new Map();
     this.processed = new Set();
     this.sendingTimeout = null;
+
+    // Auto market rotation: the engine scores every eligible market and only
+    // switches when a different one is clearly better, so it does not thrash.
+    this.autoSwitch = true;
+    this._switchInterval = 40;   // seconds between rotations
+    this._switchMargin = 1.15;   // new market must beat the current by 15%
+    this._lastSwitch = 0;
+    this._lastSwitchReason = '';
 
     this.wins = 0; this.losses = 0; this.consLoss = 0;
     this.pnl = 0; this.trades = 0;
@@ -142,7 +154,78 @@ export class Engine {
   // Merge a patch into the selected contract's parameters.
   setParams(patch) {
     const key = this.autoContractKey;
-    this.contractParams[key] = { ...this.paramsFor(key), ...patch };
+    const next = { ...this.paramsFor(key), ...patch };
+    if (patch.accuracy) Object.assign(next, accuracyParams(patch.accuracy));
+    this.contractParams[key] = next;
+    this.emit('state', this.snapshot());
+  }
+
+  // ── Auto market rotation ───────────────────────────────────────────────
+  //
+  // Digit contracts are symbol-agnostic (the digits of a random walk are
+  // uniform on every index), so the meaningful choice is *when* to bet. The
+  // engine therefore watches every eligible market's digit stream and moves to
+  // whichever one currently shows the strongest, most stable bias for the
+  // selected contract. It only moves when another market beats the current one
+  // by a clear margin and enough time has passed, so the market never churns.
+  _candidates() {
+    const entry = findAutoContract(this.autoContractKey);
+    const list = entry.digitFamily ? SYMBOLS.filter(s => isDigitSymbol(s.sym)) : SYMBOLS;
+    return list.map(s => s.sym);
+  }
+
+  // Strength of the current contract's edge on a given market, or null when the
+  // market does not yet have enough history to judge.
+  _marketEdge(sym) {
+    const entry = findAutoContract(this.autoContractKey);
+    const digits = this.store.digHist[sym] || [];
+    if (digits.length < 80) return null;
+    const sig = this._signalFor(sym, entry, { strict: true });
+    if (sig) return sig.conf + (sig.z || 0) * 4;
+    // No qualifying signal: fall back to the raw distance from break-even so
+    // markets can still be ranked before a signal appears.
+    const W = entry.tune?.W || 100;
+    const w = digits.slice(-W);
+    if (w.length < 40) return null;
+    const base = entry.tune?.baseline ?? 0.5;
+    const f = Array(10).fill(0);
+    for (const d of w) f[d]++;
+    const hit = d => (
+      entry.kind === 'over' ? d > entry.barrier
+        : entry.kind === 'under' ? d < entry.barrier
+          : entry.kind === 'match' ? d === entry.barrier
+            : entry.kind === 'diff' ? d !== entry.barrier
+              : entry.kind === 'even' ? d % 2 === 0
+                : d % 2 === 1
+    );
+    let c = 0;
+    for (let d = 0; d < 10; d++) if (hit(d)) c += f[d];
+    const p = c / w.length;
+    return p * 100 + Math.max(0, (p - base)) * 200;
+  }
+
+  // Decide whether to move the automation to a better market. Returns the new
+  // symbol, or null to stay put.
+  _pickBestMarket() {
+    if (!this.autoSwitch || !this.running) return null;
+    const now = Date.now();
+    if (now - this._lastSwitch < this._switchInterval * 1000) return null;
+    const cands = this._candidates();
+    if (cands.length < 2) return null;
+    let best = this.autoMarket, bestScore = -Infinity;
+    for (const sym of cands) {
+      const s = this._marketEdge(sym);
+      if (s != null && s > bestScore) { bestScore = s; best = sym; }
+    }
+    if (best === this.autoMarket || bestScore === -Infinity) return null;
+    const cur = this._marketEdge(this.autoMarket);
+    if (cur != null && bestScore < cur * this._switchMargin) return null;
+    return best;
+  }
+
+  setAutoSwitch(on) {
+    this.autoSwitch = !!on;
+    this.log(`[ENGINE] Auto market switch ${this.autoSwitch ? 'on' : 'off'}`, 'i');
     this.emit('state', this.snapshot());
   }
 
@@ -153,6 +236,7 @@ export class Engine {
       return;
     }
     this.autoMarket = sym;
+    this._lastSwitch = Date.now();
     this.log(`[ENGINE] Market → ${sym}`, 'i');
     this.emit('state', this.snapshot());
   }
@@ -174,6 +258,7 @@ export class Engine {
       autoContractKey: this.autoContractKey,
       autoContractLabel: e.label,
       params: this.paramsFor(this.autoContractKey),
+      autoSwitch: this.autoSwitch,
       sessionStart: this.sessionStart,
       lastSignal: this.lastSignal,
       positions: this.positions,
@@ -227,18 +312,26 @@ export class Engine {
     this.emit('tick', { sym, price, epoch, digit: digitOf(price, sym) });
 
     // Automation only ever acts on its chosen market, so browsing the chart
-    // can never redirect live trades.
+    // can never redirect live trades. Digit contracts are decided on the tick
+    // that just printed — no waiting for a candle to close — which is what
+    // keeps execution in step with the market.
     if (!this.running || sym !== this.autoMarket) return;
     if (this.activeContracts.size > 0) return;
 
     const entry = findAutoContract(this.autoContractKey);
     if (entry.digitFamily) this._evaluateDigit(sym, entry);
     else if (closed) this._evaluateDirectional(sym, entry);
+
+    // Consider rotating markets after the trade decision, so a switch can
+    // never race the tick that triggered it.
+    this._maybeRotateMarket();
   }
 
   // Build the signal context for a contract and run its own strategy.
-  _signalFor(sym, entry) {
-    const p = this.paramsFor(entry.key);
+  _signalFor(sym, entry, opts = {}) {
+    const p = opts.strict
+      ? { ...this.paramsFor(entry.key), ...accuracyParams('max') }
+      : this.paramsFor(entry.key);
     const ctx = {
       candles: this.store.candles[sym] || [],
       digits: this.store.digHist[sym] || [],
@@ -267,6 +360,21 @@ export class Engine {
     if (!sig) return;
     this.log(`[SIGNAL] ${entry.label} on ${sym}: ${sig.conf}% · ${sig.rationale}`, 't');
     this._execute(sym, entry, sig);
+  }
+
+  // Rotate to a stronger market when one exists. Runs on the tick stream but
+  // is throttled internally, so it costs nothing per tick.
+  _maybeRotateMarket() {
+    if (!this.running || this.activeContracts.size > 0) return;
+    const best = this._pickBestMarket();
+    if (!best) return;
+    const from = this.autoMarket;
+    this.autoMarket = best;
+    this._lastSwitch = Date.now();
+    this._lastSwitchReason = `${from} → ${best}`;
+    this.log(`[ENGINE] Auto-switch market ${from} → ${best} (stronger edge)`, 'i');
+    this.toast(`Auto-switched to ${best}`, 'info');
+    this.emit('state', this.snapshot());
   }
 
   // ── Trade execution ────────────────────────────────────────────────────
@@ -300,13 +408,13 @@ export class Engine {
   }
 
   _sendProposal(fields) {
-    const ok = this.client?.send({ proposal: 1, subscribe: 1, ...fields });
+    const ok = this.client?.send({ proposal: 1, ...fields });
     if (!ok) { this.activeContracts.delete('sending'); this.log('[TRADE] WS not open', 'e'); return; }
     if (this.sendingTimeout) clearTimeout(this.sendingTimeout);
     this.sendingTimeout = setTimeout(() => {
       this.activeContracts.delete('sending');
-      this.log('[TRADE] Proposal timed out (no response in 15s)', 'w');
-    }, 15000);
+      this.log(`[TRADE] Proposal timed out (no response in ${PROPOSAL_TIMEOUT / 1000}s)`, 'w');
+    }, PROPOSAL_TIMEOUT);
   }
 
   // Manual trade from the Trade tab (kept for the single-trade flow).
@@ -432,6 +540,8 @@ export class Engine {
     this.running = true;
     this.sessionStart = Date.now();
     this._martSteps = 0;
+    this._lastSwitch = Date.now();
+    this._lastSwitchReason = '';
     this.log(`[ENGINE] Started — ${entry.label} on ${this.autoMarket}`, 's');
     if (!this._watchdog) this._watchdog = setInterval(() => this._watch(), 5000);
     this.emit('state', this.snapshot());

@@ -1218,6 +1218,14 @@ body {
 }
 .automate-reset:hover { color: #fff; }
 
+.automate-advanced {
+  width: 100%; margin-top: 10px; height: 32px; cursor: pointer;
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  background: transparent; color: var(--text-secondary, #8a8f9c);
+  border-radius: 8px; font-size: 12px; font-weight: 600; text-align: left; padding: 0 10px;
+}
+.automate-advanced:hover { color: #fff; border-color: var(--coral, #ff444f); }
+
 .automate-market { margin-bottom: 8px; }
 .automate-market__current { display: flex; flex-direction: column; gap: 2px; }
 .automate-market__name { font-size: 14px; font-weight: 700; color: #fff; }
