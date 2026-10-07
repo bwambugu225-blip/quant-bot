@@ -1,7 +1,7 @@
 import React from 'react';
 
-// Tab screens for the replica. Kept in one module so the simple, stateless
-// screens don't clutter the component tree.
+// Tab screens and the control panels for the live engine. Kept in one module so
+// the simple, stateless screens don't clutter the component tree.
 
 export function EmptyState({ title, body }) {
   return (
@@ -18,9 +18,121 @@ export function EmptyState({ title, body }) {
   );
 }
 
-export function Reports({ positions, currency = 'USD' }) {
-  const settled = positions.filter(p => p.status !== 'open');
-  if (!settled.length) {
+export function LoginScreen({ onSubmit, onClose }) {
+  const [token, setToken] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState('');
+
+  const submit = async e => {
+    e.preventDefault();
+    if (!token.trim()) { setError('Paste an API token from app.deriv.com/account/api-token'); return; }
+    setBusy(true); setError('');
+    try {
+      await onSubmit(token);
+    } catch (err) {
+      setError(err?.message || 'Login failed — check your token');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="login-form" onSubmit={submit}>
+      <p className="login-form__hint">
+        Paste a Deriv API token (with Read + Trade scope) to connect your account. Market
+        data streams without logging in; trading requires a token.
+      </p>
+      <input
+        className="login-form__input"
+        type="password"
+        placeholder="Deriv API token"
+        value={token}
+        onChange={e => setToken(e.target.value)}
+        disabled={busy}
+        autoFocus
+      />
+      {error && <div className="login-form__error">{error}</div>}
+      <button className="login-form__submit" type="submit" disabled={busy}>
+        {busy ? 'Connecting…' : 'Log in'}
+      </button>
+      <button className="login-form__cancel" type="button" onClick={onClose}>Cancel</button>
+    </form>
+  );
+}
+
+// Compact engine control strip shown on Home: balance/connection, stake, the
+// auto-engine toggle and the live log tail.
+export function EnginePanel({ state, engine, onLogin, onSetStake }) {
+  const running = !!state?.running;
+  const auth = !!state?.auth;
+  const isDigit = engine.tradeMode === 'DIGITS';
+  const stake = isDigit ? state?.dgStake ?? 1 : state?.rfStake ?? 1;
+
+  return (
+    <div className="engine-panel">
+      <div className="engine-panel__row">
+        <span className={`engine-dot${auth ? ' is-on' : ''}`} />
+        <span className="engine-panel__status">
+          {auth ? `${state.accountId} · ${state.accountType.toUpperCase()}` : 'Market feed only — log in to trade'}
+        </span>
+        {!auth && <button className="engine-panel__login" onClick={onLogin} type="button">Log in</button>}
+      </div>
+
+      <div className="engine-panel__row engine-panel__row--controls">
+        <div className="engine-stake">
+          <span className="engine-stake__label">Stake</span>
+          <button onClick={() => onSetStake(isDigit ? 'dg' : 'rf', stake - 1)} type="button">−</button>
+          <span className="engine-stake__value">{stake.toFixed(2)}</span>
+          <button onClick={() => onSetStake(isDigit ? 'dg' : 'rf', stake + 1)} type="button">+</button>
+        </div>
+        <button
+          className={`engine-run${running ? ' is-running' : ''}`}
+          onClick={() => (running ? engine.stop() : engine.start())}
+          type="button"
+        >
+          {running ? 'STOP AUTO' : 'START AUTO'}
+        </button>
+      </div>
+
+      <div className="engine-stats">
+        <Stat label="Mode" value={state?.tradeMode || 'RISEFALL'} />
+        <Stat label="Trades" value={state?.trades ?? 0} />
+        <Stat label="Wins" value={state?.wins ?? 0} />
+        <Stat label="Losses" value={state?.losses ?? 0} />
+        <Stat label="P/L" value={`${(state?.pnl ?? 0) >= 0 ? '+' : ''}${(state?.pnl ?? 0).toFixed(2)}`} tone={(state?.pnl ?? 0) >= 0 ? 'win' : 'loss'} />
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, tone }) {
+  return (
+    <div className="engine-stat">
+      <span className="engine-stat__label">{label}</span>
+      <span className={`engine-stat__value${tone ? ` is-${tone}` : ''}`}>{value}</span>
+    </div>
+  );
+}
+
+export function LogConsole({ logs }) {
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+  }, [logs]);
+  return (
+    <div className="log-console" ref={ref}>
+      {logs.length === 0 && <div className="log-console__empty">No activity yet.</div>}
+      {logs.map((l, i) => (
+        <div key={i} className={`log-line log-line--${l.k || 'i'}`}>
+          <span className="log-line__time">{new Date(l.at).toLocaleTimeString()}</span>
+          <span className="log-line__msg">{l.t}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function Reports({ reports, currency = 'USD' }) {
+  if (!reports.length) {
     return (
       <EmptyState
         title="No reports yet"
@@ -31,16 +143,16 @@ export function Reports({ positions, currency = 'USD' }) {
   return (
     <div className="screen">
       <div className="screen__title">Reports</div>
-      {settled.map(p => (
+      {reports.map(p => (
         <div key={p.id} className="report-row">
           <div>
-            <div className="report-row__type">{p.sideLabel}</div>
-            <div className="report-row__sub">{p.symbol}</div>
+            <div className="report-row__type">{p.action} · {p.strategy}</div>
+            <div className="report-row__sub">{p.symbol} · {p.time}</div>
           </div>
           <div className="report-row__right">
-            <span className="report-row__stake">{p.stake.toFixed(2)} {currency}</span>
-            <span className={`report-row__pnl ${p.pnl >= 0 ? 'is-win' : 'is-loss'}`}>
-              {p.pnl >= 0 ? '+' : ''}{p.pnl.toFixed(2)} {currency}
+            <span className="report-row__stake">{Number(p.stake || 0).toFixed(2)} {currency}</span>
+            <span className={`report-row__pnl ${p.profit >= 0 ? 'is-win' : 'is-loss'}`}>
+              {p.profit >= 0 ? '+' : ''}{p.profit.toFixed(2)} {currency}
             </span>
           </div>
         </div>
@@ -49,7 +161,9 @@ export function Reports({ positions, currency = 'USD' }) {
   );
 }
 
-export function MenuScreen({ onToast }) {
+export function MenuScreen({ engine, onToast }) {
+  const [mode, setMode] = React.useState(engine.tradeMode);
+  const [mart, setMart] = React.useState(engine.martingale.enabled);
   const rows = [
     ['Deposit', 'Add funds to your account'],
     ['Withdrawal', 'Withdraw available funds'],
@@ -60,16 +174,39 @@ export function MenuScreen({ onToast }) {
   return (
     <div className="screen">
       <div className="screen__title">Menu</div>
-      {rows.map(([label, sub]) => (
-        <button
-          key={label}
-          className="menu-row"
-          onClick={() => onToast(`${label} is disabled in this demo`)}
-          type="button"
-        >
+
+      <div className="menu-section">
+        <div className="menu-section__title">Trading engine</div>
+        <div className="menu-toggle">
+          <span>Mode</span>
+          <div className="menu-seg">
+            {['RISEFALL', 'DIGITS'].map(m => (
+              <button
+                key={m}
+                className={`menu-seg__btn${mode === m ? ' is-active' : ''}`}
+                onClick={() => { setMode(m); engine.setMode(m); }}
+                type="button"
+              >
+                {m === 'RISEFALL' ? 'Rise/Fall' : 'Digits'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <label className="menu-toggle">
+          <span>Martingale</span>
+          <input
+            type="checkbox"
+            checked={mart}
+            onChange={e => { setMart(e.target.checked); engine.setMartingale({ enabled: e.target.checked }); }}
+          />
+        </label>
+      </div>
+
+      {rows.map(([label, sub2]) => (
+        <button key={label} className="menu-row" onClick={() => onToast(`${label} is disabled in this build`)} type="button">
           <span>
             <span className="menu-row__title">{label}</span>
-            <span className="menu-row__sub">{sub}</span>
+            <span className="menu-row__sub">{sub2}</span>
           </span>
           <span className="menu-row__chevron">›</span>
         </button>
@@ -78,30 +215,39 @@ export function MenuScreen({ onToast }) {
   );
 }
 
-export function AccountScreen({ balance, currency = 'USD', onToast }) {
+export function AccountScreen({ state, logs, onLogin, onLogout }) {
   return (
     <div className="screen">
       <div className="screen__title">My account</div>
       <div className="account-card">
         <div>
-          <div className="account-card__type">Demo account</div>
-          <div className="account-card__balance">{balance.toFixed(2)} {currency}</div>
+          <div className="account-card__type">
+            {state?.auth ? `${state.accountId} · ${state.accountType}` : 'Not connected'}
+          </div>
+          <div className="account-card__balance">{(state?.balance ?? 0).toFixed(2)} USD</div>
         </div>
       </div>
-      <button className="menu-row" onClick={() => onToast('Account switching is disabled in this demo')} type="button">
-        <span>
-          <span className="menu-row__title">Switch account</span>
-          <span className="menu-row__sub">Move between Demo and Real</span>
-        </span>
-        <span className="menu-row__chevron">›</span>
-      </button>
-      <button className="menu-row" onClick={() => onToast('API token management is disabled in this demo')} type="button">
-        <span>
-          <span className="menu-row__title">API token</span>
-          <span className="menu-row__sub">Manage your Deriv API access</span>
-        </span>
-        <span className="menu-row__chevron">›</span>
-      </button>
+
+      {state?.auth ? (
+        <button className="menu-row" onClick={onLogout} type="button">
+          <span>
+            <span className="menu-row__title">Log out</span>
+            <span className="menu-row__sub">Close the Deriv connection</span>
+          </span>
+          <span className="menu-row__chevron">›</span>
+        </button>
+      ) : (
+        <button className="menu-row" onClick={onLogin} type="button">
+          <span>
+            <span className="menu-row__title">Log in</span>
+            <span className="menu-row__sub">Connect with a Deriv API token</span>
+          </span>
+          <span className="menu-row__chevron">›</span>
+        </button>
+      )}
+
+      <div className="screen__section-title">Console</div>
+      <LogConsole logs={logs} />
       <div className="screen__footnote">Interface replica · not affiliated with Deriv</div>
     </div>
   );

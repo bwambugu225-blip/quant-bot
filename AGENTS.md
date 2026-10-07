@@ -55,3 +55,30 @@ custom domain `https://dv-quant.vercel.app`, and
 Note: `node_modules/` and `dist/` are normally gitignored, but the current
 history also contains a forced commit of them (kept intentionally).
 `public_out/` is gitignored.
+
+## Deriv rebuild — live engine
+
+`deriv-replica/` is not a static mock: it is wired to the real Deriv WebSocket
+API (same transport as `bot.html`).
+
+- `src/lib/derivClient.js` — WS v3 client. Auth ladder: REST accounts →
+  WS `authorize` → OTP URL → direct WS with token in the URL. Two sockets: the
+  authenticated trading socket for balance/proposals/buys/contracts, and a
+  public market socket (`app_id=1089`) for unauthenticated tick history.
+- `src/lib/marketStore.js` — tick/candle engine. `ticks_history` seeds candles
+  per timeframe (5s/15s/30s/1m) and `tick` streams update them live; digit
+  history is derived from the last digit of each quote.
+- `src/lib/strategies.js` — the single confluent reversal strategy
+  (`REV_BB`) plus the digit rolling-bias strategy, ported from `bot.html`.
+- `src/lib/engine.js` — execution: proposals, buys, contract lifecycle,
+  auto-engine run/stop, manual Rise/Fall and digit trades, martingale, Kelly
+  sizing, win/loss bookkeeping.
+- `src/lib/useEngine.js` — React binding. Boots the public market feed on load
+  (live prices without login) and restores a saved token from `localStorage`
+  to reconnect on reload.
+
+To trade, click Log in and paste a Deriv API token with Read + Trade scope.
+Market data needs no login. Notation: the engine speaks `RISE`/`FALL`
+internally and sends `CALL`/`PUT` to Deriv; digit sub-types map to
+`DIGITMATCH`/`DIGITDIFF`, `DIGITOVER`/`DIGITUNDER`, `DIGITEVEN`/`DIGITODD`
+(Even/Odd are sent without a barrier).

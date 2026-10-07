@@ -1,10 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { formatPrice } from '../lib/market.js';
+import { decimalsFor } from '../lib/marketStore.js';
 
 // "Current spot / Last digit" strip that Deriv shows above the chart for
 // digit-based contracts. The digit tile flashes on each new tick.
-export default function CurrentSpot({ market, price }) {
-  const lastDigit = market.lastDigit();
+export default function CurrentSpot({ price, lastDigit }) {
   const [flash, setFlash] = useState(false);
   const prev = useRef(lastDigit);
 
@@ -17,11 +16,13 @@ export default function CurrentSpot({ market, price }) {
     }
   }, [lastDigit]);
 
+  const decimals = decimalsFor(price);
+
   return (
     <div className="current-spot">
       <div>
         <span className="current-spot__label">Current spot</span>
-        <span className="current-spot__value">{formatPrice(price, market.decimals)}</span>
+        <span className="current-spot__value">{Number(price || 0).toFixed(decimals)}</span>
       </div>
       <div className="current-spot__digit-wrap">
         <span className="current-spot__label">Last digit</span>

@@ -10,55 +10,77 @@ import BottomNav from './components/BottomNav.jsx';
 import Positions from './components/Positions.jsx';
 import SymbolSheet from './components/SymbolSheet.jsx';
 import Sheet from './components/Sheet.jsx';
-import { AccountScreen, MenuScreen, Reports } from './components/screens.jsx';
+import { AccountScreen, MenuScreen, Reports, LoginScreen, EnginePanel } from './components/screens.jsx';
 import { TRADE_TYPES, findTradeType, isDigitContract } from './lib/contracts.js';
-import { SYMBOLS, createMarket, digitPayout, payoutFor, formatPrice, addComma } from './lib/market.js';
+import { SYMBOLS, TF_LIST, isDigitSymbol } from './lib/marketStore.js';
+import { addComma } from './lib/format.js';
+import { useEngine } from './lib/useEngine.js';
 
 const CURRENCY = 'USD';
-const DURATIONS = ['1 tick', '5 ticks', '1 minute', '5 minutes'];
-
-let nextId = 1;
+// Digit contract types sent to Deriv, keyed by sub-contract id + side index.
+const DIGIT_CONTRACT = {
+  match_diff: ['DIGITMATCH', 'DIGITDIFF'],
+  over_under: ['DIGITOVER', 'DIGITUNDER'],
+  even_odd: ['DIGITEVEN', 'DIGITODD'],
+};
 
 export default function App() {
+  const { engine, state, tick, logs, toast, login, logout, reconnectMarket } = useEngine();
+
   const [tab, setTab] = React.useState('home');
   const [marketIdx, setMarketIdx] = React.useState(0);
   const [tradeTypeId, setTradeTypeId] = React.useState('Rise/Fall');
   const [subContractId, setSubContractId] = React.useState('rise_fall');
   const [digit, setDigit] = React.useState(5);
-  const [stake, setStake] = React.useState(10);
   const [durationIdx, setDurationIdx] = React.useState(0);
-  const [balance, setBalance] = React.useState(10000);
   const [expanded, setExpanded] = React.useState(false);
   const [symbolSheet, setSymbolSheet] = React.useState(false);
   const [tradeTypeSheet, setTradeTypeSheet] = React.useState(false);
   const [stakeSheet, setStakeSheet] = React.useState(false);
-  const [positions, setPositions] = React.useState([]);
-  const [toast, setToast] = React.useState(null);
+  const [showLogin, setShowLogin] = React.useState(false);
 
-  const market = React.useMemo(() => createMarket(SYMBOLS[marketIdx]), [marketIdx]);
-  const [tick, setTick] = React.useState(market.last());
-
-  React.useEffect(() => {
-    setTick(market.last());
-    const id = setInterval(() => setTick(market.next()), 1000);
-    return () => clearInterval(id);
-  }, [market]);
-
+  const market = SYMBOLS[marketIdx];
   const parent = findTradeType(tradeTypeId);
   const sub = parent.subtypes.find(s => s.id === subContractId) ?? parent.subtypes[0];
   const isDigit = isDigitContract(subContractId);
-  const labels = sub.labels;
-  const payout = isDigit
-    ? digitPayout(stake, sub.id, sub.id === 'over_under' ? digit : null, true)
-    : payoutFor(stake, sub.id);
-  const price = tick?.quote ?? market.last()?.quote ?? 0;
+
+  const price = React.useMemo(() => {
+    if (tick?.sym === market.sym) return tick.price;
+    return engine.store.lastPrice[market.sym] ?? 0;
+  }, [tick, market.sym, engine]);
+  const lastDigit = React.useMemo(
+    () => (tick?.sym === market.sym ? tick.digit : engine.store.lastDigit(market.sym)),
+    [tick, market.sym, engine]
+  );
+  const livePrices = React.useMemo(
+    () => (tick && tick.sym === market.sym ? engine.store.livePrices(market.sym) : engine.store.livePrices(market.sym)),
+    [tick, market.sym, engine]
+  );
+  const digHist = engine.store.digHist[market.sym] || [];
+
   const prevRef = React.useRef(price);
   const up = price >= prevRef.current;
-  React.useEffect(() => {
-    prevRef.current = price;
-  }, [price]);
+  React.useEffect(() => { prevRef.current = price; }, [price]);
 
-  const openCount = positions.filter(p => p.status === 'open').length;
+  // Keep the engine's selected market in sync with the UI selection.
+  React.useEffect(() => { engine.selectedMarket = market.sym; }, [engine, market.sym]);
+
+  const stake = isDigit ? engine.dgStake : engine.rfStake;
+  const payout = React.useMemo(() => {
+    if (isDigit) {
+      // Real-ish Deriv digit odds for the informational payout figure.
+      if (subContractId === 'match_diff') return +(stake * 1.94).toFixed(2);
+      if (subContractId === 'even_odd') return +(stake * 1.96).toFixed(2);
+      if (subContractId === 'over_under') {
+        const p = digit <= 4 ? (9 - digit) / 10 : (digit + 1) / 10;
+        return +(stake / p).toFixed(2);
+      }
+      return +(stake * 1.94).toFixed(2);
+    }
+    return +(stake * 1.94).toFixed(2);
+  }, [stake, isDigit, subContractId, digit]);
+
+  const durations = ['1 tick', '2 ticks', '3 ticks', '5 ticks', '10 ticks'];
 
   const selectTradeType = id => {
     const t = findTradeType(id);
@@ -66,59 +88,41 @@ export default function App() {
     setSubContractId(t.subtypes[0].id);
     setTradeTypeSheet(false);
     setExpanded(false);
+    // Selecting a digit trade type flips the engine to digit mode; directional
+    // types return it to Rise/Fall signalled trading.
+    engine.setMode(isDigitContract(t.subtypes[0].id) ? 'DIGITS' : 'RISEFALL');
   };
 
   const onTrade = (_action, sideIdx) => {
-    const entry = formatPrice(price, market.decimals);
-    const sideLabel = labels[sideIdx] ?? labels[0];
-    const id = nextId++;
-    const newPos = {
-      id,
-      type: sub.id,
-      sideIdx,
-      symbol: market.display,
-      stake,
-      payout,
-      entry,
-      sideLabel,
-      status: 'open',
-      pnl: null,
-      openedAt: Date.now(),
-    };
-    setPositions(ps => [newPos, ...ps]);
-    setBalance(b => +(b - stake).toFixed(2));
+    if (!state?.auth) { setShowLogin(true); return; }
+    if (isDigit) {
+      const [over, under] = DIGIT_CONTRACT[subContractId];
+      const type = sideIdx === 0 ? over : under === undefined ? over : under;
+      const barrier = subContractId === 'match_diff' || subContractId === 'over_under' ? digit : null;
+      engine.placeDigitManual(type, barrier);
+    } else {
+      engine.placeManualRF(sideIdx === 0 ? 'RISE' : 'FALL');
+    }
     setExpanded(false);
-    setToast(`${sideLabel} · ${addComma(stake, 2)} ${CURRENCY} @ ${entry}`);
-    setTimeout(() => setToast(null), 2600);
-
-    // Resolve the contract shortly after: subsequent ticks decide win/loss.
-    const duration = 3000 + Math.floor(Math.random() * 3000);
-    setTimeout(() => {
-      const settled = market.last()?.quote ?? price;
-      const rose = settled >= Number(entry.replace(/,/g, ''));
-      const won = isDigit ? Math.random() > 0.45 : sideIdx === 0 ? rose : !rose;
-      const pnl = won ? +(payout - stake).toFixed(2) : -stake;
-      setPositions(ps =>
-        ps.map(p => (p.id === id ? { ...p, status: won ? 'won' : 'lost', pnl } : p))
-      );
-      setBalance(b => +(b + (won ? payout : 0)).toFixed(2));
-      setToast(won ? `Contract ${id} won · +${addComma(payout - stake, 2)} ${CURRENCY}` : `Contract ${id} lost`);
-      setTimeout(() => setToast(null), 2600);
-    }, duration);
   };
 
-  const onToast = msg => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2600);
+  const onSelectSymbol = i => {
+    setMarketIdx(i);
+    engine.selectedMarket = SYMBOLS[i].sym;
+    setSymbolSheet(false);
   };
+
+  const openCount = state?.positions?.length ?? 0;
 
   return (
     <div className="app">
       <Header
-        balance={balance}
+        balance={state?.balance ?? 0}
         currency={CURRENCY}
+        accountType={state?.accountType}
+        connected={state?.auth}
         onAccount={() => setTab('account')}
-        onDeposit={() => onToast('Deposits are disabled in this demo')}
+        onDeposit={() => setShowLogin(true)}
       />
 
       <main className="app__main">
@@ -130,54 +134,77 @@ export default function App() {
               onViewAll={() => setTradeTypeSheet(true)}
             />
             <div className="home__row">
-              <MarketSelector market={market} price={price} up={up} onOpen={() => setSymbolSheet(true)} />
+              <MarketSelector
+                display={market.name}
+                price={price}
+                up={up}
+                onOpen={() => setSymbolSheet(true)}
+              />
             </div>
-            {isDigit && <CurrentSpot market={market} price={price} />}
-            <ChartArea market={market} tick={tick} up={up} height={isDigit ? 264 : 300} />
+            <div className="home__toolbar">
+              <TimeframeChips
+                value={engine.store.selectedTf || '5s'}
+                onChange={tf => { engine.store.setSelectedTf(tf); engine.emit('state', engine.snapshot()); }}
+              />
+              <button className="home__refresh" onClick={reconnectMarket} type="button" title="Reconnect market feed">⟳</button>
+            </div>
+            {isDigit && <CurrentSpot price={price} lastDigit={lastDigit} />}
+            <ChartArea prices={livePrices} up={up} height={isDigit ? 264 : 300} />
+
+            <EnginePanel
+              state={state}
+              engine={engine}
+              onLogin={() => setShowLogin(true)}
+              onSetStake={(kind, v) => engine.setStake(kind, v)}
+            />
 
             <div className="trade-params-dock-wrap">
               <TradeParameters
                 tradeTypeId={tradeTypeId}
                 subContractId={subContractId}
-                onSubContract={setSubContractId}
+                onSubContract={id => { setSubContractId(id); engine.setMode(isDigitContract(id) ? 'DIGITS' : 'RISEFALL'); }}
                 digit={digit}
                 setDigit={setDigit}
-                market={market}
-                tick={tick}
+                digHist={digHist}
                 stake={stake}
                 currency={CURRENCY}
-                duration={DURATIONS[durationIdx]}
+                duration={durations[durationIdx]}
                 setDuration={setDurationIdx}
-                durations={DURATIONS}
+                durations={durations}
                 payout={payout}
                 expanded={expanded}
                 onToggle={() => setExpanded(v => !v)}
-                onDuration={() => setDurationIdx(i => (i + 1) % DURATIONS.length)}
+                onDuration={() => setDurationIdx(i => (i + 1) % durations.length)}
                 onStake={() => setStakeSheet(true)}
               />
-              <PurchaseButton labels={labels} payout={payout} currency={CURRENCY} onTrade={onTrade} />
+              <PurchaseButton labels={sub.labels} payout={payout} currency={CURRENCY} onTrade={onTrade} />
             </div>
           </>
         )}
 
         {tab === 'positions' && (
           <div className="app__scroll">
-            <Positions positions={positions} currency={CURRENCY} />
+            <Positions positions={state?.positions ?? []} currency={CURRENCY} />
           </div>
         )}
         {tab === 'reports' && (
           <div className="app__scroll">
-            <Reports positions={positions} currency={CURRENCY} />
+            <Reports reports={state?.reports ?? []} currency={CURRENCY} />
           </div>
         )}
         {tab === 'menu' && (
           <div className="app__scroll">
-            <MenuScreen onToast={onToast} />
+            <MenuScreen logs={logs} engine={engine} onToast={m => engine.toast(m, 'info')} />
           </div>
         )}
         {tab === 'account' && (
           <div className="app__scroll">
-            <AccountScreen balance={balance} currency={CURRENCY} onToast={onToast} />
+            <AccountScreen
+              state={state}
+              logs={logs}
+              onLogin={() => setShowLogin(true)}
+              onLogout={() => { engine.stop(); logout(); }}
+            />
           </div>
         )}
       </main>
@@ -188,10 +215,7 @@ export default function App() {
         <SymbolSheet
           symbols={SYMBOLS}
           current={marketIdx}
-          onSelect={i => {
-            setMarketIdx(i);
-            setSymbolSheet(false);
-          }}
+          onSelect={onSelectSymbol}
           onClose={() => setSymbolSheet(false)}
         />
       )}
@@ -223,22 +247,53 @@ export default function App() {
             </div>
             <div className="stake-editor__quick">
               {[1, 5, 10, 25, 50, 100].map(v => (
-                <button key={v} className="stake-editor__chip" onClick={() => setStake(v)} type="button">
+                <button
+                  key={v}
+                  className="stake-editor__chip"
+                  onClick={() => engine.setStake(isDigit ? 'dg' : 'rf', v)}
+                  type="button"
+                >
                   {v}
                 </button>
               ))}
             </div>
             <div className="stake-editor__steppers">
-              <button onClick={() => setStake(s => Math.max(0.35, +(s - 1).toFixed(2)))} type="button">− 1.00</button>
-              <button onClick={() => setStake(s => +(s + 1).toFixed(2))} type="button">+ 1.00</button>
-              <button onClick={() => setStake(s => +(s + 10).toFixed(2))} type="button">+ 10.00</button>
+              <button onClick={() => engine.setStake(isDigit ? 'dg' : 'rf', stake - 1)} type="button">− 1.00</button>
+              <button onClick={() => engine.setStake(isDigit ? 'dg' : 'rf', stake + 1)} type="button">+ 1.00</button>
+              <button onClick={() => engine.setStake(isDigit ? 'dg' : 'rf', stake + 10)} type="button">+ 10.00</button>
             </div>
             <button className="stake-editor__done" onClick={() => setStakeSheet(false)} type="button">Done</button>
           </div>
         </Sheet>
       )}
 
-      {toast && <div className="toast">{toast}</div>}
+      {showLogin && (
+        <Sheet title="Log in to Deriv" onClose={() => setShowLogin(false)}>
+          <LoginScreen
+            onSubmit={async token => { await login(token); setShowLogin(false); }}
+            onClose={() => setShowLogin(false)}
+          />
+        </Sheet>
+      )}
+
+      {toast && <div className={`toast toast--${toast.kind || 'info'}`}>{toast.msg}</div>}
+    </div>
+  );
+}
+
+function TimeframeChips({ value, onChange }) {
+  return (
+    <div className="tf-chips">
+      {TF_LIST.map(tf => (
+        <button
+          key={tf}
+          className={`tf-chip${tf === value ? ' is-active' : ''}`}
+          onClick={() => onChange(tf)}
+          type="button"
+        >
+          {tf}
+        </button>
+      ))}
     </div>
   );
 }

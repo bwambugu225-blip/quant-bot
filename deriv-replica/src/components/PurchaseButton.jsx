@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button } from '@deriv-com/quill-ui';
-import { addComma } from '../lib/market.js';
+import { addComma } from '../lib/format.js';
 
 // Deriv's buy/sell pair: two full-width pills, buy in teal and sell in red,
 // each showing the payout on the trailing edge.

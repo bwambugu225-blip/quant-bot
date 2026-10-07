@@ -903,3 +903,165 @@ body {
     transform: translate(-50%, 0);
   }
 }
+
+/* ===================== Live engine controls ======================== */
+.home__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 12px 6px;
+}
+
+.tf-chips { display: flex; gap: 4px; }
+
+.tf-chip {
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  background: transparent;
+  color: var(--text-secondary, #8a8f9c);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  cursor: pointer;
+}
+.tf-chip.is-active {
+  background: var(--coral, #ff444f);
+  border-color: var(--coral, #ff444f);
+  color: #fff;
+}
+
+.home__refresh {
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  background: transparent;
+  color: var(--text-secondary, #8a8f9c);
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.engine-panel {
+  margin: 6px 12px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--core-color-solid-slate-100, #11141b);
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+}
+
+.engine-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary, #8a8f9c);
+}
+.engine-panel__row--controls { justify-content: space-between; margin-top: 10px; }
+
+.engine-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #5c616d;
+}
+.engine-dot.is-on { background: var(--buy, #4bb4b3); box-shadow: 0 0 6px var(--buy, #4bb4b3); }
+
+.engine-panel__status { flex: 1; }
+
+.engine-panel__login {
+  border: none; background: var(--coral, #ff444f); color: #fff;
+  font-size: 11px; font-weight: 700; padding: 5px 12px; border-radius: 12px; cursor: pointer;
+}
+
+.engine-stake {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--text-primary, #fff); font-weight: 700;
+}
+.engine-stake__label { font-size: 11px; color: var(--text-secondary, #8a8f9c); font-weight: 600; }
+.engine-stake button {
+  width: 24px; height: 24px; border-radius: 50%;
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  background: transparent; color: #fff; cursor: pointer; font-size: 14px; line-height: 1;
+}
+.engine-stake__value { min-width: 46px; text-align: center; font-variant-numeric: tabular-nums; }
+
+.engine-run {
+  border: none; border-radius: 18px; cursor: pointer;
+  background: var(--buy, #4bb4b3); color: #04121a;
+  font-size: 12px; font-weight: 800; padding: 8px 16px; letter-spacing: 0.3px;
+}
+.engine-run.is-running { background: var(--sell, #ec3f3f); color: #fff; }
+
+.engine-stats {
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  gap: 6px; margin-top: 10px;
+}
+.engine-stat { display: flex; flex-direction: column; gap: 2px; }
+.engine-stat__label { font-size: 9px; text-transform: uppercase; color: var(--text-secondary, #8a8f9c); }
+.engine-stat__value { font-size: 12px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+.engine-stat__value.is-win { color: var(--buy, #4bb4b3); }
+.engine-stat__value.is-loss { color: var(--sell, #ec3f3f); }
+
+/* ============================== Login ============================== */
+.login-form { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+.login-form__hint { font-size: 12px; color: var(--text-secondary, #8a8f9c); margin: 0 0 4px; line-height: 1.4; }
+.login-form__input {
+  height: 44px; border-radius: 8px; padding: 0 12px;
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  background: var(--core-color-solid-slate-100, #11141b);
+  color: #fff; font-size: 14px;
+}
+.login-form__error { font-size: 12px; color: var(--sell, #ec3f3f); }
+.login-form__submit {
+  height: 46px; border: none; border-radius: 23px; cursor: pointer;
+  background: var(--coral, #ff444f); color: #fff; font-size: 15px; font-weight: 700;
+}
+.login-form__submit:disabled { opacity: 0.6; }
+.login-form__cancel {
+  height: 40px; border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  background: transparent; color: var(--text-secondary, #8a8f9c);
+  border-radius: 20px; cursor: pointer; font-size: 13px;
+}
+
+/* ============================ Console ============================= */
+.log-console {
+  max-height: 260px; overflow-y: auto;
+  background: #0b0e13; border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  border-radius: 8px; padding: 8px; font-family: 'IBM Plex Mono', monospace;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.log-console__empty { font-size: 11px; color: #5c616d; }
+.log-line { display: flex; gap: 8px; font-size: 10.5px; line-height: 1.35; }
+.log-line__time { color: #5c616d; flex: none; }
+.log-line__msg { color: #c8ccd6; white-space: pre-wrap; word-break: break-word; }
+.log-line--e .log-line__msg { color: #ec3f3f; }
+.log-line--w .log-line__msg { color: #f2b94b; }
+.log-line--s .log-line__msg { color: #4bb4b3; }
+.log-line--t .log-line__msg { color: #ff8a8f; }
+
+/* ======================== Menu / account ========================= */
+.menu-section { margin-bottom: 10px; }
+.menu-section__title {
+  font-size: 11px; text-transform: uppercase; color: var(--text-secondary, #8a8f9c);
+  margin: 6px 0 8px;
+}
+.menu-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 13px; color: #fff; padding: 8px 0;
+}
+.menu-seg { display: flex; gap: 4px; }
+.menu-seg__btn {
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  background: transparent; color: var(--text-secondary, #8a8f9c);
+  font-size: 11px; font-weight: 600; padding: 4px 12px; border-radius: 12px; cursor: pointer;
+}
+.menu-seg__btn.is-active { background: var(--coral, #ff444f); border-color: var(--coral, #ff444f); color: #fff; }
+.screen__section-title {
+  font-size: 11px; text-transform: uppercase; color: var(--text-secondary, #8a8f9c);
+  margin: 14px 0 8px;
+}
+.account-chip__dot {
+  width: 7px; height: 7px; border-radius: 50%; background: #5c616d; margin-right: 6px; flex: none;
+}
+.account-chip__dot.is-on { background: var(--buy, #4bb4b3); }
+
+.toast--win { background: var(--buy, #4bb4b3); color: #04121a; }
+.toast--loss { background: var(--sell, #ec3f3f); color: #fff; }

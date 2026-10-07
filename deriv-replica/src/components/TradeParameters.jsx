@@ -1,7 +1,7 @@
 import React from 'react';
 import { SegmentedControlSingleChoice } from '@deriv-com/quill-ui';
 import { findTradeType, isDigitContract } from '../lib/contracts.js';
-import { addComma, digitDistribution } from '../lib/market.js';
+import { addComma } from '../lib/format.js';
 
 // Deriv's trade-parameter dock. It stacks:
 //   1. TradeTypeTabs (sub-contract segmented control)
@@ -14,8 +14,7 @@ export default function TradeParameters({
   onSubContract,
   digit,
   setDigit,
-  market,
-  tick,
+  digHist,
   stake,
   currency,
   duration,
@@ -55,8 +54,7 @@ export default function TradeParameters({
             subContractId={subContractId}
             digit={digit}
             setDigit={setDigit}
-            market={market}
-            tick={tick}
+            digHist={digHist}
             expanded={expanded}
           />
         )}
@@ -84,8 +82,15 @@ export default function TradeParameters({
   );
 }
 
-function DigitPrediction({ subContractId, digit, setDigit, market, tick, expanded }) {
-  const { counts, dist } = React.useMemo(() => digitDistribution(market), [market, tick]);
+function DigitPrediction({ digit, setDigit, digHist, expanded }) {
+  const { counts, dist } = React.useMemo(() => {
+    const win = (digHist || []).slice(-100);
+    const counts = new Array(10).fill(0);
+    win.forEach(d => { counts[d] += 1; });
+    const total = win.length || 1;
+    const dist = counts.map(c => (c / total) * 100);
+    return { counts, dist, total: win.length };
+  }, [digHist]);
   const max = Math.max(...counts, 1);
 
   if (expanded) {
