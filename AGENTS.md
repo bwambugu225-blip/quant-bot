@@ -38,4 +38,15 @@ npm run preview   # serve built output on port 12000
 Verification approach: serve the build, drive it with the browser, and sample
 screenshot colours to confirm they match Deriv tokens.
 
-`node_modules/` and `dist/` are gitignored.
+## Deployment (Vercel)
+
+`bot.html` is served at `/` and the React rebuild at `/deriv/`. Vercel runs
+`scripts/build-site.sh` (see `vercel.json`), which builds deriv-replica and
+assembles `public_out/` with `bot.html` at the root and the build under
+`deriv/`. Ordered rewrites route `/deriv` and `/deriv/*` to the SPA, and
+everything else falls through to `bot.html`. `deriv-replica/vite.config.js`
+uses `base: '/deriv/'` so asset URLs match.
+
+Note: `node_modules/` and `dist/` are normally gitignored, but the current
+history also contains a forced commit of them (kept intentionally).
+`public_out/` is gitignored.
