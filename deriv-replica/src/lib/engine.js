@@ -79,10 +79,14 @@ export class Engine {
       this._subscribeMarkets();
     });
     client.on('market-close', () => this.log('[MARKET] Socket closed — retrying', 'w'));
-    client.on('market-error', () => this.log('[MARKET] Socket error — check network/firewall', 'e'));
+    client.on('market-error', (info) => this.log(`[MARKET] Socket error (app ${info?.appId || '?'}) — check network/firewall`, 'e'));
+    client.on('accounts', accounts => { this.accounts = accounts; this.emit('state', this.snapshot()); });
     client.on('log', ({ t, k }) => this.log(t, k));
     client.on('close', () => this.emit('state', this.snapshot()));
   }
+
+  // Switch demo/real account covered by the logged-in token.
+  switchAccount(accountId) { return this.client?.switchAccount(accountId); }
 
   _subscribeMarkets() {
     if (!this.client) return;
@@ -103,6 +107,7 @@ export class Engine {
       accountId: this.client?.accountId || null,
       accountType: this.client?.accountType || 'demo',
       balance: this.client?.balance || 0,
+      accounts: this.accounts || [],
       wins: this.wins, losses: this.losses, pnl: this.pnl, trades: this.trades,
       consLoss: this.consLoss,
       openCount: this.positions.length,

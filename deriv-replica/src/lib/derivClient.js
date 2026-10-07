@@ -5,17 +5,17 @@
 // market socket (MWS) for unauthenticated tick history. Auth follows the same
 // ladder: REST accounts → WS authorize → OTP URL → direct WS with token.
 
-// Authenticated flows (authorize / REST / OTP / trading) need a registered
-// app id — the public 1089 app only serves unauthenticated market data and is
-// rejected by `authorize`. Default matches the working app id used by bot.html;
-// overridable via localStorage like the original.
-const MARKET_APP_ID = '1089';
+// The registered app id is used for every socket (auth, REST, OTP, trading and
+// market data). The public 1089 app is rejected by Deriv in some regions /
+// origins, which surfaced as a failing market socket while the trading socket
+// worked. Overridable via localStorage like the original.
 const WS_BASE = 'wss://ws.derivws.com/websockets/v3';
 const REST_ACCOUNTS = 'https://api.derivws.com/trading/v1/options/accounts';
+const DEFAULT_APP_ID = '33JFxN3sbe2usdFigbMb8';
 
 function appId() {
-  try { return localStorage.getItem('deriv_app_id') || '33JFxN3sbe2usdFigbMb8'; }
-  catch (e) { return '33JFxN3sbe2usdFigbMb8'; }
+  try { return localStorage.getItem('deriv_app_id') || DEFAULT_APP_ID; }
+  catch (e) { return DEFAULT_APP_ID; }
 }
 
 export class DerivClient {
@@ -46,7 +46,8 @@ export class DerivClient {
   connectMarket() {
     if (this.mws && (this.mws.readyState === WebSocket.OPEN || this.mws.readyState === WebSocket.CONNECTING)) return;
     if (this._mwsReconn) { clearTimeout(this._mwsReconn); this._mwsReconn = null; }
-    const mws = new WebSocket(`${WS_BASE}?app_id=${MARKET_APP_ID}`);
+    const id = this._mwsUseLegacy ? '1089' : this.appId;
+    const mws = new WebSocket(`${WS_BASE}?app_id=${id}`);
     this.mws = mws;
     mws.onopen = () => {
       this.mwsAttempts = 0;
@@ -54,11 +55,14 @@ export class DerivClient {
       this.startHeartbeat();
     };
     mws.onmessage = e => this._onMessage(e, 'market');
-    mws.onerror = () => this.emit('market-error');
+    mws.onerror = () => this.emit('market-error', { appId: id });
     mws.onclose = () => {
       if (this.mws === mws) this.mws = null;
+      // First failure on the registered app: fall back to the legacy public
+      // app id once, then keep retrying whichever id we last used.
+      if (!this._mwsUseLegacy) { this._mwsUseLegacy = true; this.emit('market-close'); this._mwsReconn = setTimeout(() => this.connectMarket(), 700); return; }
       this.emit('market-close');
-      const delay = Math.min(500 * Math.pow(1.5, this.mwsAttempts++), 10000);
+      const delay = Math.min(700 * Math.pow(1.4, this.mwsAttempts++), 8000);
       this._mwsReconn = setTimeout(() => this.connectMarket(), delay);
     };
   }
@@ -67,6 +71,7 @@ export class DerivClient {
     if (this._mwsReconn) { clearTimeout(this._mwsReconn); this._mwsReconn = null; }
     if (this.mws) { try { this.mws.close(); } catch (e) {} this.mws = null; }
     this.mwsAttempts = 0;
+    this._mwsUseLegacy = false;
     this.connectMarket();
     this.emit('log', { t: '[MARKET] Manual reconnect', k: 'i' });
   }
@@ -131,6 +136,31 @@ export class DerivClient {
       }
     } catch (e) { this.emit('log', { t: '[AUTH] OTP failed, trying direct WS…', k: 'w' }); }
     this._connectDirect(token);
+  }
+
+  // Switch to another account covered by the same token (demo ↔ real).
+  async switchAccount(accountId) {
+    const accounts = this._oauthAccounts || [];
+    const account = accounts.find(a => a.account === accountId);
+    if (!account) throw new Error('Account not available');
+    this.accountId = account.account;
+    this.accountType = account.account.startsWith('VR') || account.isDemo ? 'demo' : 'real';
+    this.balance = account.balance || 0;
+    this.auth = false;
+    this.emit('accounts', accounts);
+    try {
+      const otpResp = await fetch(`${REST_ACCOUNTS}/${account.account}/otp`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.token}`, 'Deriv-App-ID': this.appId },
+        body: '{}',
+      });
+      if (otpResp.ok) {
+        const otpData = await otpResp.json();
+        const wsUrl = otpData.data?.url || otpData.url;
+        if (wsUrl) { this._connectOTP(wsUrl); return; }
+      }
+    } catch (e) { /* fall through to direct */ }
+    this._connectDirect(this.token);
   }
 
   _wsAuthorize(token) {
@@ -284,4 +314,4 @@ export class DerivClient {
   }
 }
 
-export { MARKET_APP_ID };
+export { DEFAULT_APP_ID };

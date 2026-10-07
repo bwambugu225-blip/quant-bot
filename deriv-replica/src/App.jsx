@@ -25,7 +25,7 @@ const DIGIT_CONTRACT = {
 };
 
 export default function App() {
-  const { engine, state, tick, logs, toast, login, logout } = useEngine();
+  const { engine, state, tick, logs, toast, login, logout, switchAccount } = useEngine();
 
   const [tab, setTab] = React.useState('home');
   const [marketIdx, setMarketIdx] = React.useState(0);
@@ -198,6 +198,7 @@ export default function App() {
               logs={logs}
               onLogin={() => setShowLogin(true)}
               onLogout={() => { engine.stop(); logout(); }}
+              onSwitch={id => switchAccount(id)}
             />
           </div>
         )}

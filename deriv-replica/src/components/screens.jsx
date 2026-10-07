@@ -215,7 +215,8 @@ export function MenuScreen({ engine, state, onLogin, onToast }) {
   );
 }
 
-export function AccountScreen({ state, logs, onLogin, onLogout }) {
+export function AccountScreen({ state, logs, onLogin, onLogout, onSwitch }) {
+  const accounts = state?.accounts || [];
   return (
     <div className="screen">
       <div className="screen__title">My account</div>
@@ -227,6 +228,30 @@ export function AccountScreen({ state, logs, onLogin, onLogout }) {
           <div className="account-card__balance">{(state?.balance ?? 0).toFixed(2)} USD</div>
         </div>
       </div>
+
+      {accounts.length > 1 && (
+        <>
+          <div className="screen__section-title">Switch account</div>
+          {accounts.map(a => {
+            const isDemo = a.account.startsWith('VR') || a.isDemo;
+            const active = a.account === state?.accountId;
+            return (
+              <button
+                key={a.account}
+                className={`menu-row${active ? ' is-active' : ''}`}
+                onClick={() => !active && onSwitch(a.account)}
+                type="button"
+              >
+                <span>
+                  <span className="menu-row__title">{isDemo ? 'Demo' : 'Real'} · {a.account}</span>
+                  <span className="menu-row__sub">{(a.balance ?? 0).toFixed(2)} {a.currency || 'USD'}</span>
+                </span>
+                <span className="menu-row__chevron">{active ? '●' : '›'}</span>
+              </button>
+            );
+          })}
+        </>
+      )}
 
       {state?.auth ? (
         <button className="menu-row" onClick={onLogout} type="button">

@@ -60,6 +60,7 @@ export function useEngine() {
   }, []);
 
   const reconnectMarket = useCallback(() => clientRef.current.reconnectMarket(), []);
+  const switchAccount = useCallback(id => clientRef.current.switchAccount(id), []);
 
-  return { engine: engineRef.current, client: clientRef.current, state, tick, logs, toast, login, logout, reconnectMarket };
+  return { engine: engineRef.current, client: clientRef.current, state, tick, logs, toast, login, logout, reconnectMarket, switchAccount };
 }
