@@ -35,9 +35,34 @@ export function isDigitSymbol(sym) {
   return info.cat === 'VOL' || info.cat === 'VOL1S';
 }
 
-// Deriv digit = last digit of the displayed price, decimal point ignored.
-export function digitOf(price) {
-  const s = String(price).replace(/[^0-9]/g, '');
+// Authoritative pip size per symbol, from the Deriv `active_symbols` feed.
+// This matters for digits: the API sends raw JSON numbers, so a real price of
+// 1296.20 arrives as 1296.2. Reading the last character then returns 2 instead
+// of the correct last digit 0. We therefore fix the number of decimals to the
+// symbol's pip size before extracting the digit.
+export const PIP_SIZE = {
+  R_10: 3, R_25: 3, R_50: 4, R_75: 4, R_100: 2,
+  '1HZ10V': 2, '1HZ25V': 2, '1HZ50V': 2, '1HZ75V': 2, '1HZ100V': 2,
+  stpRNG: 1, stpRNG2: 1, stpRNG3: 1, stpRNG4: 1, stpRNG5: 1,
+  RDBULL: 4, RDBEAR: 4,
+};
+
+export function pipSize(sym) {
+  return PIP_SIZE[sym] ?? 2;
+}
+
+// Decimal places of the displayed price = pip size for these instruments.
+export function decimalsFor(sym) {
+  return pipSize(sym);
+}
+
+// Deriv digit = last digit of the *displayed* price at the symbol's pip
+// precision (decimal point ignored).
+export function digitOf(price, sym) {
+  const digits = pipSize(sym);
+  const v = Number(price);
+  if (!Number.isFinite(v)) return 0;
+  const s = Math.abs(v).toFixed(digits).replace('.', '');
   return s ? parseInt(s.slice(-1), 10) : 0;
 }
 
@@ -142,7 +167,7 @@ export class MarketStore {
   }
 
   pushDigit(sym, price) {
-    const d = digitOf(price);
+    const d = digitOf(price, sym);
     const h = (this.digHist[sym] = this.digHist[sym] || []);
     h.push(d);
     if (h.length > 1000) h.shift();
@@ -157,11 +182,4 @@ export class MarketStore {
   // Returns a fresh copy so consumers keyed on the array identity (e.g. the
   // chart's useMemo) recompute on every tick instead of seeing a mutated array.
   livePrices(sym) { return (this.liveBuf[sym] || []).slice(); }
-}
-
-export function decimalsFor(sym, price) {
-  if (!Number.isFinite(price)) return 2;
-  const s = String(price);
-  const dot = s.indexOf('.');
-  return dot === -1 ? 2 : Math.max(0, s.length - dot - 1);
 }

@@ -88,3 +88,30 @@ Market data needs no login. Notation: the engine speaks `RISE`/`FALL`
 internally and sends `CALL`/`PUT` to Deriv; digit sub-types map to
 `DIGITMATCH`/`DIGITDIFF`, `DIGITOVER`/`DIGITUNDER`, `DIGITEVEN`/`DIGITODD`
 (Even/Odd are sent without a barrier).
+
+### Per-trade-type inputs and digit precision
+
+- `src/lib/contracts.js` is the trade-type catalogue. Each entry declares the
+  `inputs` that type actually needs, because Deriv trade types do not share a
+  parameter set: Rise/Fall → duration + stake (+ `equals` → `CALLE`/`PUTE`);
+  Higher/Lower, Touch/No Touch, Turbos, Vanillas → duration + stake + barrier;
+  Matches/Differs and Over/Under → duration + stake + last-digit barrier;
+  Even/Odd → duration + stake; Accumulators → stake + `growth_rate` + risk
+  limits, **no duration**; Multipliers → stake + `multiplier` + risk +
+  optional cancellation. `buildProposal()` maps form state onto the exact
+  `proposal` payload.
+- Digits must be read at the symbol's pip precision. The API sends raw JSON
+  numbers, so a real price of `1296.20` arrives as `1296.2` and reading the
+  last character yields `2` instead of `0`. `marketStore.js` therefore pins
+  each symbol to its authoritative `pip_size` (`R_10`/`R_25` = 3,
+  `R_50`/`R_75` = 4, `R_100`/`1HZ*V` = 2, `stpRNG*` = 1) and
+  `digitOf(price, sym)` formats with that many decimals before taking the last
+  digit. `decimalsFor(sym)` returns the same pip size for display.
+- `src/lib/digitAnalysis.js` computes the digit distribution, χ² bias test,
+  entropy, hot/cold digits, even/odd split, streak, and a Markov-smoothed
+  prediction. Predictions rank by edge relative to break-even (return-on-risk),
+  so trivial high-probability low-payout calls are not surfaced first.
+- The Trade tab is a fixed, non-scrolling column (`overflow: hidden`, chart is
+  the only flexible region); the form dock sits at the bottom. Account
+  switching is the header chip → popover (demo ↔ real), which re-requests an
+  OTP for the target account.

@@ -452,6 +452,206 @@ body {
   padding: 0 4px;
 }
 
+/* Plain rise/fall pills (not the quill Button, so we control the colours). */
+.purchase-button--rise,
+.purchase-button--fall {
+  border: none;
+  height: 48px;
+  padding: 0 20px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.purchase-button--rise { background: var(--buy); }
+.purchase-button--fall { background: var(--sell); }
+.purchase-button--rise:disabled,
+.purchase-button--fall:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ============================ Trade form ============================= */
+.trade-form-wrap {
+  flex-shrink: 0;
+  background: var(--frame-mid);
+  border-top: 1px solid var(--border);
+  border-radius: 16px 16px 0 0;
+  padding: 8px 12px 8px;
+  box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.35);
+}
+
+.trade-form {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.trade-form__row {
+  display: flex;
+  gap: 8px;
+}
+
+.trade-form__row .param-box {
+  flex: 1;
+  min-width: 0;
+}
+
+.trade-form__row .param-box__value {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trade-form__unit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trade-form__unit-label {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.trade-form__equals {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--frame-low);
+  cursor: pointer;
+}
+
+.trade-form__equals-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.trade-form__equals-sub {
+  display: block;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.trade-form__equals input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--buy);
+  flex: none;
+}
+
+.trade-form__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+/* ========================= Duration editor ========================== */
+.duration-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.duration-editor__units {
+  display: flex;
+  gap: 6px;
+}
+
+.duration-editor__unit {
+  flex: 1;
+  height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.duration-editor__unit.is-active {
+  background: var(--coral);
+  border-color: var(--coral);
+  color: #fff;
+}
+
+.duration-editor__input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.duration-editor__input-row button {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.duration-editor__input {
+  flex: 1;
+  height: 44px;
+  text-align: center;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--frame-low);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.duration-editor__hint {
+  font-size: 11px;
+  color: var(--text-disabled);
+  text-align: center;
+}
+
+.duration-editor__quick {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ============================ Automate ============================== */
+.automate-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--frame-mid);
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.automate-banner button {
+  flex: none;
+  border: none;
+  border-radius: 14px;
+  background: var(--coral);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+
+.engine-run:disabled { opacity: 0.5; cursor: not-allowed; }
+
+
 /* ============================= Bottom nav ============================ */
 .app-bottom-nav {
   flex-shrink: 0;
@@ -1065,3 +1265,329 @@ body {
 
 .toast--win { background: var(--buy, #4bb4b3); color: #04121a; }
 .toast--loss { background: var(--sell, #ec3f3f); color: #fff; }
+
+/* ======================= Trade screen (fits, no scroll) ============== */
+.trade-screen {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.trade-screen .chart-area {
+  flex: 1 1 auto;
+  min-height: 44px;
+  margin: 4px 12px 0;
+}
+
+/* ========================= Trade-types bar =========================== */
+.tt-bar {
+  display: flex;
+  gap: 6px;
+  padding: 6px 12px 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+
+.tt-bar::-webkit-scrollbar { display: none; }
+
+.tt-chip {
+  flex: none;
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tt-chip.is-active {
+  background: var(--coral);
+  border-color: var(--coral);
+  color: #fff;
+}
+
+.tt-chip--all { color: var(--coral); border-style: dashed; }
+
+/* ====================== Digit analysis panel ========================= */
+.digit-analysis {
+  flex-shrink: 0;
+  margin: 4px 12px 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--frame-mid);
+}
+
+.digit-analysis--empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+}
+
+.digit-analysis__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.digit-analysis__title { font-size: 12px; font-weight: 700; }
+
+.digit-analysis__badge {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.digit-analysis__badge.is-biased { color: var(--buy); }
+
+.digit-analysis__dist {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 38px;
+}
+
+.digit-cell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1px;
+  height: 100%;
+}
+
+.digit-cell__bar {
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  background: var(--core-color-solid-slate-600, #5c6973);
+  transition: height 0.25s ease;
+}
+
+.digit-cell.is-hot .digit-cell__bar { background: var(--buy); }
+.digit-cell.is-now .digit-cell__digit { background: var(--coral); color: #fff; border-color: var(--coral); }
+
+.digit-cell__digit {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.digit-cell__pct { font-size: 8px; color: var(--text-disabled); }
+
+.digit-analysis__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.digit-analysis__stats b { color: var(--text); font-weight: 600; }
+
+.digit-analysis__pred {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--frame-low);
+  border: 1px solid var(--border);
+}
+
+.digit-analysis__pred--none { font-size: 10.5px; color: var(--text-disabled); }
+
+.digit-analysis__pred-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.digit-analysis__pred-label { font-size: 12px; font-weight: 700; color: var(--buy); }
+.digit-analysis__pred-conf { font-size: 10px; color: var(--text-dim); }
+
+.digit-analysis__pred-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--frame-mid);
+  margin: 4px 0;
+  overflow: hidden;
+}
+
+.digit-analysis__pred-bar span {
+  display: block;
+  height: 100%;
+  background: var(--buy);
+  border-radius: 3px;
+}
+
+.digit-analysis__pred-rationale { font-size: 10px; color: var(--text-dim); }
+
+.use-prediction {
+  flex-shrink: 0;
+  margin: 4px 12px 0;
+  height: 28px;
+  border: 1px solid var(--buy);
+  border-radius: 16px;
+  background: transparent;
+  color: var(--buy);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* ================= Digit picker (per-digit barrier) ================== */
+.digit-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.digit-picker__label { font-size: 11px; color: var(--text-dim); }
+
+.digit-picker__row { display: flex; gap: 5px; }
+
+.digit-picker__btn {
+  flex: 1;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--frame-low);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.digit-picker__btn.is-active {
+  background: var(--coral);
+  border-color: var(--coral);
+  color: #fff;
+}
+
+/* ========================= Barrier field ============================= */
+.barrier-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--frame-low);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.barrier-field__label { font-size: 11px; color: var(--text-dim); }
+.barrier-field__value { font-size: 13px; font-weight: 700; color: var(--buy); }
+.barrier-field__hint { margin-left: auto; font-size: 10px; color: var(--text-disabled); }
+
+.param-box__value--accent { color: var(--coral); }
+
+/* ====================== Account switcher popover ===================== */
+.account-popover {
+  position: absolute;
+  top: 52px;
+  right: 12px;
+  width: 260px;
+  z-index: 40;
+  background: var(--frame-mid);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  padding: 8px;
+}
+
+.account-popover__title {
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding: 4px 6px 8px;
+}
+
+.account-popover__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-popover__row.is-active { background: var(--frame-low); }
+
+.account-popover__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.account-popover__dot.is-demo { background: var(--buy); }
+.account-popover__dot.is-real { background: var(--coral); }
+
+.account-popover__meta { display: flex; flex-direction: column; min-width: 0; }
+.account-popover__type { font-size: 12px; font-weight: 700; }
+.account-popover__id { font-size: 10px; color: var(--text-dim); }
+.account-popover__balance { margin-left: auto; font-size: 12px; font-weight: 600; }
+
+.account-popover__manage {
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--coral);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ========================== Trade-type sheet ======================== */
+.types-sheet { display: flex; flex-direction: column; }
+
+.types-sheet__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 8px;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.types-sheet__row.is-active { background: var(--frame-low); }
+.types-sheet__meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.types-sheet__label { font-size: 14px; font-weight: 700; }
+.types-sheet__tip { font-size: 11px; color: var(--text-dim); }
+.types-sheet__cat { margin-left: auto; font-size: 10px; color: var(--text-disabled); text-transform: capitalize; }
+
+.menu-seg--wide { flex-wrap: wrap; gap: 6px; }
+.stake-editor__chip.is-active { background: var(--coral); border-color: var(--coral); color: #fff; }
+
+.purchase-button.is-selected { outline: 2px solid #fff; outline-offset: -2px; }

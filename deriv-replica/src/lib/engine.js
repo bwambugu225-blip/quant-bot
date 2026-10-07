@@ -6,6 +6,7 @@
 import { MarketStore, SYMBOLS, isDigitSymbol, digitOf, decimalsFor } from './marketStore.js';
 import { runStrategyAnalysis, evaluateDigitStrategy, digitRollingStats, pickOptimalDuration } from './strategies.js';
 import { calcKelly, max, min } from './indicators.js';
+import { buildProposal } from './contracts.js';
 
 const DEFAULT_RF_STAKE = 1;
 const DEFAULT_DG_STAKE = 1;
@@ -124,6 +125,7 @@ export class Engine {
       martingale: { ...this.martingale },
       rfStake: this.rfStake, dgStake: this.dgStake,
       dgMartMult: this.dgMartMult, dgLossStreak: this.dgLossStreak,
+      takeProfit: this.dgTakeProfit, stopLoss: this.dgStopLoss,
       lastSignal: this.lastSignal,
       positions: this.positions,
       reports: this.reports,
@@ -175,7 +177,7 @@ export class Engine {
 
     const closed = this.store.onTick(sym, price, epoch);
     this._tickCount++;
-    this.emit('tick', { sym, price, epoch, digit: digitOf(price) });
+    this.emit('tick', { sym, price, epoch, digit: digitOf(price, sym) });
 
     if (this.tradeMode === 'DIGITS') {
       if (this.running && this.activeContracts.size === 0 && isDigitSymbol(sym)) {
@@ -238,10 +240,46 @@ export class Engine {
   }
 
   // ── Manual trades ──────────────────────────────────────────────────────
-  placeManualRF(action) {
+  // Live digit history for the analysis panel.
+  digitHistory(sym) { return this.store.digHist[sym] || []; }
+
+  // Place any trade type from the Trade form. `value` carries the form state;
+  // buildProposal maps it onto the exact Deriv proposal payload.
+  placeTrade(type, side, value) {
+    if (!this.client?.auth) { this.log('[TRADE] Authorize first', 'e'); return false; }
+    if (this.activeContracts.size >= 1) { this.toast('Contract active — wait', 'w'); return false; }
+    const sym = this.selectedMarket || SYMBOLS[0].sym;
+    const fields = buildProposal(type, side, value, sym);
+    this.lastSignal = {
+      action: side === 'down' ? 'FALL' : 'RISE', conf: 100, src: 'MANUAL',
+      stake: fields.amount, dur: fields.duration, durUnit: fields.duration_unit, asset: sym,
+    };
+    this.log(`[TRADE] ${fields.contract_type} $${fields.amount.toFixed(2)} ${sym}`
+      + (fields.duration ? ` ${fields.duration}${fields.duration_unit}` : '')
+      + (fields.barrier != null ? ` barrier=${fields.barrier}` : '')
+      + (fields.multiplier ? ` x${fields.multiplier}` : '')
+      + (fields.growth_rate ? ` growth=${fields.growth_rate}` : '') + ' via MANUAL', 't');
+    this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
+    this._sendProposal(fields);
+    return true;
+  }
+
+  placeManualRF(action, opts = {}) {
     if (!this.client?.auth) { this.log('[RF] Authorize first', 'e'); return; }
     if (this.activeContracts.size >= 1) { this.toast('Contract active — wait', 'w'); return; }
-    this._execTrade({ action, conf: 100, src: 'MANUAL' }, this.selectedMarket || SYMBOLS[0].sym);
+    const sym = this.selectedMarket || SYMBOLS[0].sym;
+    const equals = !!opts.equals;
+    const ct = action === 'RISE' ? (equals ? 'CALLE' : 'CALL') : (equals ? 'PUTE' : 'PUT');
+    const stake = this.martingale.enabled ? this.martingale.currentStake : this.rfStake;
+    const duration = +opts.duration || 5;
+    const unit = opts.unit || 't';
+    this.lastSignal = { action, conf: 100, src: 'MANUAL', stake, dur: duration, durUnit: unit, asset: sym };
+    this.log(`[TRADE] ${ct} $${stake.toFixed(2)} ${sym} ${duration}${unit} via MANUAL`, 't');
+    this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
+    this._sendProposal({
+      contract_type: ct, amount: +stake.toFixed(2), basis: 'stake', currency: 'USD',
+      duration, duration_unit: unit, underlying_symbol: sym,
+    });
   }
 
   placeDigitManual(contractType, barrier) {
@@ -338,7 +376,7 @@ export class Engine {
       const b = msg.buy;
       this.activeContracts.set(b.contract_id, { id: b.contract_id, price: b.buy_price, time: Date.now() });
       this.trades++;
-      const decimals = decimalsFor(b.buy_price);
+      const decimals = decimalsFor(sym);
       this.positions = [{
         id: b.contract_id, contractType: b.longcode || b.contract_type,
         symbol: this.selectedMarket, stake: b.buy_price, payout: null,
@@ -458,4 +496,9 @@ export class Engine {
     this.emit('state', this.snapshot());
   }
   setMartingale(patch) { this.martingale = { ...this.martingale, ...patch }; this.emit('state', this.snapshot()); }
+  setLimits(patch) {
+    if (patch.takeProfit != null) this.dgTakeProfit = Math.max(0, +patch.takeProfit || 0);
+    if (patch.stopLoss != null) this.dgStopLoss = Math.max(0, +patch.stopLoss || 0);
+    this.emit('state', this.snapshot());
+  }
 }

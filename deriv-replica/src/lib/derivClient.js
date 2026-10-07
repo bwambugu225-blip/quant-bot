@@ -301,6 +301,7 @@ export class DerivClient {
   _onMessage(e, source) {
     let msg; try { msg = JSON.parse(e.data); } catch (ex) { return; }
     if (msg.msg_type === 'ping' || msg.msg_type === 'pong') return;
+    if (msg.req_id && this._payoutCbs && this._payoutCbs[msg.req_id]) { this._resolvePayout(msg); return; }
     this.emit('message', msg, source);
   }
 
@@ -308,6 +309,36 @@ export class DerivClient {
   buy(proposalId, price) {
     this.send({ buy: proposalId, price, subscribe: 1 });
   }
+
+  // ── Live payout (public socket) ────────────────────────────────────────
+  // Deriv quotes an accurate payout for a proposal. Public market data can
+  // price a proposal without authentication, so route payout lookups over the
+  // public socket — the user sees real odds before they log in or trade.
+  requestPayout(fields, cb) {
+    const socket = (this.mws && this.mws.readyState === WebSocket.OPEN)
+      ? this.mws
+      : (this.ws && this.ws.readyState === WebSocket.OPEN ? this.ws : null);
+    if (!socket) return null;
+    const id = this.nextId();
+    this._payoutCbs = this._payoutCbs || {};
+    this._payoutCbs[id] = cb;
+    this._sendOn(socket, {
+      proposal: 1, amount: 1, basis: 'stake', currency: 'USD', ...fields, req_id: id,
+    });
+    return id;
+  }
+
+  _resolvePayout(msg) {
+    const cb = this._payoutCbs?.[msg.req_id];
+    if (!cb) return;
+    delete this._payoutCbs[msg.req_id];
+    if (msg.error || !msg.proposal) cb(null);
+    else cb({ payout: +msg.proposal.payout || 0, askPrice: +msg.proposal.ask_price || 0 });
+  }
+
+  // Currency is fixed per account on Deriv, but the UI reads it here so a
+  // future multi-currency account list can drive it.
+  setCurrency(currency) { this.currency = currency || 'USD'; this.emit('log', { t: `[AUTH] Currency ${this.currency}`, k: 'i' }); }
 
   close() {
     this._closing = true;

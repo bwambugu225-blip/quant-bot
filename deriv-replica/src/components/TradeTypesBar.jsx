@@ -1,22 +1,25 @@
 import React from 'react';
-import { Chip } from '@deriv-com/quill-ui';
 import { TRADE_TYPES } from '../lib/contracts.js';
 
-// Deriv's horizontal trade-type selector. "View all" opens the full catalogue
-// sheet (DTrader shows the popular types inline and the rest behind it).
-export default function TradeTypesBar({ selectedId, onSelect, onViewAll }) {
-  const popular = TRADE_TYPES.filter(t => t.popular);
+// The compact, horizontally-scrollable product strip above the chart — exactly
+// how Deriv's mobile Trade tab lists trade types. "View all" opens the full
+// catalogue sheet.
+export default function TradeTypesBar({ type, onSelect, onViewAll }) {
   return (
-    <div className="trade-types-bar">
-      {popular.map(t => (
-        <Chip.Selectable
+    <div className="tt-bar" role="tablist">
+      {TRADE_TYPES.map(t => (
+        <button
           key={t.id}
-          label={t.label}
-          selected={t.id === selectedId}
+          role="tab"
+          aria-selected={t.id === type}
+          className={`tt-chip${t.id === type ? ' is-active' : ''}`}
           onClick={() => onSelect(t.id)}
-        />
+          type="button"
+        >
+          {t.label}
+        </button>
       ))}
-      <button className="trade-types-bar__view-all" onClick={onViewAll} type="button">
+      <button className="tt-chip tt-chip--all" onClick={onViewAll} type="button">
         View all
       </button>
     </div>

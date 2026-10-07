@@ -61,6 +61,7 @@ export function useEngine() {
 
   const reconnectMarket = useCallback(() => clientRef.current.reconnectMarket(), []);
   const switchAccount = useCallback(id => clientRef.current.switchAccount(id), []);
+  const setCurrency = useCallback(c => clientRef.current.setCurrency(c), []);
 
-  return { engine: engineRef.current, client: clientRef.current, state, tick, logs, toast, login, logout, reconnectMarket, switchAccount };
+  return { engine: engineRef.current, client: clientRef.current, state, tick, logs, toast, login, logout, reconnectMarket, switchAccount, setCurrency };
 }

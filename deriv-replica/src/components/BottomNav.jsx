@@ -1,21 +1,23 @@
 import React from 'react';
 import { Navigation } from '@deriv-com/quill-ui';
 import {
-  LegacyHomeNewIcon,
+  StandaloneChartLineUpDownRegularIcon,
+  StandaloneChartLineUpDownFillIcon,
   StandaloneClockThreeRegularIcon,
   StandaloneClockThreeFillIcon,
   StandaloneFileRegularIcon,
   StandaloneFileFillIcon,
+  StandaloneGearRegularIcon,
+  StandaloneGearFillIcon,
   LabelPairedGrid2LgRegularIcon,
-  StandaloneCircleUserRegularIcon,
-  StandaloneCircleUserFillIcon,
 } from '@deriv/quill-icons';
 
 // quill-ui exposes the bottom navigation bar as Navigation.Bottom / BottomAction,
 // not Navigation.BottomBar.
 const { Bottom: BottomBar, BottomAction } = Navigation;
 
-// Deriv's mobile bottom navigation: Home, Positions, Reports, Menu, Account.
+// Trade, Positions, Reports, Automate, Menu. The account essentials live in
+// Menu, so there is no separate Account tab.
 export default function BottomNav({ tab, setTab, openCount }) {
   return (
     <BottomBar
@@ -25,9 +27,10 @@ export default function BottomNav({ tab, setTab, openCount }) {
       className="app-bottom-nav"
     >
       <BottomAction
-        value="home"
-        label="Home"
-        icon={<LegacyHomeNewIcon fill="currentColor" iconSize="sm" />}
+        value="trade"
+        label="Trade"
+        icon={<StandaloneChartLineUpDownRegularIcon fill="currentColor" iconSize="sm" />}
+        activeIcon={<StandaloneChartLineUpDownFillIcon fill="currentColor" iconSize="sm" />}
       />
       <BottomAction
         value="positions"
@@ -43,15 +46,15 @@ export default function BottomNav({ tab, setTab, openCount }) {
         activeIcon={<StandaloneFileFillIcon fill="currentColor" iconSize="sm" />}
       />
       <BottomAction
+        value="automate"
+        label="Automate"
+        icon={<StandaloneGearRegularIcon fill="currentColor" iconSize="sm" />}
+        activeIcon={<StandaloneGearFillIcon fill="currentColor" iconSize="sm" />}
+      />
+      <BottomAction
         value="menu"
         label="Menu"
         icon={<LabelPairedGrid2LgRegularIcon fill="currentColor" iconSize="sm" />}
-      />
-      <BottomAction
-        value="account"
-        label="Account"
-        icon={<StandaloneCircleUserRegularIcon fill="currentColor" iconSize="sm" />}
-        activeIcon={<StandaloneCircleUserFillIcon fill="currentColor" iconSize="sm" />}
       />
     </BottomBar>
   );

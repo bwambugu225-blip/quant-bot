@@ -59,50 +59,6 @@ export function LoginScreen({ onSubmit, onClose }) {
   );
 }
 
-// Compact engine control strip. Shown under Menu (kept off the trading page).
-export function EngineControls({ state, engine, onLogin }) {
-  const running = !!state?.running;
-  const auth = !!state?.auth;
-  const isDigit = engine.tradeMode === 'DIGITS';
-  const stake = isDigit ? state?.dgStake ?? 1 : state?.rfStake ?? 1;
-
-  return (
-    <div className="engine-panel">
-      <div className="engine-panel__row">
-        <span className={`engine-dot${auth ? ' is-on' : ''}`} />
-        <span className="engine-panel__status">
-          {auth ? `${state.accountId} · ${state.accountType.toUpperCase()}` : 'Not connected'}
-        </span>
-        {!auth && <button className="engine-panel__login" onClick={onLogin} type="button">Log in</button>}
-      </div>
-
-      <div className="engine-panel__row engine-panel__row--controls">
-        <div className="engine-stake">
-          <span className="engine-stake__label">Stake</span>
-          <button onClick={() => engine.setStake(isDigit ? 'dg' : 'rf', stake - 1)} type="button">−</button>
-          <span className="engine-stake__value">{stake.toFixed(2)}</span>
-          <button onClick={() => engine.setStake(isDigit ? 'dg' : 'rf', stake + 1)} type="button">+</button>
-        </div>
-        <button
-          className={`engine-run${running ? ' is-running' : ''}`}
-          onClick={() => (running ? engine.stop() : engine.start())}
-          type="button"
-        >
-          {running ? 'STOP AUTO' : 'START AUTO'}
-        </button>
-      </div>
-
-      <div className="engine-stats">
-        <Stat label="Mode" value={state?.tradeMode || 'RISEFALL'} />
-        <Stat label="Trades" value={state?.trades ?? 0} />
-        <Stat label="Wins" value={state?.wins ?? 0} />
-        <Stat label="Losses" value={state?.losses ?? 0} />
-        <Stat label="P/L" value={`${(state?.pnl ?? 0) >= 0 ? '+' : ''}${(state?.pnl ?? 0).toFixed(2)}`} tone={(state?.pnl ?? 0) >= 0 ? 'win' : 'loss'} />
-      </div>
-    </div>
-  );
-}
-
 function Stat({ label, value, tone }) {
   return (
     <div className="engine-stat">
@@ -160,23 +116,67 @@ export function Reports({ reports, currency = 'USD' }) {
   );
 }
 
-export function MenuScreen({ engine, state, onLogin, onToast }) {
-  const [mode, setMode] = React.useState(engine.tradeMode);
-  const [mart, setMart] = React.useState(engine.martingale.enabled);
-  const rows = [
-    ['Deposit', 'Add funds to your account'],
-    ['Withdrawal', 'Withdraw available funds'],
-    ['Account settings', 'Personal details and security'],
-    ['Language', 'English'],
-    ['About us', 'Learn more about Deriv'],
-  ];
+function Stepper({ label, value, step = 1, min, max, onChange, decimals = 2 }) {
+  const clamp = v => Math.max(min, Math.min(max, +v || 0));
+  return (
+    <div className="engine-stake">
+      <span className="engine-stake__label">{label}</span>
+      <button onClick={() => onChange(clamp(value - step))} type="button">−</button>
+      <span className="engine-stake__value">{value.toFixed(decimals)}</span>
+      <button onClick={() => onChange(clamp(value + step))} type="button">+</button>
+    </div>
+  );
+}
+
+// The Automate tab: every automation and trade setting lives here. It is the
+// only place the auto-engine, mode, martingale and risk limits are exposed.
+export function AutomateScreen({ engine, state, logs, onLogin }) {
+  const auth = !!state?.auth;
+  const running = !!state?.running;
+  const mode = state?.tradeMode || 'RISEFALL';
+  const isDigit = mode === 'DIGITS';
+  const stake = isDigit ? state?.dgStake ?? 1 : state?.rfStake ?? 1;
+  const wins = state?.wins ?? 0;
+  const losses = state?.losses ?? 0;
+  const trades = state?.trades ?? 0;
+  const winRate = trades ? Math.round((wins / trades) * 100) : 0;
+
   return (
     <div className="screen">
-      <div className="screen__title">Menu</div>
+      <div className="screen__title">Automate</div>
+
+      {!auth && (
+        <div className="automate-banner">
+          <span>Log in to run the auto-engine and place trades.</span>
+          <button onClick={onLogin} type="button">Log in</button>
+        </div>
+      )}
 
       <div className="menu-section">
-        <div className="menu-section__title">Trading engine</div>
-        <EngineControls state={state} engine={engine} onLogin={onLogin} />
+        <div className="menu-section__title">Engine</div>
+        <button
+          className={`engine-run${running ? ' is-running' : ''}`}
+          onClick={() => (running ? engine.stop() : engine.start())}
+          type="button"
+          disabled={!auth}
+        >
+          {running ? 'STOP AUTO' : 'START AUTO'}
+        </button>
+        <div className="engine-stats">
+          <Stat label="Trades" value={trades} />
+          <Stat label="Wins" value={wins} />
+          <Stat label="Losses" value={losses} />
+          <Stat label="Win rate" value={`${winRate}%`} />
+          <Stat
+            label="P/L"
+            value={`${(state?.pnl ?? 0) >= 0 ? '+' : ''}${(state?.pnl ?? 0).toFixed(2)}`}
+            tone={(state?.pnl ?? 0) >= 0 ? 'win' : 'loss'}
+          />
+        </div>
+      </div>
+
+      <div className="menu-section">
+        <div className="menu-section__title">Strategy</div>
         <div className="menu-toggle">
           <span>Mode</span>
           <div className="menu-seg">
@@ -184,7 +184,7 @@ export function MenuScreen({ engine, state, onLogin, onToast }) {
               <button
                 key={m}
                 className={`menu-seg__btn${mode === m ? ' is-active' : ''}`}
-                onClick={() => { setMode(m); engine.setMode(m); }}
+                onClick={() => engine.setMode(m)}
                 type="button"
               >
                 {m === 'RISEFALL' ? 'Rise/Fall' : 'Digits'}
@@ -192,40 +192,65 @@ export function MenuScreen({ engine, state, onLogin, onToast }) {
             ))}
           </div>
         </div>
+
+        <Stepper
+          label={isDigit ? 'Digit stake' : 'Rise/Fall stake'}
+          value={stake}
+          min={0.35}
+          max={200}
+          onChange={v => engine.setStake(isDigit ? 'dg' : 'rf', v)}
+        />
+
         <label className="menu-toggle">
           <span>Martingale</span>
           <input
             type="checkbox"
-            checked={mart}
-            onChange={e => { setMart(e.target.checked); engine.setMartingale({ enabled: e.target.checked }); }}
+            checked={!!state?.martingale?.enabled}
+            onChange={e => engine.setMartingale({ enabled: e.target.checked })}
           />
         </label>
+
+        <Stepper
+          label="Take profit"
+          value={state?.takeProfit ?? 0}
+          step={1}
+          min={0}
+          max={10000}
+          onChange={v => engine.setLimits({ takeProfit: v })}
+        />
+        <Stepper
+          label="Stop loss"
+          value={state?.stopLoss ?? 0}
+          step={1}
+          min={0}
+          max={10000}
+          onChange={v => engine.setLimits({ stopLoss: v })}
+        />
       </div>
 
-      {rows.map(([label, sub2]) => (
-        <button key={label} className="menu-row" onClick={() => onToast(`${label} is disabled in this build`)} type="button">
-          <span>
-            <span className="menu-row__title">{label}</span>
-            <span className="menu-row__sub">{sub2}</span>
-          </span>
-          <span className="menu-row__chevron">›</span>
-        </button>
-      ))}
+      <div className="screen__section-title">Console</div>
+      <LogConsole logs={logs} />
     </div>
   );
 }
 
-export function AccountScreen({ state, logs, onLogin, onLogout, onSwitch }) {
+// Minimal Menu tab: the account essentials plus the usual Deriv menu rows.
+export function MenuScreen({ state, onLogin, onLogout, onSwitch, onToast }) {
   const accounts = state?.accounts || [];
   return (
     <div className="screen">
-      <div className="screen__title">My account</div>
+      <div className="screen__title">Menu</div>
+
       <div className="account-card">
         <div>
           <div className="account-card__type">
-            {state?.auth ? `${state.accountId} · ${state.accountType}` : 'Not connected'}
+            {state?.auth
+              ? `${state.accountId} · ${state.accountType === 'real' ? 'Real' : 'Demo'}`
+              : 'Not connected'}
           </div>
-          <div className="account-card__balance">{(state?.balance ?? 0).toFixed(2)} USD</div>
+          <div className="account-card__balance">
+            {(state?.balance ?? 0).toFixed(2)} USD
+          </div>
         </div>
       </div>
 
@@ -253,6 +278,21 @@ export function AccountScreen({ state, logs, onLogin, onLogout, onSwitch }) {
         </>
       )}
 
+      {[
+        ['Deposit', 'Add funds to your account'],
+        ['Withdrawal', 'Withdraw available funds'],
+        ['Language', 'English'],
+        ['About us', 'Learn more about Deriv'],
+      ].map(([label, sub]) => (
+        <button key={label} className="menu-row" onClick={() => onToast(`${label} is disabled in this build`)} type="button">
+          <span>
+            <span className="menu-row__title">{label}</span>
+            <span className="menu-row__sub">{sub}</span>
+          </span>
+          <span className="menu-row__chevron">›</span>
+        </button>
+      ))}
+
       {state?.auth ? (
         <button className="menu-row" onClick={onLogout} type="button">
           <span>
@@ -271,8 +311,6 @@ export function AccountScreen({ state, logs, onLogin, onLogout, onSwitch }) {
         </button>
       )}
 
-      <div className="screen__section-title">Console</div>
-      <LogConsole logs={logs} />
       <div className="screen__footnote">Interface replica · not affiliated with Deriv</div>
     </div>
   );

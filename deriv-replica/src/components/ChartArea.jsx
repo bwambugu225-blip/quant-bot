@@ -4,7 +4,7 @@ import { decimalsFor } from '../lib/marketStore.js';
 // Tick-line chart styled to match Deriv's dark chart surface: coral/green/red
 // accent line, faint grid, and a live price dot at the leading edge. Rendered
 // from the real live price buffer supplied by the engine.
-export default function ChartArea({ prices, up, height = 300 }) {
+export default function ChartArea({ prices, up, sym, height = null }) {
   const W = 480;
   const H = 320;
   const PAD = 18;
@@ -25,14 +25,14 @@ export default function ChartArea({ prices, up, height = 300 }) {
     return {
       path: d.trim(), area: a, min: lo, max: hi,
       lastX: px(arr.length - 1), lastY: py(arr[arr.length - 1]),
-      decimals: decimalsFor(arr[arr.length - 1]),
+      decimals: decimalsFor(sym),
     };
-  }, [prices]);
+  }, [prices, sym]);
 
   const lineColor = up ? 'var(--buy)' : '#ec3f3f';
 
   return (
-    <div className="chart-area" style={{ height }}>
+    <div className="chart-area" style={height ? { height } : undefined}>
       <svg className="chart-area__svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
         <defs>
           <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">

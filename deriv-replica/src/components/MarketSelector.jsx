@@ -4,8 +4,8 @@ import { decimalsFor } from '../lib/marketStore.js';
 
 // Deriv's market selector row: asset icon, asset name with a chevron, and the
 // live price which tints green/red on the tick direction.
-export default function MarketSelector({ display, price, up, onOpen }) {
-  const decimals = decimalsFor(price);
+export default function MarketSelector({ display, sym, price, up, onOpen }) {
+  const decimals = decimalsFor(sym);
   return (
     <button className="market-selector" onClick={onOpen} type="button">
       <span className="market-selector__icon" aria-hidden="true">

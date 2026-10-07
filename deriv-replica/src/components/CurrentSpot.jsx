@@ -3,7 +3,7 @@ import { decimalsFor } from '../lib/marketStore.js';
 
 // "Current spot / Last digit" strip that Deriv shows above the chart for
 // digit-based contracts. The digit tile flashes on each new tick.
-export default function CurrentSpot({ price, lastDigit }) {
+export default function CurrentSpot({ price, lastDigit, sym }) {
   const [flash, setFlash] = useState(false);
   const prev = useRef(lastDigit);
 
@@ -16,7 +16,7 @@ export default function CurrentSpot({ price, lastDigit }) {
     }
   }, [lastDigit]);
 
-  const decimals = decimalsFor(price);
+  const decimals = decimalsFor(sym);
 
   return (
     <div className="current-spot">
