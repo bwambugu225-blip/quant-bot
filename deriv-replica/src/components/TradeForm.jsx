@@ -84,9 +84,7 @@ export default function TradeForm({ type, side, value, set, onSheet, payout, cur
 
       {has('digit') && (
         <div className="digit-picker">
-          <span className="digit-picker__label">
-            {type === 'over_under' ? 'Last digit prediction' : 'Last digit'}
-          </span>
+          <span className="digit-picker__label">Last digit</span>
           <div className="digit-picker__row">
             {Array.from({ length: 10 }, (_, d) => (
               <button

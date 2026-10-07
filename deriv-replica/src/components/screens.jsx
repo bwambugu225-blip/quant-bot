@@ -1,4 +1,5 @@
 import React from 'react';
+import { SYMBOLS, isDigitSymbol } from '../lib/marketStore.js';
 
 // Tab screens and the control panels for the live engine. Kept in one module so
 // the simple, stateless screens don't clutter the component tree.
@@ -68,24 +69,6 @@ function Stat({ label, value, tone }) {
   );
 }
 
-export function LogConsole({ logs }) {
-  const ref = React.useRef(null);
-  React.useEffect(() => {
-    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
-  }, [logs]);
-  return (
-    <div className="log-console" ref={ref}>
-      {logs.length === 0 && <div className="log-console__empty">No activity yet.</div>}
-      {logs.map((l, i) => (
-        <div key={i} className={`log-line log-line--${l.k || 'i'}`}>
-          <span className="log-line__time">{new Date(l.at).toLocaleTimeString()}</span>
-          <span className="log-line__msg">{l.t}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 export function Reports({ reports, currency = 'USD' }) {
   if (!reports.length) {
     return (
@@ -116,21 +99,22 @@ export function Reports({ reports, currency = 'USD' }) {
   );
 }
 
-function Stepper({ label, value, step = 1, min, max, onChange, decimals = 2 }) {
+function Stepper({ label, value, step = 1, min, max, onChange, decimals = 2, suffix = '' }) {
   const clamp = v => Math.max(min, Math.min(max, +v || 0));
   return (
     <div className="engine-stake">
       <span className="engine-stake__label">{label}</span>
       <button onClick={() => onChange(clamp(value - step))} type="button">−</button>
-      <span className="engine-stake__value">{value.toFixed(decimals)}</span>
+      <span className="engine-stake__value">{value.toFixed(decimals)}{suffix}</span>
       <button onClick={() => onChange(clamp(value + step))} type="button">+</button>
     </div>
   );
 }
 
 // The Automate tab: every automation and trade setting lives here. It is the
-// only place the auto-engine, mode, martingale and risk limits are exposed.
-export function AutomateScreen({ engine, state, logs, onLogin }) {
+// only place the auto-engine, mode, market, martingale and risk limits are
+// exposed. Nothing trades until the user presses Start on the selected market.
+export function AutomateScreen({ engine, state, onLogin }) {
   const auth = !!state?.auth;
   const running = !!state?.running;
   const mode = state?.tradeMode || 'RISEFALL';
@@ -140,6 +124,13 @@ export function AutomateScreen({ engine, state, logs, onLogin }) {
   const losses = state?.losses ?? 0;
   const trades = state?.trades ?? 0;
   const winRate = trades ? Math.round((wins / trades) * 100) : 0;
+  const autoMarket = state?.autoMarket || SYMBOLS[0].sym;
+  const market = SYMBOLS.find(s => s.sym === autoMarket) || SYMBOLS[0];
+  const digitCapable = isDigitSymbol(autoMarket);
+  const mart = state?.martingale || {};
+  const started = state?.sessionStart;
+
+  const chooseMarket = sym => engine.setMarket(sym);
 
   return (
     <div className="screen">
@@ -152,16 +143,24 @@ export function AutomateScreen({ engine, state, logs, onLogin }) {
         </div>
       )}
 
+      {/* ── Session control ─────────────────────────────────────────── */}
       <div className="menu-section">
-        <div className="menu-section__title">Engine</div>
+        <div className="menu-section__title">Session</div>
         <button
           className={`engine-run${running ? ' is-running' : ''}`}
           onClick={() => (running ? engine.stop() : engine.start())}
           type="button"
           disabled={!auth}
         >
-          {running ? 'STOP AUTO' : 'START AUTO'}
+          {running ? '■  STOP AUTO' : '▶  START AUTO'}
         </button>
+        <div className="engine-run__meta">
+          <span className={`engine-run__dot${running ? ' is-on' : ''}`} />
+          {running
+            ? `Running on ${market.name}${started ? ` · ${Math.max(0, Math.round((Date.now() - started) / 60000))}m` : ''}`
+            : 'Idle — no automated trades'}
+        </div>
+
         <div className="engine-stats">
           <Stat label="Trades" value={trades} />
           <Stat label="Wins" value={wins} />
@@ -172,11 +171,47 @@ export function AutomateScreen({ engine, state, logs, onLogin }) {
             value={`${(state?.pnl ?? 0) >= 0 ? '+' : ''}${(state?.pnl ?? 0).toFixed(2)}`}
             tone={(state?.pnl ?? 0) >= 0 ? 'win' : 'loss'}
           />
+          <Stat label="Streak" value={state?.consLoss ? `-${state.consLoss}` : '0'} tone={state?.consLoss ? 'loss' : undefined} />
+          <Stat label="Best" value={`+${(state?.bestTrade ?? 0).toFixed(2)}`} tone="win" />
+          <Stat label="Worst" value={`${(state?.worstTrade ?? 0).toFixed(2)}`} tone="loss" />
         </div>
+
+        <button className="automate-reset" onClick={() => engine.resetSession()} type="button">
+          Reset session stats
+        </button>
       </div>
 
+      {/* ── Market + strategy ───────────────────────────────────────── */}
       <div className="menu-section">
-        <div className="menu-section__title">Strategy</div>
+        <div className="menu-section__title">Market</div>
+        <div className="automate-market">
+          <div className="automate-market__current">
+            <span className="automate-market__name">{market.name}</span>
+            <span className="automate-market__sym">{market.sym} · {market.cat}</span>
+          </div>
+        </div>
+        <div className="automate-market__grid">
+          {SYMBOLS.map(s => {
+            const disabled = isDigit && !isDigitSymbol(s.sym);
+            return (
+              <button
+                key={s.sym}
+                className={`automate-market__chip${s.sym === autoMarket ? ' is-active' : ''}`}
+                onClick={() => !disabled && chooseMarket(s.sym)}
+                disabled={disabled}
+                title={disabled ? 'Digits need a Volatility index' : s.name}
+                type="button"
+              >
+                {s.sym}
+              </button>
+            );
+          })}
+        </div>
+        {isDigit && !digitCapable && (
+          <div className="automate-note">Digits require a Volatility index — pick one above.</div>
+        )}
+
+        <div className="menu-section__title" style={{ marginTop: 14 }}>Strategy</div>
         <div className="menu-toggle">
           <span>Mode</span>
           <div className="menu-seg">
@@ -186,6 +221,7 @@ export function AutomateScreen({ engine, state, logs, onLogin }) {
                 className={`menu-seg__btn${mode === m ? ' is-active' : ''}`}
                 onClick={() => engine.setMode(m)}
                 type="button"
+                disabled={m === 'DIGITS' && !digitCapable}
               >
                 {m === 'RISEFALL' ? 'Rise/Fall' : 'Digits'}
               </button>
@@ -201,14 +237,61 @@ export function AutomateScreen({ engine, state, logs, onLogin }) {
           onChange={v => engine.setStake(isDigit ? 'dg' : 'rf', v)}
         />
 
+        <Stepper
+          label="Min confidence"
+          value={state?.minConfidence ?? 0}
+          step={5}
+          min={0}
+          max={95}
+          decimals={0}
+          suffix="%"
+          onChange={v => engine.setAutomation({ minConfidence: v })}
+        />
+        <div className="automate-note">Rise/Fall signals below this confidence are skipped.</div>
+
+        <label className="menu-toggle">
+          <span>Kelly sizing (Rise/Fall)</span>
+          <input
+            type="checkbox"
+            checked={!!state?.useKelly}
+            onChange={e => engine.setAutomation({ useKelly: e.target.checked })}
+          />
+        </label>
+      </div>
+
+      {/* ── Risk management ─────────────────────────────────────────── */}
+      <div className="menu-section">
+        <div className="menu-section__title">Risk management</div>
+
         <label className="menu-toggle">
           <span>Martingale</span>
           <input
             type="checkbox"
-            checked={!!state?.martingale?.enabled}
-            onChange={e => engine.setMartingale({ enabled: e.target.checked })}
+            checked={!!mart.enabled}
+            onChange={e => engine.setMartingale({ enabled: e.target.checked, baseStake: stake })}
           />
         </label>
+        {mart.enabled && (
+          <>
+            <Stepper
+              label="Multiplier"
+              value={mart.mult ?? 2}
+              step={0.5}
+              min={1.1}
+              max={5}
+              onChange={v => engine.setMartingale({ mult: v })}
+            />
+            <Stepper
+              label="Max steps"
+              value={mart.maxSteps ?? 6}
+              step={1}
+              min={1}
+              max={12}
+              decimals={0}
+              onChange={v => engine.setMartingale({ maxSteps: v })}
+            />
+          </>
+        )}
 
         <Stepper
           label="Take profit"
@@ -226,10 +309,26 @@ export function AutomateScreen({ engine, state, logs, onLogin }) {
           max={10000}
           onChange={v => engine.setLimits({ stopLoss: v })}
         />
+        <Stepper
+          label="Max consecutive losses"
+          value={state?.maxConsecutiveLosses ?? 8}
+          step={1}
+          min={0}
+          max={50}
+          decimals={0}
+          onChange={v => engine.setAutomation({ maxConsecutiveLosses: v })}
+        />
+        <Stepper
+          label="Max trades this session"
+          value={state?.maxTrades ?? 0}
+          step={5}
+          min={0}
+          max={500}
+          decimals={0}
+          onChange={v => engine.setAutomation({ maxTrades: v })}
+        />
+        <div className="automate-note">0 = unlimited. Take profit, stop loss and the trade cap stop the engine automatically.</div>
       </div>
-
-      <div className="screen__section-title">Console</div>
-      <LogConsole logs={logs} />
     </div>
   );
 }

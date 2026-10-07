@@ -15,7 +15,7 @@ import Sheet from './components/Sheet.jsx';
 import { AutomateScreen, MenuScreen, Reports, LoginScreen } from './components/screens.jsx';
 import { SYMBOLS, pipSize } from './lib/marketStore.js';
 import { TRADE_TYPES, findTradeType, buildProposal, isDigitContract } from './lib/contracts.js';
-import { analyzeDigits, predictDigitTrade } from './lib/digitAnalysis.js';
+import { analyzeDigits } from './lib/digitAnalysis.js';
 import { useEngine } from './lib/useEngine.js';
 import { usePayout } from './lib/usePayout.js';
 
@@ -23,7 +23,7 @@ const CURRENCY = 'USD';
 const DURATION_BOUNDS = { t: [1, 10], s: [15, 86400], m: [1, 1440], h: [1, 24], d: [1, 365] };
 
 export default function App() {
-  const { engine, client, state, tick, logs, toast, login, logout, switchAccount } = useEngine();
+  const { engine, client, state, tick, toast, login, logout, switchAccount } = useEngine();
 
   const [tab, setTab] = React.useState('trade');
   const [marketIdx, setMarketIdx] = React.useState(0);
@@ -66,10 +66,6 @@ export default function App() {
     () => (isDigit ? analyzeDigits(engine.digitHistory(market.sym)) : null),
     [isDigit, engine, market.sym, tick]
   );
-  const prediction = React.useMemo(
-    () => (isDigit ? predictDigitTrade(engine.digitHistory(market.sym)) : null),
-    [isDigit, engine, market.sym, tick]
-  );
 
   // Accurate payout, quoted by Deriv for the exact contract the buttons offer.
   const payoutFields = buildProposal(type, side, form, market.sym);
@@ -92,15 +88,6 @@ export default function App() {
     const t = findTradeType(id);
     if (!t.durationUnits.includes(form.unit)) set({ unit: t.durationUnits[0] || 't' });
     setTypesSheet(false);
-  };
-
-  const usePrediction = () => {
-    if (!prediction) return;
-    if (prediction.contractType === 'DIGITMATCH') { selectType('matches_differs'); setSide('up'); }
-    else if (prediction.contractType === 'DIGITDIFF') { selectType('matches_differs'); setSide('down'); }
-    else if (prediction.contractType === 'DIGITOVER') { selectType('over_under'); setSide('up'); }
-    else if (prediction.contractType === 'DIGITUNDER') { selectType('over_under'); setSide('down'); }
-    set({ digit: prediction.barrier });
   };
 
   const openCount = state?.positions?.length ?? 0;
@@ -129,12 +116,7 @@ export default function App() {
             </div>
             <ChartArea prices={livePrices} up={up} sym={market.sym} />
             {isDigit && (
-              <DigitAnalysis analysis={digitAnalysis} prediction={prediction} />
-            )}
-            {prediction && (
-              <button className="use-prediction" onClick={usePrediction} type="button">
-                Use prediction · {prediction.label} · {(prediction.probability * 100).toFixed(1)}% win
-              </button>
+              <DigitAnalysis analysis={digitAnalysis} />
             )}
             <div className="trade-form-wrap">
               <TradeForm
@@ -164,7 +146,7 @@ export default function App() {
         )}
         {tab === 'automate' && (
           <div className="app__scroll">
-            <AutomateScreen engine={engine} state={state} logs={logs} onLogin={() => setShowLogin(true)} />
+            <AutomateScreen engine={engine} state={state} onLogin={() => setShowLogin(true)} />
           </div>
         )}
         {tab === 'menu' && (

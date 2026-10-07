@@ -1191,14 +1191,52 @@ body {
 .engine-run.is-running { background: var(--sell, #ec3f3f); color: #fff; }
 
 .engine-stats {
-  display: grid; grid-template-columns: repeat(5, 1fr);
-  gap: 6px; margin-top: 10px;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 8px 6px; margin-top: 12px;
 }
 .engine-stat { display: flex; flex-direction: column; gap: 2px; }
 .engine-stat__label { font-size: 9px; text-transform: uppercase; color: var(--text-secondary, #8a8f9c); }
 .engine-stat__value { font-size: 12px; font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
 .engine-stat__value.is-win { color: var(--buy, #4bb4b3); }
 .engine-stat__value.is-loss { color: var(--sell, #ec3f3f); }
+
+.engine-run__meta {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--text-secondary, #8a8f9c); margin-top: 8px;
+}
+.engine-run__dot {
+  width: 7px; height: 7px; border-radius: 50%; flex: none;
+  background: #5c616d;
+}
+.engine-run__dot.is-on { background: var(--buy, #4bb4b3); box-shadow: 0 0 0 3px rgba(75, 180, 179, 0.18); }
+
+.automate-reset {
+  margin-top: 12px; width: 100%; height: 34px; cursor: pointer;
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  background: transparent; color: var(--text-secondary, #8a8f9c);
+  border-radius: 17px; font-size: 12px; font-weight: 600;
+}
+.automate-reset:hover { color: #fff; }
+
+.automate-market { margin-bottom: 8px; }
+.automate-market__current { display: flex; flex-direction: column; gap: 2px; }
+.automate-market__name { font-size: 14px; font-weight: 700; color: #fff; }
+.automate-market__sym { font-size: 11px; color: var(--text-secondary, #8a8f9c); }
+.automate-market__grid {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+}
+.automate-market__chip {
+  height: 34px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  background: transparent; color: var(--text-secondary, #8a8f9c);
+  font-size: 11px; font-weight: 600;
+}
+.automate-market__chip.is-active {
+  border-color: var(--coral, #ff444f); color: #fff;
+  background: rgba(255, 68, 79, 0.12);
+}
+.automate-market__chip:disabled { opacity: 0.3; cursor: not-allowed; }
+.automate-note { font-size: 10.5px; color: var(--text-secondary, #8a8f9c); margin: 6px 0 0; line-height: 1.35; }
 
 /* ============================== Login ============================== */
 .login-form { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
@@ -1435,19 +1473,6 @@ body {
 }
 
 .digit-analysis__pred-rationale { font-size: 10px; color: var(--text-dim); }
-
-.use-prediction {
-  flex-shrink: 0;
-  margin: 4px 12px 0;
-  height: 28px;
-  border: 1px solid var(--buy);
-  border-radius: 16px;
-  background: transparent;
-  color: var(--buy);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
 
 /* ================= Digit picker (per-digit barrier) ================== */
 .digit-picker {

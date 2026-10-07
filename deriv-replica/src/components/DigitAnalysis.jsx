@@ -1,9 +1,10 @@
 import React from 'react';
 
-// Live last-digit analysis, shown above the parameter dock for every digit
-// product. Reads the same tick history the chart uses and renders the
-// prediction the engine would actually trade, plus the distribution table.
-export default function DigitAnalysis({ analysis, prediction, compact = false }) {
+// Live last-digit distribution for the selected market, shown above the
+// parameter dock for every digit product. Reads the same tick history the
+// chart uses: per-digit frequency bars plus hot/cold, even/odd and the χ²
+// bias read-out.
+export default function DigitAnalysis({ analysis, compact = false }) {
   if (!analysis || analysis.n < 20) {
     return (
       <div className="digit-analysis digit-analysis--empty">
@@ -42,25 +43,6 @@ export default function DigitAnalysis({ analysis, prediction, compact = false })
         {eoStreak > 1 && <span><b>Streak</b> {eoStreak} {eoStreakSide === 'e' ? 'even' : 'odd'}</span>}
         <span><b>Ticks</b> {n}</span>
       </div>
-
-      {prediction ? (
-        <div className="digit-analysis__pred">
-          <div className="digit-analysis__pred-top">
-            <span className="digit-analysis__pred-label">{prediction.label}</span>
-            <span className="digit-analysis__pred-conf">
-              {(prediction.probability * 100).toFixed(1)}% win · edge +{(prediction.edge * 100).toFixed(1)}%
-            </span>
-          </div>
-          <div className="digit-analysis__pred-bar">
-            <span style={{ width: `${Math.min(100, prediction.probability * 100)}%` }} />
-          </div>
-          <div className="digit-analysis__pred-rationale">{prediction.rationale}</div>
-        </div>
-      ) : (
-        <div className="digit-analysis__pred digit-analysis__pred--none">
-          No edge above break-even right now — the distribution is within noise.
-        </div>
-      )}
     </div>
   );
 }
