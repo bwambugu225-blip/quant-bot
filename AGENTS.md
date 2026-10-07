@@ -43,9 +43,12 @@ screenshot colours to confirm they match Deriv tokens.
 `bot.html` is served at `/` and the React rebuild at `/deriv/`. Vercel runs
 `scripts/build-site.sh` (see `vercel.json`), which builds deriv-replica and
 assembles `public_out/` with `bot.html` at the root and the build under
-`deriv/`. Ordered rewrites route `/deriv` and `/deriv/*` to the SPA, and
-everything else falls through to `bot.html`. `deriv-replica/vite.config.js`
-uses `base: '/deriv/'` so asset URLs match.
+`deriv/`. `/deriv` redirects to `/deriv/`, and every other path falls through
+to `bot.html`. `deriv-replica/vite.config.js` keeps `base: './'` so the same
+build works at `/` locally and under `/deriv/` on Vercel.
+
+Production aliases (Vercel project `b0231911-2730s-projects/quant-bot`):
+`https://quant-bot-b0231911-2730s-projects.vercel.app`.
 
 Note: `node_modules/` and `dist/` are normally gitignored, but the current
 history also contains a forced commit of them (kept intentionally).
