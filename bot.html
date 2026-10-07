@@ -312,7 +312,7 @@
   --component-field-bg-fill-focus:var(--core-color-opacity-white-100);
 }
 
-/* ── Particle Background ── */
+/* ── Motion primitives (Deriv-compatible, decorative particles removed) ── */
 @keyframes floatUp{0%{transform:translateY(100vh) scale(0);opacity:0}10%{opacity:0.6}90%{opacity:0.4}100%{transform:translateY(-10vh) scale(1);opacity:0}}
 @keyframes drift{0%{transform:translateX(0)}50%{transform:translateX(30px)}100%{transform:translateX(0)}}
 @keyframes shimmer{0%{background-position:-200% center}100%{background-position:200% center}}
@@ -1156,6 +1156,71 @@ body::before{display:none}
 @keyframes fabPulseRed{}
 @keyframes glowPulse{0%,100%{text-shadow:none}50%{text-shadow:none}}
 @keyframes gradientRotate{0%,100%{background-position:0 0}50%{background-position:0 0}}
+
+/* ============================================================
+   DERIV LAYOUT / LANGUAGE / MOTION
+   Structures the app the way Deriv Trader (AppV2) does: a bottom
+   tab bar with icon+label, a flat trade-parameters surface, chip
+   trade-type selectors, and Deriv's restrained motion language
+   (short fades, bottom-sheet slides, popover scale-ins, no glow).
+   ============================================================ */
+
+/* — Deriv web font feel: Inter everywhere, tabular numbers — */
+body{font-family:'Inter',system-ui,sans-serif}
+.num,.mono,.kpi .v,[id$="Balance"],[id$="PnL"],[id$="Stake"],[id$="Price"],[id$="Payout"]{font-variant-numeric:tabular-nums}
+
+/* — Bottom tab bar (Deriv Trader AppV2 bottom navigation) — */
+.bottomnav{height:60px;display:flex;align-items:stretch;padding:0 6px}
+.bottomnav .nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  background:none;border:0;cursor:pointer;color:var(--core-color-solid-slate-500);padding:6px 0;
+  transition:color .2s ease,background-color .2s ease;border-radius:var(--core-borderRadius-400)}
+.bottomnav .nav-btn:hover{color:var(--core-color-solid-slate-100);background:var(--semantic-color-monochrome-surface-normal-lowest)}
+.nav-ico{width:22px;height:22px;display:block;transition:transform .2s ease}
+.bottomnav .nav-btn.active{color:var(--core-color-solid-coral-700)}
+.bottomnav .nav-btn.active .nav-ico{transform:translateY(-1px) scale(1.06)}
+.bottomnav .nav-btn .nav-lbl{font-size:10px;font-weight:600;letter-spacing:.1px;text-transform:none}
+
+/* — Deriv tab transition: quick cross-fade — */
+@keyframes dvTabIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.tab-view.active{animation:dvTabIn .18s ease both}
+
+/* — Deriv popover / bottom-sheet motion for collapsible panels — */
+@keyframes dvSheetIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+details[open]>div,details[open]>summary+div{animation:dvSheetIn .18s ease both}
+@keyframes dvScaleIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+.fab{transition:transform .2s ease,background-color .2s ease}
+.fab:active{transform:scale(.94)}
+
+/* — Deriv chip trade-type selectors — */
+.tag-blue{background:var(--acc-dim)!important;color:var(--core-color-solid-coral-700)!important;border:1px solid transparent!important;font-weight:600}
+.tag-green{background:var(--semantic-color-green-opacity-surface-midHigh)!important;color:var(--core-color-solid-green-700)!important;border:1px solid transparent!important}
+.tag-gray{background:var(--semantic-color-monochrome-surface-normal-lowest)!important;color:var(--core-color-solid-slate-400)!important;border:1px solid var(--line)!important}
+.tf-btn{background:var(--semantic-color-monochrome-surface-normal-lowest);border:1px solid var(--line);color:var(--core-color-solid-slate-300);
+  border-radius:var(--semantic-borderRadius-pill);font-weight:600;transition:background-color .2s ease,color .2s ease}
+.tf-btn.active,.tf-btn[aria-pressed="true"]{background:var(--acc-dim);color:var(--core-color-solid-coral-700);border-color:transparent}
+
+/* — Digit trade buttons: Deriv buy/sell full-width pills — */
+.dg-trade-btn{min-height:var(--component-button-height-md);font-size:13px;font-weight:700;letter-spacing:.2px;text-transform:none}
+
+/* — Deriv trade-parameters surface: flat slate, hairline dividers — */
+.section{background:var(--semantic-color-slate-solid-surface-frame-low);border:0;border-bottom:1px solid var(--line);
+  border-radius:0;padding:14px 12px}
+.section-title{font-size:11px;font-weight:700;letter-spacing:0;text-transform:none;color:var(--core-color-solid-slate-50);margin-bottom:10px}
+.hax-row .k,.field label,.calc-label{font-size:11px;color:var(--core-color-solid-slate-500);text-transform:none;letter-spacing:0;font-weight:400}
+.kpi .l{font-size:11px;color:var(--core-color-solid-slate-500);text-transform:none;letter-spacing:0;font-weight:400}
+.kpi .v{font-size:20px;font-weight:700}
+
+/* — Deriv switch — */
+.switch .slider{background:var(--core-color-solid-slate-700)}
+.switch input:checked+.slider{background:var(--core-color-solid-coral-700)}
+
+/* — Deriv list rows (params) — */
+.hax-row,.kpi{border-color:var(--line)}
+.hax-row{padding:7px 0}
+
+/* — Deriv empty/loading skeleton shimmer kept minimal — */
+@keyframes dvShimmer{0%{opacity:.5}50%{opacity:.85}100%{opacity:.5}}
+.skeleton,.blink-dot{animation:dvShimmer 1.6s ease-in-out infinite}
 </style>
 </head>
 <body class="dark" style="margin:0">
@@ -1163,18 +1228,18 @@ body::before{display:none}
 <section class="hero-section" id="heroSection">
   <div class="hero-badge">
     <span class="dot"></span>
-    LIVE TRADING PLATFORM
+    Deriv trading platform
   </div>
   <h1 class="hero-title">
     <span class="accent">BT</span><span class="glow">raders</span>
   </h1>
   <p class="hero-sub">
-    Professional-grade binary options trading engine powered by ensemble strategies,<br>
-    real-time market analysis, and institutional-grade risk management.
+    Trade Rise/Fall and Digits contracts on volatility indices with<br>
+    real-time analysis and automated risk management.
   </p>
   <div class="hero-actions">
     <button class="hero-btn hero-btn-primary" onclick="document.getElementById('loginOverlay').classList.remove('hidden'); document.getElementById('heroSection').style.display='none'">
-      ENTER TRADING DASHBOARD
+      Log in
     </button>
   </div>
   <div class="hero-stats">
@@ -1189,10 +1254,10 @@ body::before{display:none}
 <div class="login-overlay hidden" id="loginOverlay">
   <div class="login-card">
     <h1>BTraders</h1>
-    <p id="loginPrompt">Connect your Deriv account with an API token</p>
+    <p id="loginPrompt">Log in with your Deriv API token</p>
     <div class="login-error" id="loginError"></div>
-    <input type="password" id="loginPat" placeholder="Paste token from app.deriv.com/account/api-token" style="width:100%;box-sizing:border-box;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.06);color:#fff;font-size:12px;outline:none;margin-bottom:8px">
-    <button class="btn-login" onclick="document.getElementById('heroSection')&&(document.getElementById('heroSection').style.display='none');authorizePat()" style="width:100%;padding:12px;border-radius:8px;border:none;font-size:13px;font-weight:800;cursor:pointer;text-transform:uppercase;letter-spacing:1px">Connect with Token</button>
+    <input type="password" id="loginPat" placeholder="Paste token from app.deriv.com/account/api-token" style="width:100%;box-sizing:border-box;padding:12px 14px;border-radius:8px;border:1px solid var(--line);background:var(--core-color-opacity-white-75);color:#fff;font-size:14px;outline:none;margin-bottom:8px">
+    <button class="btn-login" onclick="document.getElementById('heroSection')&&(document.getElementById('heroSection').style.display='none');authorizePat()" style="width:100%;padding:13px;border-radius:8px;border:none;font-size:14px;font-weight:700;cursor:pointer">Log in</button>
     <div class="login-footer">Requires <strong>Read</strong> + <strong>Trade</strong> scopes · <a href="https://t.me/btraderrsbot" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">Telegram</a></div>
     <div style="font-size:8px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--line);display:flex;gap:6px;align-items:center;justify-content:center;flex-wrap:wrap">
       <span style="color:var(--muted);font-size:7px">Plan:</span>
@@ -1283,8 +1348,8 @@ body::before{display:none}
           </div>
         </div>
         <div class="hax-side">
-          <div class="hax-row"><span class="k">SRC</span><span class="v" id="haxSrc">—</span></div>
-          <div class="hax-row"><span class="k">MODE</span><span class="v" id="haxMode">—</span></div>
+          <div class="hax-row"><span class="k">SOURCE</span><span class="v" id="haxSrc">—</span></div>
+          <div class="hax-row"><span class="k">TRADE TYPE</span><span class="v" id="haxMode">—</span></div>
           <div class="hax-row"><span class="k">STAKE</span><span class="v mono" id="haxStake">$0.00</span></div>
           <div class="hax-row"><span class="k">W·L</span><span class="v mono" id="haxWL">0 / 0</span></div>
         </div>
@@ -1310,8 +1375,8 @@ body::before{display:none}
       <button id="chartLineBtn" class="btn btn-ghost" onclick="setChartMode('line')" style="flex:1;padding:4px;font-size:8px">TICKS</button>
     </div>
     <div style="display:flex;gap:4px;margin-bottom:6px">
-      <button class="btn btn-call" onclick="placeManualRF('RISE')" style="flex:1;padding:6px;font-size:9px">RISE</button>
-      <button class="btn btn-put" onclick="placeManualRF('FALL')" style="flex:1;padding:6px;font-size:9px">FALL</button>
+      <button class="btn btn-call" onclick="placeManualRF('RISE')" style="flex:1;padding:6px;font-size:9px">Rise</button>
+      <button class="btn btn-put" onclick="placeManualRF('FALL')" style="flex:1;padding:6px;font-size:9px">Fall</button>
     </div>
     <div class="section" style="padding:8px 0; overflow:hidden;">
       <div style="width:100%; overflow:hidden; background:rgba(6,9,18,0.4); border:1px solid var(--line); padding:3px;">
@@ -1413,8 +1478,11 @@ body::before{display:none}
   <div class="tab-view" id="tab-digits">
     <div id="dgSection" class="section">
       <div class="section-title">Digits <span id="dgModeLabel" class="tag tag-blue" style="font-size:7px;margin-left:4px;vertical-align:middle">OVER 3</span></div>
-      <div id="dgTradeBtnsOU" class="trade-btn-row" style="flex-wrap:wrap;gap:3px">
-        <button class="btn btn-call" onclick="placeDigitManual(null)" style="flex:1">BUY</button>
+      <div id="dgTradeBtnsOU" class="trade-btn-row" style="flex-wrap:wrap;gap:6px">
+        <button class="btn btn-call dg-trade-btn" onclick="placeDigitManual('DIGITOVER')" style="flex:1">Over</button>
+        <button class="btn btn-call dg-trade-btn" onclick="placeDigitManual('DIGITUNDER')" style="flex:1">Under</button>
+        <button class="btn btn-put dg-trade-btn" onclick="placeDigitManual('DIGITMATCH')" style="flex:1">Matches</button>
+        <button class="btn btn-put dg-trade-btn" onclick="placeDigitManual('DIGITDIFF')" style="flex:1">Differs</button>
       </div>
 
       <div style="display:flex;gap:4px;margin-top:5px;align-items:center">
@@ -1824,16 +1892,20 @@ body::before{display:none}
   <!-- ============ BOTTOM NAV ============ -->
 <div class="bottomnav">
     <button class="nav-btn active" data-tab="home" onclick="switchTab('home')">
-      <span class="nav-lbl">HOME</span>
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 10.2 12 3l9 7.2V20a1 1 0 0 1-1 1h-5v-6H10v6H4a1 1 0 0 1-1-1z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+      <span class="nav-lbl">Home</span>
     </button>
     <button class="nav-btn" data-tab="chart" onclick="switchTab('chart')">
-      <span class="nav-lbl">CHART</span>
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19V9m5 10V5m5 14v-7m5 7V8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span class="nav-lbl">Charts</span>
     </button>
     <button class="nav-btn" data-tab="digits" onclick="switchTab('digits')">
-      <span class="nav-lbl">DIGITS</span>
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="7.5" cy="7.5" r="2.5" stroke="currentColor" stroke-width="1.6"/><circle cx="16.5" cy="16.5" r="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M9.6 9.6l4.8 4.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <span class="nav-lbl">Digits</span>
     </button>
     <button class="nav-btn" data-tab="settings" onclick="switchTab('settings')">
-      <span class="nav-lbl">SETTINGS</span>
+      <svg class="nav-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke="currentColor" stroke-width="1.6"/><path d="M12 2.6v3M12 18.4v3M4.7 4.7l2.1 2.1M17.2 17.2l2.1 2.1M2.6 12h3M18.4 12h3M4.7 19.3l2.1-2.1M17.2 6.8l2.1-2.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <span class="nav-lbl">Settings</span>
     </button>
 </div>
 
@@ -7995,7 +8067,7 @@ function updateCopyTradersList() {
     const pnlStr = (t.pnl || 0) >= 0 ? `+$${(t.pnl || 0).toFixed(2)}` : `-$${Math.abs(t.pnl || 0).toFixed(2)}`;
     const pnlColor = (t.pnl || 0) >= 0 ? 'var(--positive)' : 'var(--negative)';
     const accTypeLabel = t.accountType === 'demo' ? 'DEMO' : 'REAL';
-    const accClass = t.accountType === 'demo' ? 'tag-blue' : 'tag-gold';
+    const accClass = t.accountType === 'demo' ? 'tag-blue' : 'tag-green';
 
     return `
       <div style="background:var(--surface-2); border:1px solid var(--line); border-radius:4px; padding:4px 6px; display:flex; flex-direction:column; gap:2px; font-size:8px;">
