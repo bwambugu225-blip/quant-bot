@@ -42,7 +42,6 @@ export class DerivClient {
       this.mwsAttempts = 0;
       this.emit('market-open');
       this.startHeartbeat();
-      this.emit('subscribe-market', { socket: 'mws' });
     };
     mws.onmessage = e => this._onMessage(e, 'market');
     mws.onerror = () => this.emit('market-error');
