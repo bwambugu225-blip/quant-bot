@@ -53,10 +53,10 @@ export default function App() {
     [tick, market.sym, engine]
   );
   const livePrices = React.useMemo(
-    () => (tick && tick.sym === market.sym ? engine.store.livePrices(market.sym) : engine.store.livePrices(market.sym)),
+    () => engine.store.livePrices(market.sym),
     [tick, market.sym, engine]
   );
-  const digHist = engine.store.digHist[market.sym] || [];
+  const digHist = (engine.store.digHist[market.sym] || []).slice();
 
   const prevRef = React.useRef(price);
   const up = price >= prevRef.current;

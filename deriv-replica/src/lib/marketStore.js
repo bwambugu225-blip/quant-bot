@@ -154,7 +154,9 @@ export class MarketStore {
     return h && h.length ? h[h.length - 1] : 0;
   }
 
-  livePrices(sym) { return this.liveBuf[sym] || []; }
+  // Returns a fresh copy so consumers keyed on the array identity (e.g. the
+  // chart's useMemo) recompute on every tick instead of seeing a mutated array.
+  livePrices(sym) { return (this.liveBuf[sym] || []).slice(); }
 }
 
 export function decimalsFor(sym, price) {
