@@ -1,0 +1,1 @@
+.action-sheet--content{padding:var(--component-actionSheet-spacing-padding-md);flex-grow:1;overflow-y:auto}@media (min-width: 1024px){.action-sheet--content{padding:var(--component-actionSheet-spacing-padding-lg)}}

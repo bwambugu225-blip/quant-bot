@@ -1,0 +1,52 @@
+{
+  "name": "react-tiny-popover",
+  "version": "8.1.6",
+  "description": "A simple and highly customizable popover react higher order component with no other dependencies!",
+  "keywords": [
+    "react",
+    "popover",
+    "react-popover",
+    "popout",
+    "pop",
+    "out",
+    "modal"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alexkatz/react-tiny-popover.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "license": "MIT",
+  "author": "Alex Katz",
+  "main": "dist/Popover.js",
+  "types": "dist/index.d.ts",
+  "devDependencies": {
+    "@eslint/js": "^9.10.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "eslint": "^9.10.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-config-react-app": "^7.0.1",
+    "eslint-plugin-react": "^7.36.1",
+    "globals": "^15.12.0",
+    "prettier": "^3.3.3",
+    "rimraf": "^4.4.1",
+    "shx": "^0.3.4",
+    "tsc-watch": "^6.2.1",
+    "typescript": "5.6.3",
+    "typescript-eslint": "^8.5.0"
+  },
+  "peerDependencies": {
+    "react": ">=16.8.0",
+    "react-dom": ">=16.8.0"
+  },
+  "scripts": {
+    "build": "tsc -p . && pnpm run copy-types",
+    "clean": "rimraf dist/",
+    "copy-types": "shx cp src/index.d.ts dist/index.d.ts",
+    "start-demo": "cd docs && pnpm run start",
+    "watch": "tsc-watch -p . --onSuccess 'pnpm run copy-types'"
+  }
+}

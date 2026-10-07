@@ -1,0 +1,1 @@
+@keyframes rotating{0%{transform:rotate(0)}to{transform:rotate(360deg)}}.quill-loader__spinner{animation:rotating var(--core-motion-duration-600) var(--motion-easing-linear) infinite;fill:var(--component-textIcon-normal-prominent)}
