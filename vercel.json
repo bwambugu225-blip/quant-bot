@@ -2,12 +2,9 @@
   "version": 2,
   "buildCommand": "bash scripts/build-site.sh",
   "outputDirectory": "public_out",
-  "redirects": [
-    { "source": "/deriv", "destination": "/deriv/", "permanent": false }
-  ],
   "rewrites": [
     { "source": "/callback.html", "destination": "/callback.html" },
-    { "source": "/(.*)", "destination": "/bot.html" }
+    { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ],
   "headers": [
     {
