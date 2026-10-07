@@ -5,10 +5,13 @@
 // market socket (MWS) for unauthenticated tick history. Auth follows the same
 // ladder: REST accounts → WS authorize → OTP URL → direct WS with token.
 
-// The registered app id is used for every socket (auth, REST, OTP, trading and
-// market data). The public 1089 app is rejected by Deriv in some regions /
-// origins, which surfaced as a failing market socket while the trading socket
-// worked. Overridable via localStorage like the original.
+// Deriv API gateways (current model — see https://developers.deriv.com/llms.txt):
+//   • public market data: wss://api.derivws.com/trading/v1/options/ws/public
+//     — no app id, no auth, no OTP.
+//   • authenticated trading: the OTP-issued URL from POST
+//     /trading/v1/options/accounts/{id}/otp (…/ws/real or …/ws/demo).
+// The legacy ws.derivws.com/websockets/v3 endpoint is kept only as a fallback.
+const PUBLIC_WS = 'wss://api.derivws.com/trading/v1/options/ws/public';
 const WS_BASE = 'wss://ws.derivws.com/websockets/v3';
 const REST_ACCOUNTS = 'https://api.derivws.com/trading/v1/options/accounts';
 const DEFAULT_APP_ID = '33JFxN3sbe2usdFigbMb8';
@@ -46,8 +49,12 @@ export class DerivClient {
   connectMarket() {
     if (this.mws && (this.mws.readyState === WebSocket.OPEN || this.mws.readyState === WebSocket.CONNECTING)) return;
     if (this._mwsReconn) { clearTimeout(this._mwsReconn); this._mwsReconn = null; }
-    const id = this._mwsUseLegacy ? '1089' : this.appId;
-    const mws = new WebSocket(`${WS_BASE}?app_id=${id}`);
+    // Try the current public gateway first; on failure fall back to the legacy
+    // v3 endpoint once, then keep retrying whichever we last used.
+    const url = this._mwsUseLegacy
+      ? `${WS_BASE}?app_id=${this.appId}`
+      : PUBLIC_WS;
+    const mws = new WebSocket(url);
     this.mws = mws;
     mws.onopen = () => {
       this.mwsAttempts = 0;
@@ -55,13 +62,11 @@ export class DerivClient {
       this.startHeartbeat();
     };
     mws.onmessage = e => this._onMessage(e, 'market');
-    mws.onerror = () => this.emit('market-error', { appId: id });
+    mws.onerror = () => this.emit('market-error', { url });
     mws.onclose = () => {
       if (this.mws === mws) this.mws = null;
-      // First failure on the registered app: fall back to the legacy public
-      // app id once, then keep retrying whichever id we last used.
-      if (!this._mwsUseLegacy) { this._mwsUseLegacy = true; this.emit('market-close'); this._mwsReconn = setTimeout(() => this.connectMarket(), 700); return; }
       this.emit('market-close');
+      if (!this._mwsUseLegacy) { this._mwsUseLegacy = true; this._mwsReconn = setTimeout(() => this.connectMarket(), 700); return; }
       const delay = Math.min(700 * Math.pow(1.4, this.mwsAttempts++), 8000);
       this._mwsReconn = setTimeout(() => this.connectMarket(), delay);
     };

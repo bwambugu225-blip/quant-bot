@@ -61,10 +61,16 @@ history also contains a forced commit of them (kept intentionally).
 `deriv-replica/` is not a static mock: it is wired to the real Deriv WebSocket
 API (same transport as `bot.html`).
 
-- `src/lib/derivClient.js` — WS v3 client. Auth ladder: REST accounts →
-  WS `authorize` → OTP URL → direct WS with token in the URL. Two sockets: the
-  authenticated trading socket for balance/proposals/buys/contracts, and a
-  public market socket (`app_id=1089`) for unauthenticated tick history.
+- `src/lib/derivClient.js` — Deriv API client (current transport, per
+  https://developers.deriv.com/llms.txt). Public market data connects to
+  `wss://api.derivws.com/trading/v1/options/ws/public` (no app id, no auth);
+  authenticated trading uses the OTP-issued `…/ws/real|demo` URL from
+  `POST /trading/v1/options/accounts/{id}/otp`. Auth ladder: REST accounts
+  (Bearer + `Deriv-App-ID`) → WS `authorize` → OTP URL → direct WS with token.
+  The legacy `ws.derivws.com/websockets/v3` endpoint is kept only as a fallback.
+  Two sockets: the authenticated trading socket for balance/proposals/buys/
+  contracts, and the public market socket for tick history. Account switching
+  (demo ↔ real) re-requests an OTP for the target account.
 - `src/lib/marketStore.js` — tick/candle engine. `ticks_history` seeds candles
   per timeframe (5s/15s/30s/1m) and `tick` streams update them live; digit
   history is derived from the last digit of each quote.

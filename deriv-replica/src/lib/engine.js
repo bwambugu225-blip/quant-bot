@@ -80,7 +80,7 @@ export class Engine {
     });
     client.on('market-close', () => this.log('[MARKET] Socket closed — retrying', 'w'));
     client.on('market-error', (info) => {
-      this.log(`[MARKET] Socket error (app ${info?.appId || '?'}) — check network/firewall`, 'e');
+      this.log(`[MARKET] Socket error (${info?.url || '?'}) — check network/firewall`, 'e');
       this._marketErrors = (this._marketErrors || 0) + 1;
       // Safety net: if the standalone market socket keeps failing but the
       // authenticated trading socket is up, stream market data there instead.
