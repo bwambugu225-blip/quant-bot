@@ -1,6 +1,10 @@
 {
   "version": 2,
+  "buildCommand": "bash scripts/build-site.sh",
+  "outputDirectory": "public_out",
   "rewrites": [
+    { "source": "/deriv", "destination": "/deriv/" },
+    { "source": "/deriv/(.*)", "destination": "/deriv/index.html" },
     { "source": "/callback.html", "destination": "/callback.html" },
     { "source": "/(.*)", "destination": "/bot.html" }
   ],
