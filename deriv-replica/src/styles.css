@@ -1238,6 +1238,94 @@ body {
 .automate-market__chip:disabled { opacity: 0.3; cursor: not-allowed; }
 .automate-note { font-size: 10.5px; color: var(--text-secondary, #8a8f9c); margin: 6px 0 0; line-height: 1.35; }
 
+/* ── Per-contract Automate controls ─────────────────────────────────── */
+.automate-run { display: flex; align-items: center; gap: 10px; }
+.automate-run__status { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.automate-run__label {
+  font-size: 11px; color: var(--text-secondary, #8a8f9c);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.automate-tabs {
+  display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px;
+}
+.automate-tabs--sub { margin-bottom: 6px; }
+.automate-tab {
+  height: 28px; padding: 0 10px; border-radius: 14px; cursor: pointer;
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  background: transparent; color: var(--text-secondary, #8a8f9c);
+  font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.automate-tabs--sub .automate-tab { height: 24px; padding: 0 8px; font-size: 10.5px; }
+.automate-tab.is-active {
+  border-color: var(--coral, #ff444f); color: #fff;
+  background: rgba(255, 68, 79, 0.12);
+}
+
+.automate-barrier { margin: 4px 0 8px; }
+.automate-barrier__label {
+  display: block; font-size: 10px; text-transform: uppercase;
+  color: var(--text-secondary, #8a8f9c); margin-bottom: 4px;
+}
+.automate-barrier__row { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; }
+.automate-barrier__btn {
+  height: 26px; border-radius: 6px; cursor: pointer; padding: 0;
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  background: transparent; color: var(--text-secondary, #8a8f9c);
+  font-size: 11px; font-weight: 600;
+}
+.automate-barrier__btn.is-active {
+  border-color: var(--coral, #ff444f); color: #fff; background: rgba(255, 68, 79, 0.12);
+}
+.automate-barrier__btn:disabled { opacity: 0.25; cursor: not-allowed; }
+
+.automate-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.automate-side {
+  height: 34px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  background: transparent; color: #fff; font-size: 12px; font-weight: 700;
+}
+.automate-side.is-active {
+  border-color: var(--coral, #ff444f); background: rgba(255, 68, 79, 0.12);
+}
+
+.automate-contracts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.automate-contract {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  background: transparent; color: #fff;
+}
+.automate-contract.is-active {
+  border-color: var(--coral, #ff444f); background: rgba(255, 68, 79, 0.12);
+}
+.automate-contract__label { font-size: 12px; font-weight: 700; }
+.automate-contract__note {
+  font-size: 9.5px; color: var(--text-secondary, #8a8f9c); line-height: 1.3;
+}
+
+.automate-selected {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 8px;
+  margin-top: 8px; padding: 8px 10px; border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.automate-selected__label { font-size: 12px; font-weight: 700; color: #fff; }
+.automate-selected__win {
+  font-size: 10px; font-weight: 700; color: var(--buy, #4bb4b3);
+  border: 1px solid var(--buy, #4bb4b3); border-radius: 10px; padding: 1px 7px;
+}
+.automate-selected__note {
+  flex-basis: 100%; font-size: 10px; color: var(--text-secondary, #8a8f9c); line-height: 1.35;
+}
+
+.engine-stake--compact { justify-content: space-between; }
+.engine-stake__input {
+  flex: 1; max-width: 120px; height: 26px; text-align: right;
+  background: transparent; color: #fff; font-weight: 700; font-size: 12px;
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  border-radius: 6px; padding: 0 8px; font-variant-numeric: tabular-nums;
+}
+
 /* ============================== Login ============================== */
 .login-form { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
 .login-form__hint { font-size: 12px; color: var(--text-secondary, #8a8f9c); margin: 0 0 4px; line-height: 1.4; }

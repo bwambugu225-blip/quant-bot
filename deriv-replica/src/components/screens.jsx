@@ -1,5 +1,6 @@
 import React from 'react';
 import { SYMBOLS, isDigitSymbol } from '../lib/marketStore.js';
+import { AUTO_FAMILIES, DIGIT_PRODUCTS, findAutoContract, contractsForFamily } from '../lib/autoStrategies.js';
 
 // Tab screens and the control panels for the live engine. Kept in one module so
 // the simple, stateless screens don't clutter the component tree.
@@ -99,10 +100,10 @@ export function Reports({ reports, currency = 'USD' }) {
   );
 }
 
-function Stepper({ label, value, step = 1, min, max, onChange, decimals = 2, suffix = '' }) {
+function Stepper({ label, value, step = 1, min, max, onChange, decimals = 2, suffix = '', compact = false }) {
   const clamp = v => Math.max(min, Math.min(max, +v || 0));
   return (
-    <div className="engine-stake">
+    <div className={`engine-stake${compact ? ' engine-stake--compact' : ''}`}>
       <span className="engine-stake__label">{label}</span>
       <button onClick={() => onChange(clamp(value - step))} type="button">−</button>
       <span className="engine-stake__value">{value.toFixed(decimals)}{suffix}</span>
@@ -111,26 +112,81 @@ function Stepper({ label, value, step = 1, min, max, onChange, decimals = 2, suf
   );
 }
 
-// The Automate tab: every automation and trade setting lives here. It is the
-// only place the auto-engine, mode, market, martingale and risk limits are
-// exposed. Nothing trades until the user presses Start on the selected market.
+// The Automate tab. Automation is pinned to exactly one contract on one
+// market; that contract decides the strategy, the inputs and the parameters,
+// and every contract keeps its own parameter set.
 export function AutomateScreen({ engine, state, onLogin }) {
   const auth = !!state?.auth;
   const running = !!state?.running;
-  const mode = state?.tradeMode || 'RISEFALL';
-  const isDigit = mode === 'DIGITS';
-  const stake = isDigit ? state?.dgStake ?? 1 : state?.rfStake ?? 1;
+  const contractKey = state?.autoContractKey || 'CALL';
+  const entry = findAutoContract(contractKey);
+  const p = state?.params || {};
+  const autoMarket = state?.autoMarket || SYMBOLS[0].sym;
+  const market = SYMBOLS.find(s => s.sym === autoMarket) || SYMBOLS[0];
+
+  const [family, setFamily] = React.useState(entry.family);
+  const [product, setProduct] = React.useState(
+    entry.kind === 'match' || entry.kind === 'diff' ? 'match_diff'
+      : entry.kind === 'even' || entry.kind === 'odd' ? 'even_odd'
+        : entry.kind ? 'over_under' : 'over_under'
+  );
+  const [barrier, setBarrier] = React.useState(
+    entry.kind === 'over' || entry.kind === 'under' || entry.kind === 'match' || entry.kind === 'diff'
+      ? entry.barrier : 3
+  );
+
+  // Keep the selectors in step when the engine switches contract elsewhere.
+  React.useEffect(() => { setFamily(entry.family); }, [entry.family]);
+  React.useEffect(() => {
+    if (entry.kind === 'match' || entry.kind === 'diff') setProduct('match_diff');
+    else if (entry.kind === 'even' || entry.kind === 'odd') setProduct('even_odd');
+    else if (entry.kind) setProduct('over_under');
+    if (entry.kind) setBarrier(entry.barrier);
+  }, [entry.kind, entry.barrier]);
+
+  const familyContracts = contractsForFamily(family);
+  const set = patch => engine.setParams(patch);
+
+  // Digit products need a side (Over/Under, Match/Diff) before a barrier.
+  const digitKey = (prod, side, b) => {
+    if (prod === 'even_odd') return side === 'odd' ? 'DIGITODD' : 'DIGITEVEN';
+    if (prod === 'over_under') return `${side === 'under' ? 'DIGITUNDER' : 'DIGITOVER'}:${b}`;
+    return `${side === 'diff' ? 'DIGITDIFF' : 'DIGITMATCH'}:${b}`;
+  };
+
+  // Choosing a family or a digit product pins the engine to that contract's
+  // default, so the Strategy panel below always matches the selection.
+  const chooseFamily = id => {
+    setFamily(id);
+    if (id === entry.family) return;
+    if (id === 'digits') { setProduct('over_under'); setBarrier(3); engine.setContract('DIGITOVER:3'); }
+    else {
+      const first = contractsForFamily(id)[0];
+      if (first) engine.setContract(first.key);
+    }
+  };
+  const chooseProduct = id => {
+    setProduct(id);
+    if (id === 'even_odd') engine.setContract('DIGITEVEN');
+    else if (id === 'over_under') engine.setContract(`DIGITOVER:${barrier}`);
+    else engine.setContract(`DIGITMATCH:${barrier}`);
+  };
+
+  const activeSide = entry.kind === 'under' || entry.kind === 'diff' || entry.kind === 'odd' ? 'down' : 'up';
+
   const wins = state?.wins ?? 0;
   const losses = state?.losses ?? 0;
   const trades = state?.trades ?? 0;
   const winRate = trades ? Math.round((wins / trades) * 100) : 0;
-  const autoMarket = state?.autoMarket || SYMBOLS[0].sym;
-  const market = SYMBOLS.find(s => s.sym === autoMarket) || SYMBOLS[0];
-  const digitCapable = isDigitSymbol(autoMarket);
-  const mart = state?.martingale || {};
   const started = state?.sessionStart;
 
-  const chooseMarket = sym => engine.setMarket(sym);
+  const showDuration = entry.inputs.includes('duration');
+  const showBarrier = entry.inputs.includes('barrier');
+  const showGrowth = entry.inputs.includes('growthRate');
+  const showMult = entry.inputs.includes('multiplier');
+
+  const unitOptions = entry.typeId === 'vanillas' ? ['d', 'h', 'm', 's'] : ['t', 's', 'm', 'h'];
+  const unitLabel = { t: 'ticks', s: 'sec', m: 'min', h: 'hr', d: 'days' };
 
   return (
     <div className="screen">
@@ -143,61 +199,52 @@ export function AutomateScreen({ engine, state, onLogin }) {
         </div>
       )}
 
-      {/* ── Session control ─────────────────────────────────────────── */}
-      <div className="menu-section">
-        <div className="menu-section__title">Session</div>
+      {/* ── Run + session stats ─────────────────────────────────────── */}
+      <div className="automate-run">
         <button
           className={`engine-run${running ? ' is-running' : ''}`}
           onClick={() => (running ? engine.stop() : engine.start())}
           type="button"
           disabled={!auth}
         >
-          {running ? '■  STOP AUTO' : '▶  START AUTO'}
+          {running ? '■  STOP' : '▶  START'}
         </button>
-        <div className="engine-run__meta">
+        <div className="automate-run__status">
           <span className={`engine-run__dot${running ? ' is-on' : ''}`} />
-          {running
-            ? `Running on ${market.name}${started ? ` · ${Math.max(0, Math.round((Date.now() - started) / 60000))}m` : ''}`
-            : 'Idle — no automated trades'}
+          <span className="automate-run__label">
+            {running
+              ? `${entry.label} · ${autoMarket}${started ? ` · ${Math.max(0, Math.round((Date.now() - started) / 60000))}m` : ''}`
+              : 'Idle — nothing is trading'}
+          </span>
         </div>
-
-        <div className="engine-stats">
-          <Stat label="Trades" value={trades} />
-          <Stat label="Wins" value={wins} />
-          <Stat label="Losses" value={losses} />
-          <Stat label="Win rate" value={`${winRate}%`} />
-          <Stat
-            label="P/L"
-            value={`${(state?.pnl ?? 0) >= 0 ? '+' : ''}${(state?.pnl ?? 0).toFixed(2)}`}
-            tone={(state?.pnl ?? 0) >= 0 ? 'win' : 'loss'}
-          />
-          <Stat label="Streak" value={state?.consLoss ? `-${state.consLoss}` : '0'} tone={state?.consLoss ? 'loss' : undefined} />
-          <Stat label="Best" value={`+${(state?.bestTrade ?? 0).toFixed(2)}`} tone="win" />
-          <Stat label="Worst" value={`${(state?.worstTrade ?? 0).toFixed(2)}`} tone="loss" />
-        </div>
-
-        <button className="automate-reset" onClick={() => engine.resetSession()} type="button">
-          Reset session stats
-        </button>
       </div>
 
-      {/* ── Market + strategy ───────────────────────────────────────── */}
+      <div className="engine-stats">
+        <Stat label="Trades" value={trades} />
+        <Stat label="Wins" value={wins} />
+        <Stat label="Losses" value={losses} />
+        <Stat label="Win rate" value={`${winRate}%`} />
+        <Stat label="P/L" value={`${(state?.pnl ?? 0) >= 0 ? '+' : ''}${(state?.pnl ?? 0).toFixed(2)}`} tone={(state?.pnl ?? 0) >= 0 ? 'win' : 'loss'} />
+        <Stat label="Streak" value={state?.consLoss ? `-${state.consLoss}` : '0'} tone={state?.consLoss ? 'loss' : undefined} />
+        <Stat label="Best" value={`+${(state?.bestTrade ?? 0).toFixed(2)}`} tone="win" />
+        <Stat label="Worst" value={`${(state?.worstTrade ?? 0).toFixed(2)}`} tone="loss" />
+      </div>
+
+      {/* ── Market ──────────────────────────────────────────────────── */}
       <div className="menu-section">
         <div className="menu-section__title">Market</div>
-        <div className="automate-market">
-          <div className="automate-market__current">
-            <span className="automate-market__name">{market.name}</span>
-            <span className="automate-market__sym">{market.sym} · {market.cat}</span>
-          </div>
+        <div className="automate-market__current">
+          <span className="automate-market__name">{market.name}</span>
+          <span className="automate-market__sym">{market.sym} · {market.cat}</span>
         </div>
         <div className="automate-market__grid">
           {SYMBOLS.map(s => {
-            const disabled = isDigit && !isDigitSymbol(s.sym);
+            const disabled = entry.digitFamily && !isDigitSymbol(s.sym);
             return (
               <button
                 key={s.sym}
                 className={`automate-market__chip${s.sym === autoMarket ? ' is-active' : ''}`}
-                onClick={() => !disabled && chooseMarket(s.sym)}
+                onClick={() => !disabled && engine.setMarket(s.sym)}
                 disabled={disabled}
                 title={disabled ? 'Digits need a Volatility index' : s.name}
                 type="button"
@@ -207,127 +254,240 @@ export function AutomateScreen({ engine, state, onLogin }) {
             );
           })}
         </div>
-        {isDigit && !digitCapable && (
-          <div className="automate-note">Digits require a Volatility index — pick one above.</div>
-        )}
+      </div>
 
-        <div className="menu-section__title" style={{ marginTop: 14 }}>Strategy</div>
-        <div className="menu-toggle">
-          <span>Mode</span>
-          <div className="menu-seg">
-            {['RISEFALL', 'DIGITS'].map(m => (
+      {/* ── Contract ────────────────────────────────────────────────── */}
+      <div className="menu-section">
+        <div className="menu-section__title">Contract</div>
+        <div className="automate-tabs">
+          {AUTO_FAMILIES.map(f => (
+            <button
+              key={f.id}
+              className={`automate-tab${family === f.id ? ' is-active' : ''}`}
+              onClick={() => chooseFamily(f.id)}
+              type="button"
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        {family === 'digits' ? (
+          <>
+            <div className="automate-tabs automate-tabs--sub">
+              {DIGIT_PRODUCTS.map(d => (
+                <button
+                  key={d.id}
+                  className={`automate-tab${product === d.id ? ' is-active' : ''}`}
+                  onClick={() => chooseProduct(d.id)}
+                  type="button"
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+            {product !== 'even_odd' && (
+              <div className="automate-barrier">
+                <span className="automate-barrier__label">Barrier</span>
+                <div className="automate-barrier__row">
+                  {(product === 'over_under' ? [0,1,2,3,4,5,6,7,8] : [0,1,2,3,4,5,6,7,8,9]).map(b => {
+                    const isCurrent = (entry.kind === 'over' || entry.kind === 'under'
+                      || entry.kind === 'match' || entry.kind === 'diff') && entry.barrier === b;
+                    return (
+                      <button
+                        key={b}
+                        className={`automate-barrier__btn${isCurrent ? ' is-active' : ''}`}
+                        onClick={() => { setBarrier(b); engine.setContract(digitKey(product, product === 'match_diff' ? 'match' : 'over', b)); }}
+                        type="button"
+                      >
+                        {b}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <div className="automate-sides">
+              {(product === 'even_odd' ? ['even', 'odd'] : product === 'over_under' ? ['over', 'under'] : ['match', 'diff']).map(side => (
+                <button
+                  key={side}
+                  className={`automate-side${activeSide === (side === 'under' || side === 'diff' || side === 'odd' ? 'down' : 'up') ? ' is-active' : ''}`}
+                  onClick={() => engine.setContract(digitKey(product, side, barrier))}
+                  type="button"
+                >
+                  {side === 'even' ? 'Even' : side === 'odd' ? 'Odd' : side === 'over' ? `Over ${barrier}` : side === 'under' ? `Under ${barrier}` : side === 'match' ? `Matches ${barrier}` : `Differs ${barrier}`}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <div className="automate-contracts">
+            {familyContracts.map(c => (
               <button
-                key={m}
-                className={`menu-seg__btn${mode === m ? ' is-active' : ''}`}
-                onClick={() => engine.setMode(m)}
+                key={c.key}
+                className={`automate-contract${contractKey === c.key ? ' is-active' : ''}`}
+                onClick={() => engine.setContract(c.key)}
                 type="button"
-                disabled={m === 'DIGITS' && !digitCapable}
               >
-                {m === 'RISEFALL' ? 'Rise/Fall' : 'Digits'}
+                <span className="automate-contract__label">{c.label}</span>
+                <span className="automate-contract__note">{c.note}</span>
               </button>
             ))}
           </div>
+        )}
+
+        <div className="automate-selected">
+          <span className="automate-selected__label">{entry.label}</span>
+          <span className="automate-selected__win">{entry.winNote}</span>
+          <span className="automate-selected__note">{entry.note}</span>
         </div>
+      </div>
+
+      {/* ── Strategy parameters (per contract) ──────────────────────── */}
+      <div className="menu-section">
+        <div className="menu-section__title">Strategy · {entry.label}</div>
 
         <Stepper
-          label={isDigit ? 'Digit stake' : 'Rise/Fall stake'}
-          value={stake}
+          label="Stake"
+          value={p.stake ?? 1}
           min={0.35}
           max={200}
-          onChange={v => engine.setStake(isDigit ? 'dg' : 'rf', v)}
+          onChange={v => set({ stake: v })}
         />
+
+        {showDuration && (
+          <>
+            <Stepper
+              label="Duration"
+              value={p.duration ?? 1}
+              min={1}
+              max={entry.typeId === 'vanillas' ? 365 : 10}
+              decimals={0}
+              suffix={` ${unitLabel[p.unit] || 'ticks'}`}
+              onChange={v => set({ duration: v })}
+            />
+            <div className="menu-toggle">
+              <span>Duration unit</span>
+              <div className="menu-seg">
+                {unitOptions.map(u => (
+                  <button
+                    key={u}
+                    className={`menu-seg__btn${(p.unit || 't') === u ? ' is-active' : ''}`}
+                    onClick={() => set({ unit: u, duration: u === 't' ? Math.min(p.duration ?? 5, 10) : (p.duration ?? 5) })}
+                    type="button"
+                  >
+                    {unitLabel[u]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {showBarrier && (
+          <div className="engine-stake engine-stake--compact">
+            <span className="engine-stake__label">Barrier</span>
+            <input
+              className="engine-stake__input"
+              value={p.barrier ?? '+0.10'}
+              onChange={e => set({ barrier: e.target.value })}
+              spellCheck={false}
+            />
+          </div>
+        )}
+
+        {showGrowth && (
+          <Stepper
+            label="Growth rate"
+            value={(p.growthRate ?? 0.01) * 100}
+            step={1}
+            min={1}
+            max={5}
+            decimals={0}
+            suffix="%"
+            onChange={v => set({ growthRate: v / 100 })}
+          />
+        )}
+
+        {showMult && (
+          <div className="menu-toggle">
+            <span>Multiplier</span>
+            <div className="menu-seg">
+              {[10, 20, 50, 100, 200, 500].map(m => (
+                <button
+                  key={m}
+                  className={`menu-seg__btn${(p.multiplier ?? 100) === m ? ' is-active' : ''}`}
+                  onClick={() => set({ multiplier: m })}
+                  type="button"
+                >
+                  x{m}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <Stepper
           label="Min confidence"
-          value={state?.minConfidence ?? 0}
+          value={p.minConf ?? 0}
           step={5}
           min={0}
           max={95}
           decimals={0}
           suffix="%"
-          onChange={v => engine.setAutomation({ minConfidence: v })}
+          onChange={v => set({ minConf: v })}
         />
-        <div className="automate-note">Rise/Fall signals below this confidence are skipped.</div>
 
-        <label className="menu-toggle">
-          <span>Kelly sizing (Rise/Fall)</span>
-          <input
-            type="checkbox"
-            checked={!!state?.useKelly}
-            onChange={e => engine.setAutomation({ useKelly: e.target.checked })}
-          />
-        </label>
-      </div>
-
-      {/* ── Risk management ─────────────────────────────────────────── */}
-      <div className="menu-section">
-        <div className="menu-section__title">Risk management</div>
-
-        <label className="menu-toggle">
-          <span>Martingale</span>
-          <input
-            type="checkbox"
-            checked={!!mart.enabled}
-            onChange={e => engine.setMartingale({ enabled: e.target.checked, baseStake: stake })}
-          />
-        </label>
-        {mart.enabled && (
+        {entry.digitFamily && (
           <>
             <Stepper
-              label="Multiplier"
-              value={mart.mult ?? 2}
-              step={0.5}
-              min={1.1}
-              max={5}
-              onChange={v => engine.setMartingale({ mult: v })}
+              label="Sample window"
+              value={p.window ?? 0}
+              step={10}
+              min={0}
+              max={400}
+              decimals={0}
+              suffix={p.window ? ' ticks' : ' (auto)'}
+              onChange={v => set({ window: v })}
             />
             <Stepper
-              label="Max steps"
-              value={mart.maxSteps ?? 6}
-              step={1}
-              min={1}
-              max={12}
-              decimals={0}
-              onChange={v => engine.setMartingale({ maxSteps: v })}
+              label="Min edge"
+              value={(p.minEdge ?? 0.01) * 100}
+              step={0.5}
+              min={0}
+              max={20}
+              decimals={1}
+              suffix="%"
+              onChange={v => set({ minEdge: v / 100 })}
             />
           </>
         )}
+      </div>
 
-        <Stepper
-          label="Take profit"
-          value={state?.takeProfit ?? 0}
-          step={1}
-          min={0}
-          max={10000}
-          onChange={v => engine.setLimits({ takeProfit: v })}
-        />
-        <Stepper
-          label="Stop loss"
-          value={state?.stopLoss ?? 0}
-          step={1}
-          min={0}
-          max={10000}
-          onChange={v => engine.setLimits({ stopLoss: v })}
-        />
-        <Stepper
-          label="Max consecutive losses"
-          value={state?.maxConsecutiveLosses ?? 8}
-          step={1}
-          min={0}
-          max={50}
-          decimals={0}
-          onChange={v => engine.setAutomation({ maxConsecutiveLosses: v })}
-        />
-        <Stepper
-          label="Max trades this session"
-          value={state?.maxTrades ?? 0}
-          step={5}
-          min={0}
-          max={500}
-          decimals={0}
-          onChange={v => engine.setAutomation({ maxTrades: v })}
-        />
+      {/* ── Risk ────────────────────────────────────────────────────── */}
+      <div className="menu-section">
+        <div className="menu-section__title">Risk</div>
+
+        <label className="menu-toggle">
+          <span>Martingale</span>
+          <input type="checkbox" checked={!!p.martingale} onChange={e => set({ martingale: e.target.checked })} />
+        </label>
+        {p.martingale && (
+          <>
+            <Stepper label="Multiplier" value={p.martMult ?? 2} step={0.5} min={1.1} max={5} onChange={v => set({ martMult: v })} />
+            <Stepper label="Max steps" value={p.martSteps ?? 6} step={1} min={1} max={12} decimals={0} onChange={v => set({ martSteps: v })} />
+          </>
+        )}
+
+        <Stepper label="Take profit" value={p.takeProfit ?? 0} step={1} min={0} max={10000} onChange={v => set({ takeProfit: v })} />
+        <Stepper label="Stop loss" value={p.stopLoss ?? 0} step={1} min={0} max={10000} onChange={v => set({ stopLoss: v })} />
+        <Stepper label="Max consecutive losses" value={p.maxLosses ?? 8} step={1} min={0} max={50} decimals={0} onChange={v => set({ maxLosses: v })} />
+        <Stepper label="Max trades this session" value={p.maxTrades ?? 0} step={5} min={0} max={500} decimals={0} onChange={v => set({ maxTrades: v })} />
         <div className="automate-note">0 = unlimited. Take profit, stop loss and the trade cap stop the engine automatically.</div>
+
+        <button className="automate-reset" onClick={() => engine.resetSession()} type="button">
+          Reset session stats
+        </button>
       </div>
     </div>
   );

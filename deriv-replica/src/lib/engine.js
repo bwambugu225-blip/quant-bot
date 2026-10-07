@@ -1,17 +1,37 @@
-// Trading engine — the real execution + strategy loop, ported from bot.html.
+// Trading engine — the real execution + strategy loop.
 //
-// Owns: auto-engine run/stop, Rise/Fall signal trading, digit-bias trading,
-// manual trades, proposal/buy/contract lifecycle, martingale, and the
-// win/loss bookkeeping that feeds Positions and Reports.
+// Automation is scoped to one explicit contract (e.g. "Over 3" or "Rise")
+// running on one explicit market. Each contract carries its own parameters and
+// its own signal function from autoStrategies.js, so changing the contract
+// changes the strategy, not just the label.
 import { MarketStore, SYMBOLS, isDigitSymbol, digitOf, decimalsFor } from './marketStore.js';
-import { runStrategyAnalysis, evaluateDigitStrategy, digitRollingStats, pickOptimalDuration } from './strategies.js';
-import { calcKelly, max, min } from './indicators.js';
 import { buildProposal } from './contracts.js';
+import { findAutoContract, buildAutoValue } from './autoStrategies.js';
 
-const DEFAULT_RF_STAKE = 1;
-const DEFAULT_DG_STAKE = 1;
-const MAX_STAKE = 200;
 const MIN_STAKE = 0.35;
+const MAX_STAKE = 200;
+
+// Defaults every contract parameter set starts from. `stake`, `duration`,
+// `unit`, `growthRate` and `multiplier` are then overridden by the contract's
+// own defaults; the rest are the shared strategy/risk knobs.
+const PARAM_DEFAULTS = {
+  stake: 1,
+  minConf: 0,
+  window: 0,      // 0 = use the contract's tuned window
+  zMin: 0,        // 0 = use the contract's tuned z gate
+  minEdge: 0.01,
+  martingale: false,
+  martMult: 2,
+  martSteps: 6,
+  takeProfit: 0,
+  stopLoss: 0,
+  maxTrades: 0,
+  maxLosses: 8,
+};
+
+function defaultParamsFor(entry) {
+  return { ...PARAM_DEFAULTS, ...entry.defaults };
+}
 
 export class Engine {
   constructor() {
@@ -19,9 +39,11 @@ export class Engine {
     this.client = null;
 
     this.running = false;
-    this.tradeMode = 'RISEFALL';        // 'RISEFALL' | 'DIGITS'
+    this.autoMarket = 'R_10';
     this.selectedMarket = 'R_10';
-    this.autoMarket = 'R_10';           // the only market the auto-engine trades
+    this.autoContractKey = 'CALL';
+    this.contractParams = {};
+
     this.activeContracts = new Map();
     this.processed = new Set();
     this.sendingTimeout = null;
@@ -29,30 +51,14 @@ export class Engine {
     this.wins = 0; this.losses = 0; this.consLoss = 0;
     this.pnl = 0; this.trades = 0;
     this.bestTrade = 0; this.worstTrade = 0;
-    this.positions = [];   // open contracts
-    this.reports = [];     // settled contracts
+    this.positions = [];
+    this.reports = [];
     this.lastSignal = null;
     this.logs = [];
     this.toasts = [];
-
-    this.rfStake = DEFAULT_RF_STAKE;
-    this.dgStake = DEFAULT_DG_STAKE;
-    this.dgMartMult = 1;
-    this.dgLossStreak = 0;
-    this.dgCooldownTicks = 0;
-    this.dgRejectCooldown = 0;
-    this.dgTakeProfit = 10;
-    this.dgStopLoss = 5;
-
-    // Automation gates — nothing trades unless it clears these.
-    this.minConfidence = 0;             // Rise/Fall signal threshold (0 = any)
-    this.maxConsecutiveLosses = 8;      // hard stop after this losing run
-    this.maxTrades = 0;                 // session cap (0 = unlimited)
-    this.useKelly = false;              // Kelly sizing for Rise/Fall
-
-    this.martingale = { enabled: false, baseStake: 1, currentStake: 1, mult: 2, maxSteps: 6 };
     this.sessionStart = null;
-    this._tickCount = 0;
+    this._martSteps = 0;
+
     this._watchdog = null;
     this._marketSubscribed = new Set();
     this._listeners = {};
@@ -85,15 +91,13 @@ export class Engine {
     client.on('subscribe-market', () => this._subscribeMarkets());
     client.on('market-open', () => {
       this._marketSubscribed.clear();
-      this.log('[MARKET] Socket connected — subscribing to 13 markets', 's');
+      this.log('[MARKET] Socket connected — subscribing to markets', 's');
       this._subscribeMarkets();
     });
     client.on('market-close', () => this.log('[MARKET] Socket closed — retrying', 'w'));
     client.on('market-error', (info) => {
       this.log(`[MARKET] Socket error (${info?.url || '?'}) — check network/firewall`, 'e');
       this._marketErrors = (this._marketErrors || 0) + 1;
-      // Safety net: if the standalone market socket keeps failing but the
-      // authenticated trading socket is up, stream market data there instead.
       if (this._marketErrors === 3 && client.ws?.readyState === WebSocket.OPEN) {
         this.log('[MARKET] Falling back to the trading socket for ticks', 'w');
         this._marketSubscribed.clear();
@@ -106,23 +110,57 @@ export class Engine {
     client.on('close', () => this.emit('state', this.snapshot()));
   }
 
-  // Switch demo/real account covered by the logged-in token.
   switchAccount(accountId) { return this.client?.switchAccount(accountId); }
 
   _subscribeMarkets() {
     if (!this.client) return;
-    // Normally market data rides the public socket (like bot.html). If that
-    // socket cannot connect, `_marketOnTrading` streams on the trading socket.
     const pending = SYMBOLS.filter(s => !this._marketSubscribed.has(s.sym));
     if (!pending.length) return;
     pending.forEach(s => this._marketSubscribed.add(s.sym));
     this.client.subscribeMarket(pending, this._marketOnTrading ? 'ws' : 'mws');
   }
 
+  // ── Contract parameters ────────────────────────────────────────────────
+  paramsFor(key = this.autoContractKey) {
+    const entry = findAutoContract(key);
+    if (!this.contractParams[key]) this.contractParams[key] = defaultParamsFor(entry);
+    return this.contractParams[key];
+  }
+
+  setContract(key) {
+    if (!findAutoContract(key)) return;
+    this.autoContractKey = key;
+    const e = findAutoContract(key);
+    if (e.digitFamily && !isDigitSymbol(this.autoMarket)) {
+      this.autoMarket = 'R_10';
+      this.log('[ENGINE] Digits need a Volatility index — market set to R_10', 'w');
+    }
+    this.log(`[ENGINE] Contract → ${e.label}`, 'i');
+    this.emit('state', this.snapshot());
+  }
+
+  // Merge a patch into the selected contract's parameters.
+  setParams(patch) {
+    const key = this.autoContractKey;
+    this.contractParams[key] = { ...this.paramsFor(key), ...patch };
+    this.emit('state', this.snapshot());
+  }
+
+  setMarket(sym) {
+    const e = findAutoContract(this.autoContractKey);
+    if (e.digitFamily && !isDigitSymbol(sym)) {
+      this.toast('Digits need a Volatility index', 'w');
+      return;
+    }
+    this.autoMarket = sym;
+    this.log(`[ENGINE] Market → ${sym}`, 'i');
+    this.emit('state', this.snapshot());
+  }
+
   snapshot() {
+    const e = findAutoContract(this.autoContractKey);
     return {
       running: this.running,
-      tradeMode: this.tradeMode,
       auth: !!this.client?.auth,
       accountId: this.client?.accountId || null,
       accountType: this.client?.accountType || 'demo',
@@ -132,15 +170,10 @@ export class Engine {
       consLoss: this.consLoss,
       bestTrade: this.bestTrade, worstTrade: this.worstTrade,
       openCount: this.positions.length,
-      martingale: { ...this.martingale },
-      rfStake: this.rfStake, dgStake: this.dgStake,
-      dgMartMult: this.dgMartMult, dgLossStreak: this.dgLossStreak,
-      takeProfit: this.dgTakeProfit, stopLoss: this.dgStopLoss,
       autoMarket: this.autoMarket,
-      minConfidence: this.minConfidence,
-      maxConsecutiveLosses: this.maxConsecutiveLosses,
-      maxTrades: this.maxTrades,
-      useKelly: this.useKelly,
+      autoContractKey: this.autoContractKey,
+      autoContractLabel: e.label,
+      params: this.paramsFor(this.autoContractKey),
       sessionStart: this.sessionStart,
       lastSignal: this.lastSignal,
       positions: this.positions,
@@ -149,7 +182,7 @@ export class Engine {
   }
 
   // ── Message routing ────────────────────────────────────────────────────
-  onMessage(msg, source) {
+  onMessage(msg) {
     if (['history', 'tick', 'candles'].includes(msg.msg_type)) this.emit('market-data', msg);
     switch (msg.msg_type) {
       case 'balance': return this._onBalance(msg);
@@ -179,7 +212,6 @@ export class Engine {
       return;
     }
     this.store.onHistory(sym, msg.history?.times || [], msg.history?.prices || []);
-    this.log(`[HIST] ${sym}: ${(this.store.candles[sym] || []).length} candles loaded`, 'i');
     this.emit('market-data', msg);
   }
 
@@ -192,146 +224,81 @@ export class Engine {
     if (!sym || !Number.isFinite(price) || !Number.isFinite(epoch)) return;
 
     const closed = this.store.onTick(sym, price, epoch);
-    this._tickCount++;
     this.emit('tick', { sym, price, epoch, digit: digitOf(price, sym) });
 
-    // The auto-engine only ever acts on its chosen market, so switching the
-    // chart's market never silently redirects live automation.
+    // Automation only ever acts on its chosen market, so browsing the chart
+    // can never redirect live trades.
     if (!this.running || sym !== this.autoMarket) return;
     if (this.activeContracts.size > 0) return;
 
-    if (this.tradeMode === 'DIGITS') {
-      if (isDigitSymbol(sym)) this._evaluateDigit(sym);
-    } else if (closed) {
-      this._evaluateAndTrade(sym);
+    const entry = findAutoContract(this.autoContractKey);
+    if (entry.digitFamily) this._evaluateDigit(sym, entry);
+    else if (closed) this._evaluateDirectional(sym, entry);
+  }
+
+  // Build the signal context for a contract and run its own strategy.
+  _signalFor(sym, entry) {
+    const p = this.paramsFor(entry.key);
+    const ctx = {
+      candles: this.store.candles[sym] || [],
+      digits: this.store.digHist[sym] || [],
+      params: p,
+    };
+    try {
+      return entry.signal(ctx);
+    } catch (err) {
+      this.log(`[ENGINE] ${entry.label} signal error: ${err.message}`, 'e');
+      return null;
     }
   }
 
-  // ── Rise/Fall strategy loop ────────────────────────────────────────────
-  _evaluateAndTrade(sym) {
-    if (!this.running) return;
-    if (this.activeContracts.size >= 1) return;
+  _evaluateDirectional(sym, entry) {
     if (!this._sessionAllows()) return;
-    const c = this.store.candles[sym];
-    if (!c || c.length < 10) return;
-    const liveBuf = this.store.livePrices(sym);
-    const arr = liveBuf && liveBuf.length >= 2
-      ? [...c, { open: c[c.length - 1].close, high: max(liveBuf), low: min(liveBuf), close: liveBuf[liveBuf.length - 1] }]
-      : c;
-    const result = runStrategyAnalysis(arr);
-    if (result) {
-      result.lastPrice = arr[arr.length - 1].close;
-      result.sym = sym;
-      if (result.conf < this.minConfidence) {
-        this.log(`[SIGNAL] ${sym}: ${result.action} ${result.conf}% skipped (< ${this.minConfidence}% min)`, 'i');
-        return;
-      }
-      this.log(`[SIGNAL] ${sym}: ${result.action} ${result.conf}% (${result.src})`, 't');
-      this._execTrade(result, sym);
-    }
+    const sig = this._signalFor(sym, entry);
+    if (!sig) return;
+    this.log(`[SIGNAL] ${entry.label} on ${sym}: ${sig.conf}% · ${sig.rationale}`, 't');
+    this._execute(sym, entry, sig);
   }
 
-  // ── Digit strategy loop ────────────────────────────────────────────────
-  _evaluateDigit(sym) {
-    if (!this.running) return;
-    if (this.activeContracts.size >= 1) return;
-    if (this.tradeMode !== 'DIGITS') return;
+  _evaluateDigit(sym, entry) {
+    if (!this._sessionAllows()) return;
     if (!isDigitSymbol(sym)) return;
-    if (!this._sessionAllows()) return;
-    if (this.dgRejectCooldown && Date.now() < this.dgRejectCooldown) return;
-    if (this.dgCooldownTicks > 0) { this.dgCooldownTicks--; return; }
-
-    const hist = this.store.digHist[sym] || [];
-    if (hist.length < 50) return;
-
-    const factor = this.dgMartMult > 1 ? Math.pow(this.dgMartMult, this.dgLossStreak) : 1;
-    const stake = +(this.dgStake * factor).toFixed(2);
-
-    const best = evaluateDigitStrategy(hist);
-    const stats = digitRollingStats(hist);
-    this.log(`[DIG·ANAL] ${sym}: O2=${(stats.o2 * 100).toFixed(0)}% O3=${(stats.o3 * 100).toFixed(0)}% U6=${(stats.u6 * 100).toFixed(0)}% U7=${(stats.u7 * 100).toFixed(0)}% edge=${best ? '+' + (best.edge * 100).toFixed(1) + '%' : 'none'}`, 'i');
-    if (!best) return;
-
-    const dirLabel = best.dir.replace('DIGIT', '');
-    this.log(`[DIGIT·AUTO] BIAS ${sym}: ${dirLabel} ${best.barrier} (P=${(best.p * 100).toFixed(1)}%, Edge=+${(best.edge * 100).toFixed(1)}%) stake=$${stake.toFixed(2)}`, 't');
-    this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
-    this._sendProposal({
-      contract_type: best.dir, barrier: String(best.barrier), underlying_symbol: sym,
-      amount: +stake.toFixed(2), basis: 'stake', currency: 'USD', duration: 1, duration_unit: 't',
-    });
-  }
-
-  // ── Manual trades ──────────────────────────────────────────────────────
-  // Live digit history for the analysis panel.
-  digitHistory(sym) { return this.store.digHist[sym] || []; }
-
-  // Place any trade type from the Trade form. `value` carries the form state;
-  // buildProposal maps it onto the exact Deriv proposal payload.
-  placeTrade(type, side, value) {
-    if (!this.client?.auth) { this.log('[TRADE] Authorize first', 'e'); return false; }
-    if (this.activeContracts.size >= 1) { this.toast('Contract active — wait', 'w'); return false; }
-    const sym = this.selectedMarket || SYMBOLS[0].sym;
-    const fields = buildProposal(type, side, value, sym);
-    this.lastSignal = {
-      action: side === 'down' ? 'FALL' : 'RISE', conf: 100, src: 'MANUAL',
-      stake: fields.amount, dur: fields.duration, durUnit: fields.duration_unit, asset: sym,
-    };
-    this.log(`[TRADE] ${fields.contract_type} $${fields.amount.toFixed(2)} ${sym}`
-      + (fields.duration ? ` ${fields.duration}${fields.duration_unit}` : '')
-      + (fields.barrier != null ? ` barrier=${fields.barrier}` : '')
-      + (fields.multiplier ? ` x${fields.multiplier}` : '')
-      + (fields.growth_rate ? ` growth=${fields.growth_rate}` : '') + ' via MANUAL', 't');
-    this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
-    this._sendProposal(fields);
-    return true;
-  }
-
-  placeManualRF(action, opts = {}) {
-    if (!this.client?.auth) { this.log('[RF] Authorize first', 'e'); return; }
-    if (this.activeContracts.size >= 1) { this.toast('Contract active — wait', 'w'); return; }
-    const sym = this.selectedMarket || SYMBOLS[0].sym;
-    const equals = !!opts.equals;
-    const ct = action === 'RISE' ? (equals ? 'CALLE' : 'CALL') : (equals ? 'PUTE' : 'PUT');
-    const stake = this.martingale.enabled ? this.martingale.currentStake : this.rfStake;
-    const duration = +opts.duration || 5;
-    const unit = opts.unit || 't';
-    this.lastSignal = { action, conf: 100, src: 'MANUAL', stake, dur: duration, durUnit: unit, asset: sym };
-    this.log(`[TRADE] ${ct} $${stake.toFixed(2)} ${sym} ${duration}${unit} via MANUAL`, 't');
-    this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
-    this._sendProposal({
-      contract_type: ct, amount: +stake.toFixed(2), basis: 'stake', currency: 'USD',
-      duration, duration_unit: unit, underlying_symbol: sym,
-    });
-  }
-
-  placeDigitManual(contractType, barrier) {
-    if (!this.client?.auth) { this.log('[DIGIT] Authorize first', 'e'); return; }
-    if (this.activeContracts.size >= 1) { this.toast('Contract active — wait', 'w'); return; }
-    const sym = this.selectedMarket || SYMBOLS[0].sym;
-    if (!isDigitSymbol(sym)) { this.log(`[DIGIT] ${sym} doesn't support 1-tick digit contracts`, 'e'); return; }
-    const hist = this.store.digHist[sym] || [];
-    if (hist.length < 20) { this.log('[DIGIT] Not enough ticks', 'w'); return; }
-    const factor = this.dgMartMult > 1 ? Math.pow(this.dgMartMult, this.dgLossStreak) : 1;
-    const stake = +(this.dgStake * factor).toFixed(2);
-    let b = barrier;
-    const needsBarrier = contractType === 'DIGITOVER' || contractType === 'DIGITUNDER'
-      || contractType === 'DIGITMATCH' || contractType === 'DIGITDIFF';
-    if (needsBarrier) {
-      if (b == null) b = (contractType === 'DIGITMATCH' || contractType === 'DIGITDIFF') ? 5 : 3;
-    } else {
-      b = undefined;   // Even/Odd take no barrier — Deriv rejects one
-    }
-    this.log(`[DIGIT] ${contractType.replace('DIGIT', '')} $${stake.toFixed(2)} ${sym}${needsBarrier ? ` barrier=${b}` : ''}`, 't');
-    this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
-    const fields = {
-      contract_type: contractType, underlying_symbol: sym,
-      amount: +stake.toFixed(2), basis: 'stake', currency: 'USD', duration: 1, duration_unit: 't',
-    };
-    if (needsBarrier) fields.barrier = String(b);
-    this._sendProposal(fields);
+    const sig = this._signalFor(sym, entry);
+    if (!sig) return;
+    this.log(`[SIGNAL] ${entry.label} on ${sym}: ${sig.conf}% · ${sig.rationale}`, 't');
+    this._execute(sym, entry, sig);
   }
 
   // ── Trade execution ────────────────────────────────────────────────────
+  _execute(sym, entry, sig) {
+    const p = this.paramsFor(entry.key);
+    const stake = this._stakeFor(p);
+    const value = buildAutoValue(entry, p);
+    value.stake = stake;
+    const fields = buildProposal(entry.typeId, entry.side, value, sym);
+
+    this.lastSignal = {
+      action: entry.side === 'down' ? 'FALL' : 'RISE',
+      conf: sig.conf, src: entry.key, stake, asset: sym,
+      label: entry.label,
+    };
+    this.log(`[TRADE] ${entry.label} $${stake.toFixed(2)} ${sym}`
+      + (fields.barrier != null ? ` barrier=${fields.barrier}` : '')
+      + (fields.multiplier ? ` x${fields.multiplier}` : '')
+      + (fields.growth_rate ? ` growth=${fields.growth_rate}` : '')
+      + ` (${sig.conf}%)`, 't');
+    this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
+    this._sendProposal(fields);
+  }
+
+  _stakeFor(p) {
+    const base = Math.max(MIN_STAKE, Math.min(MAX_STAKE, +p.stake || 1));
+    if (!p.martingale) return base;
+    const mult = Math.max(1.1, Math.min(5, +p.martMult || 2));
+    const steps = Math.min(this._martSteps, Math.max(1, +p.martSteps || 6));
+    return Math.max(MIN_STAKE, Math.min(MAX_STAKE, +(base * Math.pow(mult, steps)).toFixed(2)));
+  }
+
   _sendProposal(fields) {
     const ok = this.client?.send({ proposal: 1, subscribe: 1, ...fields });
     if (!ok) { this.activeContracts.delete('sending'); this.log('[TRADE] WS not open', 'e'); return; }
@@ -342,48 +309,33 @@ export class Engine {
     }, 15000);
   }
 
-  _execTrade(signal, asset) {
-    if (this.activeContracts.size >= 1) return;
-    asset = asset || this.selectedMarket || SYMBOLS[0].sym;
-    let stake = this.martingale.enabled ? this.martingale.currentStake : this.rfStake;
-
-    const { dur, unit: durUnit } = signal.dur
-      ? { dur: signal.dur, unit: signal.durUnit || 't' }
-      : pickOptimalDuration(signal.src, signal.conf || 80, asset, this.store.candles[asset]);
-    const ct = signal.action === 'RISE' ? 'CALL' : 'PUT';
-
-    if (!this.martingale.enabled && this.useKelly && signal.conf) {
-      const recentWR = this.reports.length >= 10
-        ? this.reports.slice(-10).filter(t => t.won).length / 10 : 0.5;
-      const pWin = Math.min(0.95, Math.max(0.5, (signal.conf / 100) * 0.7 + recentWR * 0.3));
-      const kellyFrac = calcKelly(pWin, 0.8);
-      const kellyStake = +(this.rfStake * Math.min(4, kellyFrac * 5)).toFixed(2);
-      stake = Math.max(MIN_STAKE, Math.min(MAX_STAKE, kellyStake));
-    }
-
-    this.lastSignal = { ...signal, stake, dur, asset };
-    this.log(`[TRADE] ${ct} $${stake.toFixed(2)} ${asset} ${dur}${durUnit} via ${signal.src} (${signal.conf || '?'}%)`, 't');
+  // Manual trade from the Trade tab (kept for the single-trade flow).
+  placeTrade(type, side, value) {
+    if (!this.client?.auth) { this.log('[TRADE] Authorize first', 'e'); return false; }
+    if (this.activeContracts.size >= 1) { this.toast('Contract active — wait', 'w'); return false; }
+    const sym = this.selectedMarket || SYMBOLS[0].sym;
+    const fields = buildProposal(type, side, value, sym);
+    this.lastSignal = {
+      action: side === 'down' ? 'FALL' : 'RISE', conf: 100, src: 'MANUAL',
+      stake: fields.amount, dur: fields.duration, durUnit: fields.duration_unit, asset: sym,
+    };
+    this.log(`[TRADE] ${fields.contract_type} $${fields.amount.toFixed(2)} ${sym} via MANUAL`, 't');
     this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
-    this._sendProposal({
-      contract_type: ct, amount: +stake.toFixed(2), basis: 'stake', currency: 'USD',
-      duration: dur, duration_unit: durUnit, underlying_symbol: asset,
-    });
+    this._sendProposal(fields);
+    return true;
   }
+
+  digitHistory(sym) { return this.store.digHist[sym] || []; }
 
   _onProposal(msg) {
     if (!msg.proposal) {
       this.log(`[PROP] Rejected: ${JSON.stringify(msg.error || msg)}`, 'e');
       if (this.sendingTimeout) { clearTimeout(this.sendingTimeout); this.sendingTimeout = null; }
       this.activeContracts.delete('sending');
-      if (this.tradeMode === 'DIGITS') {
-        this.dgRejectCooldown = Date.now() + 30000;
-        this.dgCooldownTicks = 60;
-      }
       return;
     }
     if (this.sendingTimeout) { clearTimeout(this.sendingTimeout); this.sendingTimeout = null; }
     const p = msg.proposal;
-    this.log(`[PROP] ${p.id} ask=${p.ask_price}`, 'i');
     this.activeContracts.delete('sending');
     if (this.activeContracts.has('pending')) { this.log('[PROP] Buy already in flight — skip duplicate', 'w'); return; }
     this.activeContracts.set('pending', { id: p.id, price: p.ask_price, time: Date.now() });
@@ -399,12 +351,11 @@ export class Engine {
       const sym = this.lastSignal?.asset || this.selectedMarket;
       this.activeContracts.set(b.contract_id, { id: b.contract_id, price: b.buy_price, time: Date.now(), sym });
       this.trades++;
-      const decimals = decimalsFor(sym);
       this.positions = [{
         id: b.contract_id, contractType: b.longcode || b.contract_type,
         symbol: sym, stake: b.buy_price, payout: null,
-        entry: null, status: 'open', sideLabel: b.contract_type, decimals,
-        openedAt: Date.now(),
+        entry: null, status: 'open', sideLabel: b.contract_type,
+        decimals: decimalsFor(sym), openedAt: Date.now(),
       }, ...this.positions];
       this.client.balance -= b.buy_price;
       this.log(`[BUY] #${b.contract_id} $${b.buy_price.toFixed(2)}`, 's');
@@ -427,45 +378,38 @@ export class Engine {
     this.toast(`${won ? 'WIN' : 'LOSS'} ${c.profit >= 0 ? '+' : ''}${c.profit.toFixed(2)}`, won ? 'win' : 'loss');
     this.log(`[${won ? 'WIN' : 'LOSS'}] ${c.profit >= 0 ? '+' : ''}${c.profit.toFixed(2)}`, won ? 's' : 'e');
 
-    if (won) { this.wins++; this.consLoss = 0; this.dgLossStreak = 0; }
+    const p = this.paramsFor(this.autoContractKey);
+    if (won) { this.wins++; this.consLoss = 0; this._martSteps = 0; }
     else {
       this.losses++; this.consLoss++;
-      if ((c.contract_type || '').startsWith('DIGIT')) this.dgLossStreak++;
-      if (this.maxConsecutiveLosses > 0 && this.consLoss >= this.maxConsecutiveLosses && this.running) {
-        this.log(`[STOP] ${this.consLoss} consecutive losses — stopping engine`, 'e');
+      if (p.martingale) this._martSteps = Math.min(Math.max(1, +p.martSteps || 6), this._martSteps + 1);
+      if (p.maxLosses > 0 && this.consLoss >= p.maxLosses && this.running) {
+        this.log(`[STOP] ${this.consLoss} consecutive losses — stopping`, 'e');
         this.stop(); this.toast(`${this.consLoss} consecutive losses — engine stopped`, 'loss');
-      }
-    }
-
-    if (this.martingale.enabled && !(c.contract_type || '').startsWith('DIGIT')) {
-      if (won) this.martingale.currentStake = this.martingale.baseStake;
-      else {
-        const capped = this.martingale.baseStake * Math.pow(this.martingale.mult, this.martingale.maxSteps);
-        this.martingale.currentStake = Math.min(capped, +(this.martingale.currentStake * this.martingale.mult).toFixed(2));
       }
     }
 
     this.pnl += c.profit;
     if (c.profit > this.bestTrade) this.bestTrade = c.profit;
     if (c.profit < this.worstTrade) this.worstTrade = c.profit;
+
     const rec = {
       id: c.contract_id,
-      action: this.lastSignal?.action || ((c.contract_type || '').startsWith('DIGIT') ? 'DIGIT' : '—'),
+      action: this.lastSignal?.label || this.lastSignal?.action || '—',
       strategy: this.lastSignal?.src || '—',
       stake: this.lastSignal?.stake || 0,
       profit: c.profit, won,
       balance: this.client.balance,
       time: new Date().toLocaleTimeString(),
-
       symbol: this.activeContracts.get(c.contract_id)?.sym
-        || this.positions.find(p => p.id === c.contract_id)?.symbol
+        || this.positions.find(x => x.id === c.contract_id)?.symbol
         || this.lastSignal?.asset || this.selectedMarket,
     };
     this.reports = [rec, ...this.reports].slice(0, 500);
-    this.positions = this.positions.filter(p => p.id !== c.contract_id);
+    this.positions = this.positions.filter(x => x.id !== c.contract_id);
     this.activeContracts.delete(c.contract_id);
-    if (this.maxTrades > 0 && this.running && this.trades >= this.maxTrades) {
-      this.stop(); this.toast(`Trade cap reached (${this.maxTrades}) — engine stopped`, 'w');
+    if (p.maxTrades > 0 && this.running && this.trades >= p.maxTrades) {
+      this.stop(); this.toast(`Trade cap reached (${p.maxTrades}) — engine stopped`, 'w');
     }
     this.emit('state', this.snapshot());
   }
@@ -474,26 +418,21 @@ export class Engine {
     if (this.sendingTimeout) { clearTimeout(this.sendingTimeout); this.sendingTimeout = null; }
     this.activeContracts.delete('sending');
     this.activeContracts.delete('pending');
-    if (msg.error) {
-      this.log(`[API] ${msg.error.message || JSON.stringify(msg.error)}`, 'e');
-      if (this.tradeMode === 'DIGITS' && this.running) {
-        this.dgRejectCooldown = Date.now() + 30000;
-        this.dgCooldownTicks = 60;
-      }
-    }
+    if (msg.error) this.log(`[API] ${msg.error.message || JSON.stringify(msg.error)}`, 'e');
   }
 
   // ── Control ────────────────────────────────────────────────────────────
   start() {
     if (!this.client?.auth) { this.log('[ERROR] Authorize first', 'e'); return false; }
     if (this.running) return false;
-    if (this.tradeMode === 'DIGITS' && !isDigitSymbol(this.autoMarket)) {
+    const entry = findAutoContract(this.autoContractKey);
+    if (entry.digitFamily && !isDigitSymbol(this.autoMarket)) {
       this.toast('Digits need a Volatility index', 'w'); return false;
     }
     this.running = true;
     this.sessionStart = Date.now();
-    this.log(`[ENGINE] Started — ${this.tradeMode} on ${this.autoMarket}`
-      + ` (min conf ${this.minConfidence}%, max ${this.maxTrades || '∞'} trades)`, 's');
+    this._martSteps = 0;
+    this.log(`[ENGINE] Started — ${entry.label} on ${this.autoMarket}`, 's');
     if (!this._watchdog) this._watchdog = setInterval(() => this._watch(), 5000);
     this.emit('state', this.snapshot());
     return true;
@@ -506,28 +445,25 @@ export class Engine {
     this.emit('state', this.snapshot());
   }
 
-  // Gates shared by both strategy loops. Returns false when the session should
-  // not open another trade.
   _sessionAllows() {
-    if (this.dgTakeProfit > 0 && this.pnl >= this.dgTakeProfit) {
+    const p = this.paramsFor(this.autoContractKey);
+    if (p.takeProfit > 0 && this.pnl >= p.takeProfit) {
       this.stop(); this.toast('Take profit reached — engine stopped', 'win'); return false;
     }
-    if (this.dgStopLoss > 0 && this.pnl <= -this.dgStopLoss) {
+    if (p.stopLoss > 0 && this.pnl <= -p.stopLoss) {
       this.stop(); this.toast('Stop loss reached — engine stopped', 'loss'); return false;
     }
-    if (this.maxTrades > 0 && this.trades >= this.maxTrades) {
-      this.stop(); this.toast(`Trade cap reached (${this.maxTrades})`, 'w'); return false;
+    if (p.maxTrades > 0 && this.trades >= p.maxTrades) {
+      this.stop(); this.toast(`Trade cap reached (${p.maxTrades})`, 'w'); return false;
     }
     return true;
   }
 
-  // Reset the session counters without touching the connection.
   resetSession() {
     this.wins = 0; this.losses = 0; this.consLoss = 0;
     this.pnl = 0; this.trades = 0; this.bestTrade = 0; this.worstTrade = 0;
     this.reports = []; this.positions = [];
-    this.dgLossStreak = 0; this.dgMartMult = 1;
-    this.martingale.currentStake = this.martingale.baseStake;
+    this._martSteps = 0;
     this.sessionStart = null;
     this.log('[ENGINE] Session stats reset', 'i');
     this.emit('state', this.snapshot());
@@ -552,34 +488,5 @@ export class Engine {
         }
       }
     }
-  }
-
-  setMode(mode) { this.tradeMode = mode; this.log(`[ENGINE] Mode → ${mode}`, 'i'); this.emit('state', this.snapshot()); }
-  setStake(kind, value) {
-    const v = Math.max(MIN_STAKE, Math.min(MAX_STAKE, +value || 0));
-    if (kind === 'rf') this.rfStake = v; else this.dgStake = v;
-    this.emit('state', this.snapshot());
-  }
-  setMartingale(patch) { this.martingale = { ...this.martingale, ...patch }; this.emit('state', this.snapshot()); }
-  setLimits(patch) {
-    if (patch.takeProfit != null) this.dgTakeProfit = Math.max(0, +patch.takeProfit || 0);
-    if (patch.stopLoss != null) this.dgStopLoss = Math.max(0, +patch.stopLoss || 0);
-    this.emit('state', this.snapshot());
-  }
-  setMarket(sym) {
-    this.autoMarket = sym;
-    if (this.tradeMode === 'DIGITS' && !isDigitSymbol(sym)) {
-      this.toast('Digits need a Volatility index — switched to Rise/Fall', 'w');
-      this.tradeMode = 'RISEFALL';
-    }
-    this.log(`[ENGINE] Auto market → ${sym}`, 'i');
-    this.emit('state', this.snapshot());
-  }
-  setAutomation(patch) {
-    if (patch.minConfidence != null) this.minConfidence = Math.max(0, Math.min(100, +patch.minConfidence || 0));
-    if (patch.maxConsecutiveLosses != null) this.maxConsecutiveLosses = Math.max(0, +patch.maxConsecutiveLosses || 0);
-    if (patch.maxTrades != null) this.maxTrades = Math.max(0, +patch.maxTrades || 0);
-    if (patch.useKelly != null) this.useKelly = !!patch.useKelly;
-    this.emit('state', this.snapshot());
   }
 }
