@@ -1,0 +1,21 @@
+{
+  "name": "deriv-replica",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host --port 12000",
+    "build": "vite build",
+    "preview": "vite preview --host --port 12000"
+  },
+  "dependencies": {
+    "@deriv-com/quill-ui": "^1.24.12",
+    "@deriv/quill-icons": "^2.14.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}
