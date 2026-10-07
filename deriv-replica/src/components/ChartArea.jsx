@@ -4,13 +4,15 @@ import { decimalsFor } from '../lib/marketStore.js';
 // Tick-line chart styled to match Deriv's dark chart surface: coral/green/red
 // accent line, faint grid, and a live price dot at the leading edge. Rendered
 // from the real live price buffer supplied by the engine.
+const TICK_WINDOW = 50;
+
 export default function ChartArea({ prices, up, sym, height = null }) {
   const W = 480;
   const H = 320;
   const PAD = 18;
 
   const { path, area, min, max, lastX, lastY, decimals } = useMemo(() => {
-    const arr = (prices || []).slice(-160);
+    const arr = (prices || []).slice(-TICK_WINDOW);
     if (arr.length < 2) {
       return { path: '', area: '', min: 0, max: 0, lastX: PAD, lastY: H / 2, decimals: 2 };
     }
