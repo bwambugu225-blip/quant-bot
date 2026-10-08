@@ -6,7 +6,15 @@
 // exist in CI.
 import { Engine } from '../src/lib/engine.js';
 import { SYMBOLS, isDigitSymbol } from '../src/lib/marketStore.js';
-import { AUTO_CONTRACTS, findAutoContract } from '../src/lib/autoStrategies.js';
+import { AUTO_CONTRACTS, findAutoContract, categoryForType } from '../src/lib/autoStrategies.js';
+
+// A catalogue that declares every contract category present and carries no
+// per-category constraints, so shaping is a pass-through. Tests that need to
+// exercise real shaping supply their own catalogue instead.
+function permissiveCatalog() {
+  const cats = new Set(Object.values(AUTO_CONTRACTS).map(c => categoryForType(c.typeId)));
+  return [...cats].map(cat => ({ contract_category: cat, contract_type: 'X', sentiment: 'up', expiry_type: 'tick' }));
+}
 
 // Deterministic PRNG so a failure is always reproducible.
 export function lcg(seed) {
@@ -173,7 +181,7 @@ export function runTape(up, seed = 1) {
 // Only the socket boundary is faked. Everything above it (engine routing,
 // strategy, proposal construction, buy) is the real code under test.
 export class FakeClient {
-  constructor() {
+  constructor(deferSpecs = false) {
     this.auth = true;
     this.balance = 1000;
     this.accountId = 'VRTC1';
@@ -181,6 +189,7 @@ export class FakeClient {
     this.ws = { readyState: 1 };
     this.sent = [];
     this.buys = [];
+    this.deferSpecs = deferSpecs;
     this._listeners = {};
   }
   on(evt, fn) { (this._listeners[evt] = this._listeners[evt] || []).push(fn); return this; }
@@ -188,12 +197,27 @@ export class FakeClient {
   send(obj) { this.sent.push(obj); return true; }
   buy(id, price) { this.buys.push({ id, price }); return true; }
   proposals() { return this.sent.filter(o => o.proposal); }
+  // The catalogue boundary. When `deferSpecs` is set the request is parked and
+  // the test drives the response through `answerContractsFor`; otherwise the
+  // catalogue is answered synchronously, as the real API does on a warm socket.
+  requestContractsFor(sym, cb) {
+    this.cfReqs = this.cfReqs || [];
+    if (this.deferSpecs) { this.cfReqs.push({ sym, cb }); return true; }
+    cb({ contracts_for: { available: permissiveCatalog() } });
+    return true;
+  }
+  answerContractsFor(sym, available) {
+    const reqs = this.cfReqs || [];
+    const i = reqs.findIndex(r => r.sym === sym);
+    const [r] = i >= 0 ? reqs.splice(i, 1) : [];
+    if (r) r.cb({ contracts_for: { available } });
+  }
 }
 
 // Engine wired to a fake client, with digit history seeded for every eligible
 // market so the scanner has a universe to rank.
-export function makeEngine({ contractKey = 'DIGITOVER:3', digits = 300, leader = 'R_75', leaderRate = 0.88 } = {}) {
-  const client = new FakeClient();
+export function makeEngine({ contractKey = 'DIGITOVER:3', digits = 300, leader = 'R_75', leaderRate = 0.88, deferSpecs = false } = {}) {
+  const client = new FakeClient(deferSpecs);
   const engine = new Engine();
   engine.attach(client);
   engine.autoContractKey = contractKey;

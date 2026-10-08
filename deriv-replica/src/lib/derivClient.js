@@ -301,8 +301,27 @@ export class DerivClient {
   _onMessage(e, source) {
     let msg; try { msg = JSON.parse(e.data); } catch (ex) { return; }
     if (msg.msg_type === 'ping' || msg.msg_type === 'pong') return;
+    if (msg.req_id && this._cfCbs && this._cfCbs[msg.req_id]) {
+      const cb = this._cfCbs[msg.req_id]; delete this._cfCbs[msg.req_id]; cb(msg); return;
+    }
     if (msg.req_id && this._payoutCbs && this._payoutCbs[msg.req_id]) { this._resolvePayout(msg); return; }
     this.emit('message', msg, source);
+  }
+
+  // The `contracts_for` catalogue for one symbol: the authoritative list of
+  // which contract types the market offers and the exact barrier/duration
+  // ranges each accepts. The engine uses it to shape a valid proposal instead
+  // of guessing. Routed over the public socket, same as payout lookups.
+  requestContractsFor(symbol, cb) {
+    const socket = (this.mws && this.mws.readyState === WebSocket.OPEN)
+      ? this.mws
+      : (this.ws && this.ws.readyState === WebSocket.OPEN ? this.ws : null);
+    if (!socket) return null;
+    const id = this.nextId();
+    this._cfCbs = this._cfCbs || {};
+    this._cfCbs[id] = cb;
+    this._sendOn(socket, { contracts_for: symbol, req_id: id });
+    return id;
   }
 
   // Buy a contract from a proposal id/price.

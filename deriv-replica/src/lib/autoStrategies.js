@@ -571,6 +571,33 @@ export const AUTO_FAMILIES = [
 
 function reg(entry) { AUTO_CONTRACTS[entry.key] = entry; }
 
+// The Deriv `contract_category` each entry maps to. Used by the engine's
+// contracts_for guard to check that a market actually offers the product
+// before a proposal is sent (and to pick a market that does). Kept here beside
+// the registry so a new entry declares its category in one place.
+export const CATEGORY_BY_TYPE = {
+  rise_fall: 'callput',
+  higher_lower: 'higherlower',
+  touch: 'touchnotouch',
+  turbos: 'turbos',
+  vanillas: 'vanilla',
+  over_under: 'digits',
+  matches_differs: 'digits',
+  even_odd: 'digits',
+  stays_goes: 'staysinout',
+  ends_between: 'endsinout',
+  runs: 'runs',
+  asians: 'asian',
+  resets: 'reset',
+  highs_lows: 'highlowticks',
+  accumulators: 'accumulator',
+  multipliers: 'multiplier',
+  lookbacks: 'lookback',
+  lookbacks_highlow: 'lookback',
+};
+
+export function categoryForType(typeId) { return CATEGORY_BY_TYPE[typeId] || null; }
+
 function riseFall(key, side, equals, label) {
   reg({
     key, typeId: 'rise_fall', side, family: 'rise_fall', label,
@@ -591,7 +618,11 @@ function dirPrice(key, typeId, side, cfg, label, note, winNote) {
     key, typeId, side, family: typeId === 'higher_lower' ? 'higher_lower' : typeId === 'touch' ? 'touch' : typeId === 'turbos' ? 'turbos' : 'vanillas',
     label, digitFamily: false,
     inputs: typeId === 'touch' ? ['stake', 'duration', 'barrier', 'strategy'] : ['stake', 'duration', 'barrier', 'strategy'],
-    defaults: { duration: typeId === 'vanillas' ? 1 : 5, unit: typeId === 'vanillas' ? 'd' : 't', barrier: '+0.10' },
+    defaults: { duration: typeId === 'vanillas' ? 2 : 5, unit: typeId === 'vanillas' ? 'm' : 't', barrier: '+0.10' },
+    // Turbos and Vanillas require the barrier on the unrealised side of the
+    // spot: a Long/Turbo-Long takes a *negative* relative barrier, a Short a
+    // positive one. Higher/Lower and Touch take either sign.
+    barrierSign: cfg.barrierSign || null,
     note, winNote,
     signal: (ctx) => cfg.vol
       ? volSignal(ctx.candles, cfg.vol === 'touch', ctx.params)
@@ -632,22 +663,22 @@ dirPrice('ONETOUCH', 'touch', 'up', { vol: 'touch' }, 'Touch', 'Wide, expanding 
 dirPrice('NOTOUCH', 'touch', 'down', { vol: 'notouch' }, 'No Touch', 'Compressed range never reaches the barrier.', 'payout-priced');
 
 // Turbos — knockout trades want the strongest sustained trend.
-dirPrice('TURBOSLONG', 'turbos', 'up', { fast: 8, slow: 30, mom: 8, rsiLo: 57, rsiHi: 43, minSlope: 0.0009, base: 66 },
+dirPrice('TURBOSLONG', 'turbos', 'up', { fast: 8, slow: 30, mom: 8, rsiLo: 57, rsiHi: 43, minSlope: 0.0009, base: 66, barrierSign: '-' },
   'Long', 'Strong sustained uptrend clears the knockout.', 'payout-priced');
-dirPrice('TURBOSSHORT', 'turbos', 'down', { fast: 8, slow: 30, mom: 8, rsiLo: 57, rsiHi: 43, minSlope: 0.0009, base: 66 },
+dirPrice('TURBOSSHORT', 'turbos', 'down', { fast: 8, slow: 30, mom: 8, rsiLo: 57, rsiHi: 43, minSlope: 0.0009, base: 66, barrierSign: '+' },
   'Short', 'Strong sustained downtrend clears the knockout.', 'payout-priced');
 
 // Vanillas — longer horizon, so a broader trend window.
-dirPrice('VANILLALONGCALL', 'vanillas', 'up', { fast: 12, slow: 40, mom: 12, rsiLo: 54, rsiHi: 46, minSlope: 0.0005, base: 63 },
+dirPrice('VANILLALONGCALL', 'vanillas', 'up', { fast: 12, slow: 40, mom: 12, rsiLo: 54, rsiHi: 46, minSlope: 0.0005, base: 63, barrierSign: '-' },
   'Call', 'Broad uptrend into expiry.', 'payout-priced');
-dirPrice('VANILLALONGPUT', 'vanillas', 'down', { fast: 12, slow: 40, mom: 12, rsiLo: 54, rsiHi: 46, minSlope: 0.0005, base: 63 },
+dirPrice('VANILLALONGPUT', 'vanillas', 'down', { fast: 12, slow: 40, mom: 12, rsiLo: 54, rsiHi: 46, minSlope: 0.0005, base: 63, barrierSign: '+' },
   'Put', 'Broad downtrend into expiry.', 'payout-priced');
 
 // ── Stays Between / Goes Outside (path-dependent range) ──────────────────
 reg({
   key: 'RANGE', typeId: 'stays_goes', side: 'up', family: 'ranges', label: 'Stays Between',
   digitFamily: false, inputs: ['stake', 'duration', 'barrier', 'barrier2', 'strategy'],
-  defaults: { duration: 5, unit: 't', barrier: '+1.51', barrier2: '-1.51' },
+  defaults: { duration: 2, unit: 'm', barrier: '+1.51', barrier2: '-1.51' },
   range: 'stays', winNote: 'payout-priced',
   note: 'Range holds without a barrier touch for the whole hold.',
   signal: (ctx) => rangeHoldSignal(ctx.candles, ctx.params, true),
@@ -655,7 +686,7 @@ reg({
 reg({
   key: 'UPORDOWN', typeId: 'stays_goes', side: 'down', family: 'ranges', label: 'Goes Outside',
   digitFamily: false, inputs: ['stake', 'duration', 'barrier', 'barrier2', 'strategy'],
-  defaults: { duration: 5, unit: 't', barrier: '+1.51', barrier2: '-1.51' },
+  defaults: { duration: 2, unit: 'm', barrier: '+1.51', barrier2: '-1.51' },
   range: 'goes', winNote: 'payout-priced',
   note: 'A barrier touch occurs at some point in the hold.',
   signal: (ctx) => rangeHoldSignal(ctx.candles, ctx.params, false),
@@ -665,7 +696,7 @@ reg({
 reg({
   key: 'EXPIRYRANGE', typeId: 'ends_between', side: 'up', family: 'ranges', label: 'Ends Between',
   digitFamily: false, inputs: ['stake', 'duration', 'barrier', 'barrier2', 'strategy'],
-  defaults: { duration: 5, unit: 't', barrier: '+1.51', barrier2: '-1.51' },
+  defaults: { duration: 2, unit: 'm', barrier: '+1.51', barrier2: '-1.51' },
   range: 'ends_in', winNote: 'payout-priced',
   note: 'Closing price lands strictly inside the band.',
   signal: (ctx) => endsRangeSignal(ctx.candles, ctx.params, true),
@@ -673,7 +704,7 @@ reg({
 reg({
   key: 'EXPIRYMISS', typeId: 'ends_between', side: 'down', family: 'ranges', label: 'Ends Outside',
   digitFamily: false, inputs: ['stake', 'duration', 'barrier', 'barrier2', 'strategy'],
-  defaults: { duration: 5, unit: 't', barrier: '+1.51', barrier2: '-1.51' },
+  defaults: { duration: 2, unit: 'm', barrier: '+1.51', barrier2: '-1.51' },
   range: 'ends_out', winNote: 'payout-priced',
   note: 'Closing price lands outside the band.',
   signal: (ctx) => endsRangeSignal(ctx.candles, ctx.params, false),
@@ -747,26 +778,29 @@ reg({
   signal: (ctx) => tickExtremeSignal(ctx.prices, ctx.params, false, ctx.params.selectedTick ?? 3),
 });
 
-// ── Lookbacks (range expansion, multiplier payout) ───────────────────────
+// Lookbacks — retired on Deriv's current options API (no `lookback` category
+// is returned by contracts_for for any synthetic index). Kept in the registry
+// and marked unavailable so the UI can show them struck through rather than
+// silently omitting the product family.
 reg({
   key: 'LBFLOATCALL', typeId: 'lookbacks', side: 'up', family: 'lookbacks', label: 'Close-Low',
-  digitFamily: false, inputs: ['stake', 'duration', 'multiplier', 'strategy'],
+  digitFamily: false, unavailable: true, inputs: ['stake', 'duration', 'multiplier', 'strategy'],
   defaults: { duration: 5, unit: 't', multiplier: 1 },
-  note: 'Rally off the low — pay rides close minus low.', winNote: 'payout-priced',
+  note: 'Rally off the low — pay rides close minus low.', winNote: 'no longer offered',
   signal: (ctx) => lookbackSignal(ctx.candles, ctx.params, 'closelow'),
 });
 reg({
   key: 'LBFLOATPUT', typeId: 'lookbacks', side: 'down', family: 'lookbacks', label: 'High-Close',
-  digitFamily: false, inputs: ['stake', 'duration', 'multiplier', 'strategy'],
+  digitFamily: false, unavailable: true, inputs: ['stake', 'duration', 'multiplier', 'strategy'],
   defaults: { duration: 5, unit: 't', multiplier: 1 },
-  note: 'Reversal off the high — pay rides high minus close.', winNote: 'payout-priced',
+  note: 'Reversal off the high — pay rides high minus close.', winNote: 'no longer offered',
   signal: (ctx) => lookbackSignal(ctx.candles, ctx.params, 'highclose'),
 });
 reg({
   key: 'LBHIGHLOW', typeId: 'lookbacks_highlow', side: 'up', family: 'lookbacks', label: 'High-Low',
-  digitFamily: false, inputs: ['stake', 'duration', 'multiplier', 'strategy'],
+  digitFamily: false, unavailable: true, inputs: ['stake', 'duration', 'multiplier', 'strategy'],
   defaults: { duration: 5, unit: 't', multiplier: 1 },
-  note: 'Directionless range play — pay rides high minus low.', winNote: 'payout-priced',
+  note: 'Directionless range play — pay rides high minus low.', winNote: 'no longer offered',
   signal: (ctx) => lookbackSignal(ctx.candles, ctx.params, 'highlow'),
 });
 
@@ -862,6 +896,14 @@ export function findAutoContract(key) {
   return AUTO_CONTRACTS[key] || AUTO_CONTRACTS['DIGITOVER:3'];
 }
 
+// Locate a registry entry by trade-type and side, so the manual Trade form can
+// reuse the same specs (barrier sign convention, categories) as the auto path.
+export function findEntryByTypeSide(typeId, side) {
+  return Object.values(AUTO_CONTRACTS).find(e => e.typeId === typeId && e.side === side)
+    || Object.values(AUTO_CONTRACTS).find(e => e.typeId === typeId)
+    || null;
+}
+
 export function contractsForFamily(familyId) {
   return Object.values(AUTO_CONTRACTS).filter(c => c.family === familyId);
 }
@@ -897,4 +939,167 @@ export function buildAutoValue(entry, params) {
     v.digit = entry.barrier;
   }
   return v;
+}
+
+// ── contracts_for-aware shaping ──────────────────────────────────────────
+// A proposal that validates against one market can be rejected by another:
+// Volatility 10/25/100 expose whole-number Vanilla strikes while V75 needs
+// decimal ones, and every index publishes its own Turbo knock-out ladder. So
+// before sending a proposal the engine asks for the market's own catalogue and
+// rewrites the barrier/duration to the values that index actually accepts.
+//
+// Returns { available, fields } — `available` is null when the catalogue is
+// not (yet) known, in which case callers should fall back to the raw fields.
+
+const UNIT_SECONDS = { s: 1, m: 60, h: 3600, d: 86400 };
+
+function parseDuration(str) {
+  const m = /^(\d+)([tsmhd])$/.exec(String(str || ''));
+  return m ? { duration: parseInt(m[1], 10), unit: m[2] } : null;
+}
+
+// Uses the catalogue's duration_unit and unit_options to build a duration that
+// is both inside [min, max] and one of the offered step values.
+function normalizeDuration(spec, wantUnit, wantDur) {
+  if (!spec) return null;
+  const unit = spec.duration_unit;
+  if (!unit || unit === 't') return null;
+  const opts = (spec.unit_options || []).map(d => ({ duration: parseInt(d, 10), unit })).filter(d => d.duration > 0);
+  if (!opts.length) return null;
+  const min = parseDuration(spec.min_contract_duration);
+  const max = parseDuration(spec.max_contract_duration);
+  const wantSec = (UNIT_SECONDS[wantUnit] || 0) * (wantDur || 0);
+  const okRange = d => {
+    const sec = UNIT_SECONDS[d.unit] * d.duration;
+    if (min && sec < UNIT_SECONDS[min.unit] * min.duration) return false;
+    if (max && sec > UNIT_SECONDS[max.unit] * max.duration) return false;
+    return true;
+  };
+  const inRange = opts.filter(okRange);
+  const pool = inRange.length ? inRange : opts;
+  if (!wantSec) return pool[0];
+  pool.sort((a, b) => Math.abs(UNIT_SECONDS[a.unit] * a.duration - wantSec) - Math.abs(UNIT_SECONDS[b.unit] * b.duration - wantSec));
+  return pool[0];
+}
+
+// Pick the catalogue row for a category that fits the intended horizon: a tick
+// hold needs the `tick` row, a seconds/minutes/hours hold the `intraday` row,
+// and a days hold the `daily` row. Some categories (turbos, vanillas) repeat
+// the same ladder across horizons; others (ranges) use *absolute* strikes on the
+// daily row and *relative* offsets on the intraday row, so choosing the wrong
+// one is the difference between a valid proposal and "offers no return".
+function chooseSpec(available, category, side, unit) {
+  const wantUp = side !== 'down';
+  let rows = available.filter(c => c.contract_category === category);
+  if (!rows.length) return null;
+  const bySent = rows.filter(c => (c.sentiment === 'up') === wantUp);
+  if (bySent.length) rows = bySent;
+  const wantExp = unit === 'd' ? ['daily'] : unit === 't' ? ['tick'] : ['intraday', 'tick'];
+  return rows.find(c => wantExp.includes(c.expiry_type)) || rows[0];
+}
+
+function relSign(s) { return /^-/.test(String(s || '')) ? '-' : '+'; }
+
+export function shapeProposal(entry, fields, available) {
+  if (!available || !available.length) return { available: null, fields };
+  const category = categoryForType(entry.typeId);
+  const offered = available.some(c => c.contract_category === category);
+  if (!offered) return { available: false, fields };
+
+  const out = { ...fields };
+  const cat = category;
+  const spec = chooseSpec(available, cat, entry.side, out.duration_unit);
+
+  if (cat === 'turbos') {
+    // Knock-out barriers move with spot; only the near-spot end of the published
+    // ladder is tradable at the minimum stake, so take the smallest magnitude on
+    // the correct side of the spot (Long below, Short above).
+    const sign = entry.barrierSign || relSign(out.barrier);
+    const choices = (spec && spec.barrier_choices) || [];
+    out.barrier = choices.length ? sign + choices[0] : String(out.barrier);
+    const nd = normalizeDuration(spec, out.duration_unit, out.duration);
+    if (nd) { out.duration = nd.duration; out.duration_unit = nd.unit; }
+    return { available: true, fields: out };
+  }
+
+  if (cat === 'vanilla') {
+    // Vanilla strikes are a spot-derived moneyness ladder that the exchange
+    // recalculates continuously. Snap to the nearest rung on the correct side
+    // of spot (Call above, Put below) from the ladder the market publishes —
+    // and, when a prior rejection has handed us the exact list the proposal
+    // endpoint enforces, from that list instead (the engine swaps it in).
+    const sign = entry.barrierSign || relSign(out.barrier);
+    const choices = (spec && spec.barrier_choices) || [];
+    if (choices.length) {
+      const mag = s => Math.abs(parseFloat(String(s).replace(/[^0-9.]/g, ''))) || 0;
+      const want = mag(out.barrier);
+      const onSide = choices.filter(c => relSign(c) === sign);
+      const pool = onSide.length ? onSide : choices;
+      out.barrier = pool.reduce((a, b) => Math.abs(mag(b) - want) < Math.abs(mag(a) - want) ? b : a);
+    } else if (spec && spec.barrier != null) {
+      out.barrier = spec.barrier;
+    }
+    const nd = normalizeDuration(spec, out.duration_unit, out.duration);
+    if (nd) { out.duration = nd.duration; out.duration_unit = nd.unit; }
+    return { available: true, fields: out };
+  }
+
+  if (cat === 'higherlower' || cat === 'touchnotouch') {
+    // A barrier typed as a raw offset ("+1.51") is often far wider than the
+    // index's own quote, which reads as "no return". Use the market's published
+    // default barrier for the chosen horizon instead. Touch/No Touch on the
+    // trend indices only offers a daily expiry, so a short hold is rejected
+    // outright and the row's own (daily) duration must be used verbatim.
+    if (spec && spec.barrier) out.barrier = spec.barrier;
+    const nd = normalizeDuration(spec, out.duration_unit, out.duration);
+    if (nd) { out.duration = nd.duration; out.duration_unit = nd.unit; }
+    else {
+      const min = parseDuration(spec?.min_contract_duration);
+      if (min) { out.duration = min.duration; out.duration_unit = min.unit; }
+    }
+    return { available: true, fields: out };
+  }
+
+  if (cat === 'staysinout' || cat === 'endsinout') {
+    const low = String(spec?.low_barrier ?? out.barrier2 ?? out.barrier ?? '');
+    const high = String(spec?.high_barrier ?? out.barrier ?? out.barrier2 ?? '');
+    // The API needs the high barrier in `barrier` and the low in `barrier2`.
+    out.barrier = high;
+    out.barrier2 = low;
+    const nd = normalizeDuration(spec, out.duration_unit, out.duration);
+    if (nd) { out.duration = nd.duration; out.duration_unit = nd.unit; }
+    return { available: true, fields: out };
+  }
+
+  if (cat === 'multiplier') {
+    // Multipliers accept only a short enumerated ladder (e.g. 80/200/400/600/800
+    // on Volatility 50, 400…4000 on Volatility 10), so take a middle rung.
+    const range = spec?.multiplier_range || spec?.multipliers;
+    if (range && range.length) out.multiplier = range[Math.floor(range.length / 2)];
+    return { available: true, fields: out };
+  }
+
+  if (cat === 'accumulator') {
+    const range = spec?.growth_rate_range;
+    if (range && range.length) out.growth_rate = range[0];
+    return { available: true, fields: out };
+  }
+
+  // Tick-window and digit products are pinned to tick durations. High/Low Tick
+  // has no duration input at all yet still requires a 5-tick expiry, so the
+  // catalogue's fixed window is written onto the proposal here.
+  if (cat === 'digits' || cat === 'highlowticks' || cat === 'runs' || cat === 'asian' || cat === 'reset') {
+    const min = parseDuration(spec?.min_contract_duration);
+    const max = parseDuration(spec?.max_contract_duration);
+    if (min && max) {
+      if (out.duration == null || out.duration < min.duration || out.duration > max.duration) {
+        out.duration = spec.min_contract_duration === spec.max_contract_duration ? min.duration
+          : Math.min(Math.max(out.duration || min.duration, min.duration), max.duration);
+        out.duration_unit = min.unit;
+      }
+    }
+    return { available: true, fields: out };
+  }
+
+  return { available: true, fields: out };
 }

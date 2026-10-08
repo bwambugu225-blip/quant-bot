@@ -6,7 +6,7 @@
 // changes the strategy, not just the label.
 import { MarketStore, SYMBOLS, isDigitSymbol, digitOf, decimalsFor } from './marketStore.js';
 import { buildProposal } from './contracts.js';
-import { findAutoContract, buildAutoValue, accuracyParams } from './autoStrategies.js';
+import { findAutoContract, buildAutoValue, accuracyParams, shapeProposal, findEntryByTypeSide, categoryForType } from './autoStrategies.js';
 import { MarketScanner, SCAN_INTERVAL_MS } from './marketScanner.js';
 import {
   evaluateUniversal, confirmCandidate, UNIVERSAL_MIN_CONF,
@@ -38,6 +38,13 @@ const WARMUP_TICKS = 100;
 // Deriv's volatility indices, which is the shortest hold whose entry can still
 // be justified by the reading that produced it (see Universal AI in AGENTS.md).
 export const UNIVERSAL_MIN_GAP_MS = 5000;
+
+// How long a market's contracts_for catalogue is trusted. Barriers for turbos,
+// vanillas and touch products are derived from the live spot and are
+// recalculated every few seconds, so a cached catalogue goes stale and would
+// make the engine propose a barrier the exchange has since moved past. One
+// minute keeps proposals valid without refetching on every tick.
+const SPEC_TTL_MS = 60000;
 
 // Only the two inputs worth exposing are stored per contract: the stake and
 // the accuracy level. Everything else (duration, barrier, digit, martingale,
@@ -101,6 +108,14 @@ export class Engine {
     // Natural cadence: when the universal AI last opened a trade. Gates the loop
     // below so it cannot fire several entries within the same few seconds.
     this._universalLastTradeAt = 0;
+
+    // Per-market `contracts_for` catalogue, keyed by symbol → array of
+    // available contract rows. Requested on first need and reused; it is the
+    // authority on which barriers and durations a market actually accepts, so
+    // the engine never sends a proposal that market will reject.
+    this._cfCache = new Map();
+    this._cfPending = new Set();
+    this._proposalRetry = null;
 
     // Execution latency, measured tick→proposal-sent and tick→contract-live.
     this._execSamples = [];
@@ -500,28 +515,117 @@ export class Engine {
 
   _executeUniversal(cand, sig) {
     const entry = cand.entry;
-    this._execStart = Date.now();
-    const p = this.universalParams();
-    const stake = this._stakeFor(p);
-    const value = buildAutoValue(entry, { ...p, duration: cand.duration, unit: cand.unit });
-    value.stake = stake;
-    const fields = buildProposal(entry.typeId, entry.side, value, cand.sym);
+    this._ensureSpecs(entry, cand.sym, () => {
+      this._execStart = Date.now();
+      const p = this.universalParams();
+      const stake = this._stakeFor(p);
+      const value = buildAutoValue(entry, { ...p, duration: cand.duration, unit: cand.unit });
+      value.stake = stake;
+      const raw = buildProposal(entry.typeId, entry.side, value, cand.sym);
 
-    // Mirror the winning contract into the engine's selected contract so the
-    // Trade tab and the stats line show what is actually running.
-    this.autoContractKey = entry.key;
-    this.autoMarket = cand.sym;
-    this.lastSignal = {
-      action: entry.side === 'down' ? 'FALL' : 'RISE',
-      conf: sig.conf, src: entry.key, stake, asset: cand.sym,
-      label: entry.label, dur: cand.durLabel,
-      rationale: sig.rationale,
-    };
-    this.log(`[AI] ${entry.label} ${cand.durLabel} $${stake.toFixed(2)} ${cand.sym}`
-      + ` (${sig.conf}% · ${sig.rationale})`, 's');
-    this.toast(`AI: ${entry.label} on ${cand.sym} @ ${sig.conf}%`, 'info');
-    this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
-    this._sendProposal(fields);
+      // Mirror the winning contract into the engine's selected contract so the
+      // Trade tab and the stats line show what is actually running.
+      this.autoContractKey = entry.key;
+      this.autoMarket = cand.sym;
+      this.lastSignal = {
+        action: entry.side === 'down' ? 'FALL' : 'RISE',
+        conf: sig.conf, src: entry.key, stake, asset: cand.sym,
+        label: entry.label, dur: cand.durLabel,
+        rationale: sig.rationale,
+      };
+      this.log(`[AI] ${entry.label} ${cand.durLabel} $${stake.toFixed(2)} ${cand.sym}`
+        + ` (${sig.conf}% · ${sig.rationale})`, 's');
+      this.toast(`AI: ${entry.label} on ${cand.sym} @ ${sig.conf}%`, 'info');
+      this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
+      this._shapedSend(entry, cand.sym, raw);
+    });
+  }
+
+  // ── Market capability (contracts_for) ──────────────────────────────────
+  //
+  // Before the first proposal on a market, fetch that market's catalogue once
+  // and cache it. `run` executes immediately when the catalogue is known (the
+  // common case after the first pass) or on arrival; if the socket is not up
+  // yet, `run` is invoked with no specs so the trade is never silently dropped.
+  _ensureSpecs(entry, sym, run) {
+    const cached = this._cfCache.get(sym);
+    if (cached && (Date.now() - cached.at) < SPEC_TTL_MS) {
+      if (!cached.avail.length) return;   // fetch failed earlier — skip, do not send blind
+      const { available } = shapeProposal(entry, {}, cached.avail);
+      if (available === false) {
+        this.log(`[AI] ${entry.label} not offered on ${sym} — skipping`, 'w');
+        return;
+      }
+      run();
+      return;
+    }
+    // A fetch is already in flight for this market; skip this tick and let the
+    // cadence retry once the catalogue lands, rather than sending unshaped.
+    if (this._cfPending.has(sym)) return;
+    const started = this.client?.requestContractsFor?.(sym, msg => {
+      this._cfPending.delete(sym);
+      if (msg?.error || !msg?.contracts_for) {
+        this._cfCache.set(sym, { at: Date.now(), avail: [] });   // cache the miss
+        return;
+      }
+      const avail = msg.contracts_for.available || [];
+      this._cfCache.set(sym, { at: Date.now(), avail });
+      const { available } = shapeProposal(entry, {}, avail);
+      if (available === false) {
+        this.log(`[AI] ${entry.label} not offered on ${sym} — skipping`, 'w');
+        return;
+      }
+      run();
+    });
+    if (started == null) { run(); return; }   // no socket yet
+    if (!this._cfCache.has(sym)) this._cfPending.add(sym);
+  }
+
+  _specs(sym) {
+    const c = this._cfCache.get(sym);
+    if (!c) return null;
+    // Overlay any barrier list the exchange has handed us via a rejection. This
+    // survives a catalogue refresh, so a market's real ladder is learned once.
+    if (this._cfBarrierFix?.size) {
+      for (const row of c.avail) {
+        const fix = this._cfBarrierFix.get(`${sym}:${row.contract_category}`);
+        if (fix) { row.barrier_choices = fix; row.barrier = fix[0]; }
+      }
+    }
+    return c.avail;
+  }
+
+  // A rejection that names the acceptable barriers is a gift: it is the exact
+  // list the proposal endpoint enforces, which can differ from the ladder the
+  // catalogue advertises (spot-derived vanillas on R_75 diverge in particular).
+  // Remember it for the session so the retry — and every later entry on this
+  // market — snaps to that list.
+  _learnBarriers(sym, category, message) {
+    // Barriers contain decimal points, so stop at the sentence period only —
+    // never at a '.' that sits inside a number.
+    const m = /Barriers available are ([^;]+?)\.(?:\s|$)/i.exec(message || '');
+    if (!m) return;
+    const choices = m[1].split(',').map(s => s.trim()).filter(Boolean);
+    if (!choices.length) return;
+    this._cfBarrierFix = this._cfBarrierFix || new Map();
+    this._cfBarrierFix.set(`${sym}:${category}`, choices);
+  }
+
+  // Warm the per-market catalogue for every subscribed symbol so the first live
+  // entry has the specs in hand and is shaped correctly on the spot.
+  _prefetchSpecs() {
+    if (!this.client?.requestContractsFor) return;
+    for (const s of SYMBOLS) {
+      const sym = s.sym;
+      const c = this._cfCache.get(sym);
+      if ((c && (Date.now() - c.at) < SPEC_TTL_MS) || this._cfPending.has(sym)) continue;
+      const started = this.client.requestContractsFor(sym, msg => {
+        this._cfPending.delete(sym);
+        const avail = (msg && !msg.error && msg.contracts_for) ? (msg.contracts_for.available || []) : [];
+        this._cfCache.set(sym, { at: Date.now(), avail });
+      });
+      if (started != null) this._cfPending.add(sym);
+    }
   }
 
   // ── Multi-market scan ──────────────────────────────────────────────────
@@ -556,25 +660,41 @@ export class Engine {
 
   // ── Trade execution ────────────────────────────────────────────────────
   _execute(sym, entry, sig) {
-    this._execStart = Date.now();
-    const p = this.paramsFor(entry.key);
-    const stake = this._stakeFor(p);
-    const value = buildAutoValue(entry, p);
-    value.stake = stake;
-    const fields = buildProposal(entry.typeId, entry.side, value, sym);
+    this._ensureSpecs(entry, sym, () => {
+      this._execStart = Date.now();
+      const p = this.paramsFor(entry.key);
+      const stake = this._stakeFor(p);
+      const value = buildAutoValue(entry, p);
+      value.stake = stake;
+      const raw = buildProposal(entry.typeId, entry.side, value, sym);
 
-    this.lastSignal = {
-      action: entry.side === 'down' ? 'FALL' : 'RISE',
-      conf: sig.conf, src: entry.key, stake, asset: sym,
-      label: entry.label,
+      this.lastSignal = {
+        action: entry.side === 'down' ? 'FALL' : 'RISE',
+        conf: sig.conf, src: entry.key, stake, asset: sym,
+        label: entry.label,
+      };
+      this.log(`[TRADE] ${entry.label} $${stake.toFixed(2)} ${sym}`
+        + (raw.barrier != null ? ` barrier=${raw.barrier}` : '')
+        + (raw.multiplier ? ` x${raw.multiplier}` : '')
+        + (raw.growth_rate ? ` growth=${raw.growth_rate}` : '')
+        + ` (${sig.conf}%)`, 't');
+      this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
+      this._shapedSend(entry, sym, raw);
+    });
+  }
+
+  // Shape and send a proposal, with a single retry that force-refreshes the
+  // market catalogue first. Spot-derived barriers (turbo/vanilla/range) can be
+  // rejected if the exchange has re-priced them since the catalogue was read;
+  // re-reading and re-sending turns that rare race into a successful trade
+  // instead of a dropped signal. Non-barrier rejections are not retried.
+  _shapedSend(entry, sym, raw, attempt = 0) {
+    const { fields } = shapeProposal(entry, raw, this._specs(sym));
+    const retry = attempt > 0 ? null : () => {
+      this._learnBarriers(sym, categoryForType(entry.typeId), this._lastProposalError);
+      this._shapedSend(entry, sym, raw, attempt + 1);
     };
-    this.log(`[TRADE] ${entry.label} $${stake.toFixed(2)} ${sym}`
-      + (fields.barrier != null ? ` barrier=${fields.barrier}` : '')
-      + (fields.multiplier ? ` x${fields.multiplier}` : '')
-      + (fields.growth_rate ? ` growth=${fields.growth_rate}` : '')
-      + ` (${sig.conf}%)`, 't');
-    this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
-    this._sendProposal(fields);
+    this._sendProposal(fields, retry);
   }
 
   _stakeFor(p) {
@@ -585,12 +705,14 @@ export class Engine {
     return Math.max(MIN_STAKE, Math.min(MAX_STAKE, +(base * Math.pow(mult, steps)).toFixed(2)));
   }
 
-  _sendProposal(fields) {
+  _sendProposal(fields, retry) {
     const ok = this.client?.send({ proposal: 1, ...fields });
     if (!ok) { this.activeContracts.delete('sending'); this.log('[TRADE] WS not open', 'e'); return; }
+    this._proposalRetry = retry || null;
     if (this.sendingTimeout) clearTimeout(this.sendingTimeout);
     this.sendingTimeout = setTimeout(() => {
       this.activeContracts.delete('sending');
+      this._proposalRetry = null;
       this.log(`[TRADE] Proposal timed out (no response in ${PROPOSAL_TIMEOUT / 1000}s)`, 'w');
     }, PROPOSAL_TIMEOUT);
   }
@@ -600,14 +722,17 @@ export class Engine {
     if (!this.client?.auth) { this.log('[TRADE] Authorize first', 'e'); return false; }
     if (this.activeContracts.size >= 1) { this.toast('Contract active — wait', 'w'); return false; }
     const sym = this.selectedMarket || SYMBOLS[0].sym;
-    const fields = buildProposal(type, side, value, sym);
-    this.lastSignal = {
-      action: side === 'down' ? 'FALL' : 'RISE', conf: 100, src: 'MANUAL',
-      stake: fields.amount, dur: fields.duration, durUnit: fields.duration_unit, asset: sym,
-    };
-    this.log(`[TRADE] ${fields.contract_type} $${fields.amount.toFixed(2)} ${sym} via MANUAL`, 't');
-    this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
-    this._sendProposal(fields);
+    const raw = buildProposal(type, side, value, sym);
+    const entry = findEntryByTypeSide(type, side) || { typeId: type, side, label: raw.contract_type, inputs: [] };
+    this._ensureSpecs(entry, sym, () => {
+      this.lastSignal = {
+        action: side === 'down' ? 'FALL' : 'RISE', conf: 100, src: 'MANUAL',
+        stake: raw.amount, dur: raw.duration, durUnit: raw.duration_unit, asset: sym,
+      };
+      this.log(`[TRADE] ${raw.contract_type} $${raw.amount.toFixed(2)} ${sym} via MANUAL`, 't');
+      this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
+      this._shapedSend(entry, sym, raw);
+    });
     return true;
   }
 
@@ -618,8 +743,17 @@ export class Engine {
       this.log(`[PROP] Rejected: ${JSON.stringify(msg.error || msg)}`, 'e');
       if (this.sendingTimeout) { clearTimeout(this.sendingTimeout); this.sendingTimeout = null; }
       this.activeContracts.delete('sending');
+      const retry = this._proposalRetry;
+      this._proposalRetry = null;
+      this._lastProposalError = msg.error?.message || '';
+      // A spot-derived barrier can be rejected if the exchange re-priced it
+      // between the catalogue read and the proposal. Adopt the barrier list the
+      // rejection reports and resend once; anything else (bad duration,
+      // insufficient stake, no return) is a genuine configuration miss.
+      if (retry && /Barrier|barrier|return/i.test(this._lastProposalError)) retry();
       return;
     }
+    this._proposalRetry = null;
     if (this.sendingTimeout) { clearTimeout(this.sendingTimeout); this.sendingTimeout = null; }
     const p = msg.proposal;
     this.activeContracts.delete('sending');
@@ -748,6 +882,7 @@ export class Engine {
     this._execSamples = [];
     // Prime the scanner at once so the lightning path has a ranking to use on
     // the very first tick rather than waiting a full cadence.
+    this._prefetchSpecs();
     if (this.universal) this._runUniversalScan();
     else this._runScan();
     this.log(`[ENGINE] Started — ${this.universal ? 'UNIVERSAL AI (any market, any contract)' : entry.label}`
