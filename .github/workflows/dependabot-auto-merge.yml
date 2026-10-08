@@ -21,7 +21,7 @@ jobs:
     if: github.event.workflow_run.event == 'pull_request'
     steps:
       - name: Merge only if the tests passed
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const { owner, repo } = context.repo;
