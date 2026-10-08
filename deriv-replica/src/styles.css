@@ -1278,6 +1278,15 @@ body {
 .scanner-row.is-active .scanner-row__fill { background: var(--coral, #ff444f); }
 .scanner-row__val { text-align: right; font-variant-numeric: tabular-nums; font-size: 10.5px; }
 
+/* Universal AI rows: not clickable, so they render as a plain grid, with the
+   contract label first and the market · duration in the flexible middle. */
+.scanner-row--static { cursor: default; grid-template-columns: 16px 1fr 84px 46px; }
+.scanner-row--static:hover { background: transparent; }
+.scanner-row__mid { color: var(--text-secondary, #8a8f9c); font-size: 10.5px; text-align: right; }
+.scanner-row__val--win { color: #3fb68b; font-weight: 600; }
+.menu-section.universal.is-on { border-color: rgba(75, 180, 179, 0.35); }
+.menu-section.universal.is-on .menu-section__title { color: #4bb4b3; }
+
 /* ── Per-contract Automate controls ─────────────────────────────────── */
 .automate-run { display: flex; align-items: center; gap: 10px; }
 .automate-run__status { display: flex; align-items: center; gap: 6px; min-width: 0; }

@@ -8,6 +8,9 @@ import { MarketStore, SYMBOLS, isDigitSymbol, digitOf, decimalsFor } from './mar
 import { buildProposal } from './contracts.js';
 import { findAutoContract, buildAutoValue, accuracyParams } from './autoStrategies.js';
 import { MarketScanner, SCAN_INTERVAL_MS } from './marketScanner.js';
+import {
+  evaluateUniversal, confirmCandidate, UNIVERSAL_MIN_CONF,
+} from './universalAI.js';
 
 const MIN_STAKE = 0.35;
 const MAX_STAKE = 200;
@@ -77,6 +80,15 @@ export class Engine {
     this._lastSwitchReason = '';
     this._scanAt = 0;
     this._startPending = false;
+
+    // Universal AI: scan every market and every contract at once and trade
+    // whichever reading clears the confidence bar. Off by default so the
+    // single-contract flow is unchanged until the user opts in.
+    this.universal = false;
+    this.universalMinConf = UNIVERSAL_MIN_CONF;
+    this.universalCandidates = [];
+    this._universalAt = 0;
+    this._universalPasses = 0;
 
     // Execution latency, measured tick→proposal-sent and tick→contract-live.
     this._execSamples = [];
@@ -234,6 +246,15 @@ export class Engine {
       autoSwitch: this.autoSwitch,
       scan: this.scanner.top(8),
       scanCount: this.scanner.scans,
+      universal: this.universal,
+      universalMinConf: this.universalMinConf,
+      universalScan: this.universalCandidates.slice(0, 10).map(c => ({
+        sym: c.sym, key: c.key, label: c.label, family: c.family,
+        conf: c.conf, dur: c.durLabel,
+      })),
+      universalCount: this.universalCandidates.length,
+      universalPasses: this._universalPasses,
+      universalParams: { ...this.universalParams() },
       exec: this.execStats(),
       warmup: this.warmup(),
       startPending: this._startPending,
@@ -300,6 +321,15 @@ export class Engine {
 
     if (!this.running || this.activeContracts.size > 0) return;
     this._tickAt = Date.now();
+
+    // Universal AI: on every tick, re-confirm the top candidate from the last
+    // background pass against the tape that just printed. Any market, any
+    // contract, auto duration. The re-confirmation is what keeps the entry
+    // honest — the trade is justified by the current reading, not a stale one.
+    if (this.universal) {
+      if (this._sessionAllows()) this._universalTick();
+      return;
+    }
 
     // ── The hot path ──────────────────────────────────────────────────────
     // A trade is decided here, synchronously, on the tick that just printed —
@@ -375,6 +405,99 @@ export class Engine {
     if (!sig) return;
     this._logSignal(entry, sym, sig);
     this._execute(sym, entry, sig);
+  }
+
+  // ── Universal AI ────────────────────────────────────────────────────────
+  //
+  // One pass scores every market against every contract at several durations.
+  // Like the single-contract scan it runs on its own cadence, never inside the
+  // tick handler, so the trade path stays short. The result is a short list of
+  // readings that already clear the bar; the tick handler re-checks the top of
+  // that list on the live tape before acting.
+  _runUniversalScan() {
+    if (!this.universal) return;
+    if (Date.now() - this._universalAt < SCAN_INTERVAL_MS) return;
+    this._universalAt = Date.now();
+    this.universalCandidates = evaluateUniversal({
+      store: this.store,
+      symbols: SYMBOLS.map(s => s.sym),
+      params: this.universalParams(),
+      minConf: this.universalMinConf,
+    });
+    this._universalPasses++;
+    this.emit('universal', this.universalCandidates);
+  }
+
+  // The trade decision for universal mode, taken synchronously on the tick.
+  _universalTick() {
+    const list = this.universalCandidates;
+    if (!list.length) return;
+    const p = this.universalParams();
+    // Candidates are sorted best-first; take the first live reading that still
+    // clears the bar. A confirmation failure on the top one does not block the
+    // runner-up, which is how a fading edge is skipped instead of traded.
+    for (const cand of list.slice(0, 8)) {
+      const sig = confirmCandidate(cand, this.store, p.accuracy, this.universalMinConf);
+      if (!sig) continue;
+      this._executeUniversal(cand, sig);
+      return;
+    }
+  }
+
+  // Dedicated parameter block for universal mode so the stake and risk caps are
+  // independent of whichever contract the user last had selected.
+  universalParams() {
+    if (!this._universalParams) {
+      this._universalParams = {
+        stake: 1, accuracy: 'max', ...accuracyParams('max'),
+        takeProfit: 0, stopLoss: 0, maxTrades: 0,
+        martingale: false, martMult: 2, martSteps: 3,
+      };
+    }
+    return this._universalParams;
+  }
+
+  setUniversal(on) {
+    this.universal = !!on;
+    this._universalAt = 0;
+    this.universalCandidates = [];
+    if (this.universal) this._runUniversalScan();
+    this.log(`[AI] Universal scanner ${this.universal ? 'on — any market, any contract' : 'off'}`, 'i');
+    this.emit('state', this.snapshot());
+  }
+
+  setUniversalMinConf(v) {
+    const n = Math.max(50, Math.min(99, Math.round(+v || UNIVERSAL_MIN_CONF)));
+    this.universalMinConf = n;
+    this._universalAt = 0;
+    this.log(`[AI] Minimum confidence → ${n}%`, 'i');
+    this.emit('state', this.snapshot());
+  }
+
+  _executeUniversal(cand, sig) {
+    const entry = cand.entry;
+    this._execStart = Date.now();
+    const p = this.universalParams();
+    const stake = this._stakeFor(p);
+    const value = buildAutoValue(entry, { ...p, duration: cand.duration, unit: cand.unit });
+    value.stake = stake;
+    const fields = buildProposal(entry.typeId, entry.side, value, cand.sym);
+
+    // Mirror the winning contract into the engine's selected contract so the
+    // Trade tab and the stats line show what is actually running.
+    this.autoContractKey = entry.key;
+    this.autoMarket = cand.sym;
+    this.lastSignal = {
+      action: entry.side === 'down' ? 'FALL' : 'RISE',
+      conf: sig.conf, src: entry.key, stake, asset: cand.sym,
+      label: entry.label, dur: cand.durLabel,
+      rationale: sig.rationale,
+    };
+    this.log(`[AI] ${entry.label} ${cand.durLabel} $${stake.toFixed(2)} ${cand.sym}`
+      + ` (${sig.conf}% · ${sig.rationale})`, 's');
+    this.toast(`AI: ${entry.label} on ${cand.sym} @ ${sig.conf}%`, 'info');
+    this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
+    this._sendProposal(fields);
   }
 
   // ── Multi-market scan ──────────────────────────────────────────────────
@@ -568,7 +691,10 @@ export class Engine {
     if (!this.client?.auth) { this.log('[ERROR] Authorize first', 'e'); return false; }
     if (this.running) return false;
     const entry = findAutoContract(this.autoContractKey);
-    if (entry.digitFamily && !isDigitSymbol(this.autoMarket)) {
+    // Universal mode is market- and contract-agnostic, so the digit-vs-index
+    // constraint does not apply: the scan never proposes a contract on a market
+    // its family cannot use.
+    if (!this.universal && entry.digitFamily && !isDigitSymbol(this.autoMarket)) {
       this.toast('Digits need a Volatility index', 'w'); return false;
     }
 
@@ -593,12 +719,14 @@ export class Engine {
     this._lastSwitch = Date.now();
     this._lastSwitchReason = '';
     this._scanAt = 0;
+    this._universalAt = 0;
     this._execSamples = [];
     // Prime the scanner at once so the lightning path has a ranking to use on
     // the very first tick rather than waiting a full cadence.
-    this._runScan();
-    this.log(`[ENGINE] Started — ${entry.label}`
-      + (this.autoSwitch ? ' · multi-market scanner on' : ` on ${this.autoMarket}`)
+    if (this.universal) this._runUniversalScan();
+    else this._runScan();
+    this.log(`[ENGINE] Started — ${this.universal ? 'UNIVERSAL AI (any market, any contract)' : entry.label}`
+      + (this.universal ? ` @ ≥${this.universalMinConf}%` : this.autoSwitch ? ' · multi-market scanner on' : ` on ${this.autoMarket}`)
       + ` · ${warm.have} ticks warm`, 's');
     if (!this._watchdog) this._watchdog = setInterval(() => this._watch(), 1000);
     this.emit('state', this.snapshot());
@@ -609,6 +737,14 @@ export class Engine {
   // enough for every strategy window (the widest is ~160, scaled by duration)
   // to have a populated sample.
   warmup() {
+    if (this.universal) {
+      // Universal mode trades whatever market qualifies, so it is warm as soon
+      // as a reasonable slice of the universe has history — not just one index.
+      const syms = SYMBOLS.map(s => s.sym);
+      const ready = syms.filter(sym => (this.store.digHist[sym] || []).length >= WARMUP_TICKS).length;
+      const need = Math.max(1, Math.ceil(syms.length * 0.5));
+      return { sym: 'ALL', have: ready, need, ready: ready >= need, markets: syms.length };
+    }
     const sym = this.autoMarket;
     const need = WARMUP_TICKS;
     const have = (this.store.digHist[sym] || []).length;
@@ -624,7 +760,7 @@ export class Engine {
   }
 
   _sessionAllows() {
-    const p = this.paramsFor(this.autoContractKey);
+    const p = this.universal ? this.universalParams() : this.paramsFor(this.autoContractKey);
     if (p.takeProfit > 0 && this.pnl >= p.takeProfit) {
       this.stop(); this.toast('Take profit reached — engine stopped', 'win'); return false;
     }
@@ -649,7 +785,8 @@ export class Engine {
 
   _watch() {
     const now = Date.now();
-    this._runScan();
+    this._runUniversalScan();
+    if (!this.universal) this._runScan();
     for (const [k, v] of this.activeContracts.entries()) {
       if (!v || typeof v.time !== 'number') continue;
       const age = now - v.time;

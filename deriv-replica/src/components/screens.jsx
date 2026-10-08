@@ -122,6 +122,9 @@ export function AutomateScreen({ engine, state, onLogin }) {
   const contractKey = state?.autoContractKey || 'CALL';
   const entry = findAutoContract(contractKey);
   const p = state?.params || {};
+  const universal = !!state?.universal;
+  const minConf = state?.universalMinConf ?? 80;
+  const uni = state?.universalScan || [];
   const autoMarket = state?.autoMarket || SYMBOLS[0].sym;
   const market = SYMBOLS.find(s => s.sym === autoMarket) || SYMBOLS[0];
 
@@ -240,6 +243,73 @@ export function AutomateScreen({ engine, state, onLogin }) {
         <Stat label="Streak" value={state?.consLoss ? `-${state.consLoss}` : '0'} tone={state?.consLoss ? 'loss' : undefined} />
         <Stat label="Best" value={`+${(state?.bestTrade ?? 0).toFixed(2)}`} tone="win" />
         <Stat label="Worst" value={`${(state?.worstTrade ?? 0).toFixed(2)}`} tone="loss" />
+      </div>
+
+      {/* ── Universal AI: any market, any contract, auto duration ───── */}
+      <div className={`menu-section universal${universal ? ' is-on' : ''}`}>
+        <div className="menu-section__title">Universal AI</div>
+        <label className="menu-toggle">
+          <span>Scan every market &amp; contract</span>
+          <input
+            type="checkbox"
+            checked={universal}
+            onChange={e => engine.setUniversal(e.target.checked)}
+          />
+        </label>
+        <div className="automate-note">
+          {universal
+            ? `Every index is scored against every contract at several auto-picked durations. The best reading that clears ${minConf}% is traded — any market, any contract, duration chosen automatically.`
+            : 'Off. The engine trades the single contract selected below. Turn this on to let it choose the contract, the market and the duration itself.'}
+        </div>
+
+        {universal && (
+          <>
+            <div className="menu-toggle">
+              <span>Minimum confidence</span>
+              <div className="menu-seg">
+                {[70, 80, 90].map(v => (
+                  <button
+                    key={v}
+                    className={`menu-seg__btn${minConf === v ? ' is-active' : ''}`}
+                    onClick={() => engine.setUniversalMinConf(v)}
+                    type="button"
+                  >
+                    {v}%
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="engine-stats">
+              <Stat label="Qualifying" value={uni.length} />
+              <Stat label="Passes" value={state?.universalPasses ?? 0} />
+              <Stat label="Scan p95" value={exec?.p95 != null ? `${exec.p95}ms` : '—'} />
+            </div>
+
+            {uni.length > 0 ? (
+              <div className="scanner-board">
+                <div className="scanner-board__head">
+                  <span>Best opportunities</span>
+                  <span>{minConf}%+</span>
+                </div>
+                {uni.map((r, i) => (
+                  <div key={`${r.key}-${r.sym}-${r.dur}`} className="scanner-row scanner-row--static">
+                    <span className="scanner-row__rank">{i + 1}</span>
+                    <span className="scanner-row__sym">{r.label}</span>
+                    <span className="scanner-row__mid">{r.sym} · {r.dur}</span>
+                    <span className="scanner-row__val scanner-row__val--win">{r.conf}%</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="automate-note">
+                {state?.warmup && !state.warmup.ready
+                  ? 'Loading market data…'
+                  : `No reading currently clears ${minConf}%. The engine is waiting rather than forcing a trade.`}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* ── Contract ────────────────────────────────────────────────── */}

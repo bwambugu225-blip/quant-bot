@@ -70,6 +70,31 @@ Dependabot auto-merge workflow only merges when that `test` job is green.
   START once. The market feed preloads ~1100 ticks per symbol on connect, so in
   practice the tape is already warm and the start is immediate.
 
+### Universal AI (any market, any contract, auto duration)
+
+- `src/lib/universalAI.js` evaluates the **entire registry** — every contract
+  family, across all indices, at several auto-picked durations — and returns the
+  readings whose confidence clears the configured bar (`UNIVERSAL_MIN_CONF`,
+  default 80%). The engine's `universal` mode keeps that list warm in the
+  background and, on each tick, re-confirms the top candidate against the live
+  tape before placing the trade (so a faded edge is skipped and the runner-up is
+  tried). This is separate from the single-contract scanner and is off by
+  default.
+- Candidate parameters deliberately strip `minConf` out of the strategy and
+  apply the threshold centrally, so "80%" means the same thing for every
+  contract. The strategy's own z-score / edge gates stay on.
+- The trade mirrors the winner back into `autoContractKey` / `autoMarket`, so
+  the Trade tab and stats line show what is actually running. Execution uses the
+  same proposal path (and the same sub-100ms decision timing) as the single
+  contract.
+- Honest limit: only contracts whose own fair win rate is high can reach a high
+  confidence. A Matches bet (~10% fair) can never honestly read 80%; the
+  evaluator reports what the tape supports and never inflates a reading to clear
+  the bar. On Deriv's fair random-walk indices an 80% reading is a statement
+  about the measured recent sample, not a guarantee about the next contract.
+
+  practice the tape is already warm and the start is immediate.
+
 ## Deployment (Vercel)
 
 `bot.html` is kept at `/bot.html` and the React rebuild is served at the root
