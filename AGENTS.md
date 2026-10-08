@@ -98,6 +98,27 @@ Dependabot auto-merge workflow only merges when that `test` job is green.
   the bar. On Deriv's fair random-walk indices an 80% reading is a statement
   about the measured recent sample, not a guarantee about the next contract.
 
+### Proposals are shaped to the market's own catalogue
+
+- A contract can only be placed on a market that offers it, with a barrier and
+  duration that market accepts. The engine reads `contracts_for` per market
+  (`derivClient.requestContractsFor`), caches it with a TTL (`SPEC_TTL_MS`,
+  60s) and prefetches every subscribed symbol at start. `shapeProposal` in
+  `autoStrategies.js` then picks the correct catalogue row and a market-valid
+  barrier/multiplier/duration; a contract the market does not list is skipped,
+  never proposed blind.
+- Spot-derived barriers (turbos, vanillas, ranges, touch products) are
+  recalculated by the exchange every few seconds, so a catalogue read can be
+  stale by the time the proposal lands. Vanilla strikes snap to the nearest
+  in-the-money rung; turbo and higher/lower/touch barriers snap to the
+  published ladder. On a barrier rejection the engine adopts the ladder the
+  rejection reports and resends once (non-barrier rejections are left logged).
+- Honest limit: R_75's vanilla ladder moves by tens of points within a second,
+  so those two contracts can still be rejected even on the retry. The engine
+  skips them rather than sending a barrier the exchange will not take. A live
+  harness (`scripts/verify-contracts.mjs`, run with `node`) fires every
+  contract/symbol pair against the Deriv API to catch such gaps.
+
 ### Tick-based contract coverage
 
 The registry covers Deriv's full tick-based catalogue (70 contracts). The
