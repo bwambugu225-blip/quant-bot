@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host --port 12000",
     "build": "vite build",
-    "preview": "vite preview --host --port 12000"
+    "preview": "vite preview --host --port 12000",
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "@deriv-com/quill-ui": "^1.24.12",

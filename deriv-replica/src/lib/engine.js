@@ -21,6 +21,12 @@ const PROPOSAL_TIMEOUT = 6000;
 // The UI reads the p50/p95 from the snapshot.
 const EXEC_WINDOW = 40;
 
+// Ticks of history required before the engine will place its first trade. The
+// market feed preloads 1100 ticks per symbol on connect, so in practice this is
+// already satisfied by the time the user starts — the gate exists so the very
+// first signal can never be computed on a cold tape.
+const WARMUP_TICKS = 100;
+
 // Only the two inputs worth exposing are stored per contract: the stake and
 // the accuracy level. Everything else (duration, barrier, digit, martingale,
 // risk caps) is a per-family default, so switching contracts never leaves a
@@ -70,6 +76,7 @@ export class Engine {
     this._lastSwitch = 0;
     this._lastSwitchReason = '';
     this._scanAt = 0;
+    this._startPending = false;
 
     // Execution latency, measured tick→proposal-sent and tick→contract-live.
     this._execSamples = [];
@@ -228,6 +235,8 @@ export class Engine {
       scan: this.scanner.top(8),
       scanCount: this.scanner.scans,
       exec: this.execStats(),
+      warmup: this.warmup(),
+      startPending: this._startPending,
       sessionStart: this.sessionStart,
       lastSignal: this.lastSignal,
       positions: this.positions,
@@ -279,6 +288,15 @@ export class Engine {
 
     const closed = this.store.onTick(sym, price, epoch);
     this.emit('tick', { sym, price, epoch, digit: digitOf(price, sym) });
+
+    // A pending start engages itself the moment the warm-up target market has
+    // enough history. This is what makes the start seamless: the user clicks
+    // START, the preload finishes, and trading begins without a second click.
+    if (this._startPending && this.warmup().ready) {
+      this.log('[ENGINE] Warm-up complete — starting', 's');
+      this.start();
+      return;
+    }
 
     if (!this.running || this.activeContracts.size > 0) return;
     this._tickAt = Date.now();
@@ -553,6 +571,22 @@ export class Engine {
     if (entry.digitFamily && !isDigitSymbol(this.autoMarket)) {
       this.toast('Digits need a Volatility index', 'w'); return false;
     }
+
+    // Warm-up gate: never start on a cold tape. The engine waits until the
+    // market it will trade has 100 ticks of history, so the first signal is
+    // computed on real data instead of the first few prints. The tick stream
+    // starts the run automatically once the tape is warm — the user clicks
+    // START once and the bot engages by itself.
+    const warm = this.warmup();
+    if (!warm.ready) {
+      this._startPending = true;
+      this.log(`[ENGINE] Warming up — ${warm.have}/${warm.need} ticks before starting`, 'i');
+      this.toast(`Warming up — ${warm.have}/${warm.need} ticks`, 'info');
+      this.emit('state', this.snapshot());
+      return false;
+    }
+
+    this._startPending = false;
     this.running = true;
     this.sessionStart = Date.now();
     this._martSteps = 0;
@@ -560,15 +594,30 @@ export class Engine {
     this._lastSwitchReason = '';
     this._scanAt = 0;
     this._execSamples = [];
+    // Prime the scanner at once so the lightning path has a ranking to use on
+    // the very first tick rather than waiting a full cadence.
+    this._runScan();
     this.log(`[ENGINE] Started — ${entry.label}`
-      + (this.autoSwitch ? ' · multi-market scanner on' : ` on ${this.autoMarket}`), 's');
+      + (this.autoSwitch ? ' · multi-market scanner on' : ` on ${this.autoMarket}`)
+      + ` · ${warm.have} ticks warm`, 's');
     if (!this._watchdog) this._watchdog = setInterval(() => this._watch(), 1000);
     this.emit('state', this.snapshot());
     return true;
   }
 
+  // Warm-up status for the market the engine is about to trade. 100 ticks is
+  // enough for every strategy window (the widest is ~160, scaled by duration)
+  // to have a populated sample.
+  warmup() {
+    const sym = this.autoMarket;
+    const need = WARMUP_TICKS;
+    const have = (this.store.digHist[sym] || []).length;
+    return { sym, have, need, ready: have >= need };
+  }
+
   stop() {
     this.running = false;
+    this._startPending = false;
     if (this._watchdog) { clearInterval(this._watchdog); this._watchdog = null; }
     this.log('[ENGINE] Stopped', 'w');
     this.emit('state', this.snapshot());

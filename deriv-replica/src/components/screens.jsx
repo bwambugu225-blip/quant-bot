@@ -210,19 +210,23 @@ export function AutomateScreen({ engine, state, onLogin }) {
       {/* ── Run + session stats ─────────────────────────────────────── */}
       <div className="automate-run">
         <button
-          className={`engine-run${running ? ' is-running' : ''}`}
+          className={`engine-run${running ? ' is-running' : ''}${state?.startPending ? ' is-warming' : ''}`}
           onClick={() => (running ? engine.stop() : engine.start())}
           type="button"
           disabled={!auth}
         >
-          {running ? '■  STOP' : '▶  START'}
+          {running ? '■  STOP' : state?.startPending ? '◌  WARMING' : '▶  START'}
         </button>
         <div className="automate-run__status">
-          <span className={`engine-run__dot${running ? ' is-on' : ''}`} />
+          <span className={`engine-run__dot${running ? ' is-on' : ''}${state?.startPending ? ' is-warm' : ''}`} />
           <span className="automate-run__label">
             {running
               ? `${entry.label} · ${autoMarket}${started ? ` · ${Math.max(0, Math.round((Date.now() - started) / 60000))}m` : ''}`
-              : 'Idle — nothing is trading'}
+              : state?.startPending
+                ? `Warming up — ${state?.warmup?.have ?? 0}/${state?.warmup?.need ?? 100} ticks loaded, starts automatically`
+                : state?.warmup && !state.warmup.ready
+                  ? `Loading market data — ${state.warmup.have}/${state.warmup.need} ticks`
+                  : 'Idle — nothing is trading'}
           </span>
         </div>
       </div>

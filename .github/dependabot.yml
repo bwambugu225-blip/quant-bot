@@ -1,0 +1,32 @@
+# Keep dependencies current so the app stays patched without manual bumps.
+version: 2
+updates:
+  # Application dependencies (React, Vite, the Deriv UI packages).
+  - package-ecosystem: npm
+    directory: /deriv-replica
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(dev-deps)"
+    groups:
+      # Patch/minor updates arrive as a single PR so CI runs once, not ten times.
+      production-minor-patch:
+        applies-to: version-updates
+        dependency-type: production
+        update-types: [minor, patch]
+      development-minor-patch:
+        applies-to: version-updates
+        dependency-type: development
+        update-types: [minor, patch]
+
+  # The actions used by the workflows in this repository.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "chore(ci)"

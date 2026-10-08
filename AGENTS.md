@@ -33,10 +33,42 @@ npm install
 npm run dev       # vite dev server on port 12000
 npm run build     # emits ./dist
 npm run preview   # serve built output on port 12000
+npm test          # node --test tests/*.test.mjs
 ```
 
 Verification approach: serve the build, drive it with the browser, and sample
-screenshot colours to confirm they match Deriv tokens.
+screenshot colours to confirm they match Deriv tokens. Run `npm test` before
+pushing — CI (`.github/workflows/ci.yml`) runs the same command and the
+Dependabot auto-merge workflow only merges when that `test` job is green.
+
+### Testing and CI
+
+- `tests/` holds the suite, run with Node's built-in test runner (no extra
+  dependency). `tests/helpers.mjs` builds deterministic tick streams and a fake
+  WebSocket client — only the socket boundary (`send`/`buy`) is faked; engine
+  routing, strategies, and proposal construction are the real code.
+- `tests/engine.test.mjs` covers the registry, the 55 contracts firing in their
+  own regime, accuracy ordering, duration-aware analysis, the multi-market
+  scanner, lightning execution, proposal→buy→settle, warm-up, and the session
+  guards.
+- `.github/dependabot.yml` keeps npm deps and workflow actions current.
+  Dependabot PRs run with a read-only token, so
+  `.github/workflows/dependabot-auto-merge.yml` reacts to the **CI run
+  completing** and merges only when the `test` job concluded `success`, the PR
+  is Dependabot-authored, non-draft, and still open.
+
+### Duration-aware auto-trading and warm-up
+
+- `durationProfile(params)` in `autoStrategies.js` turns the selected duration
+  into the scale of the analysis. A longer hold widens every strategy window
+  (`windowScale`) and raises the evidence bar (`durZ`), so a 1-minute bet is a
+  harder, longer-context question than a 1-tick bet. Duration is also echoed on
+  the signal (`sig.dur`) and flows into the proposal.
+- The engine will not start on a cold tape. `start()` queues a pending start if
+  the target market has fewer than `WARMUP_TICKS` (100) ticks, and `_onTick`
+  engages the run automatically the moment the tape is warm — the user clicks
+  START once. The market feed preloads ~1100 ticks per symbol on connect, so in
+  practice the tape is already warm and the start is immediate.
 
 ## Deployment (Vercel)
 

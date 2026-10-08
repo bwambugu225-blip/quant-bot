@@ -1,0 +1,51 @@
+name: CI
+
+# Runs on every PR and on pushes to the default branch. The Dependabot
+# auto-merge workflow keys off this workflow's result, so the test job here is
+# the gate that decides whether a dependency bump is allowed to merge.
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+# A new commit supersedes an in-flight run for the same ref.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deriv-replica
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: deriv-replica/package-lock.json
+      - run: npm ci
+      - run: npm test
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: deriv-replica
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: deriv-replica/package-lock.json
+      - run: npm ci
+      - run: npm run build

@@ -1189,6 +1189,7 @@ body {
   font-size: 12px; font-weight: 800; padding: 8px 16px; letter-spacing: 0.3px;
 }
 .engine-run.is-running { background: var(--sell, #ec3f3f); color: #fff; }
+.engine-run.is-warming { background: #d9a441; color: #201400; }
 
 .engine-stats {
   display: grid; grid-template-columns: repeat(4, 1fr);
@@ -1209,6 +1210,7 @@ body {
   background: #5c616d;
 }
 .engine-run__dot.is-on { background: var(--buy, #4bb4b3); box-shadow: 0 0 0 3px rgba(75, 180, 179, 0.18); }
+.engine-run__dot.is-warm { background: #d9a441; box-shadow: 0 0 0 3px rgba(217, 164, 65, 0.18); }
 
 .automate-reset {
   margin-top: 12px; width: 100%; height: 34px; cursor: pointer;

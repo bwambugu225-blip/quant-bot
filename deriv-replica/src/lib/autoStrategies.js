@@ -56,6 +56,29 @@ export function accuracyParams(levelId) {
   return { accuracy: l.id, minConf: l.minConf, minEdge: l.minEdge, zMult: l.zMult, maxLosses: l.maxLosses };
 }
 
+// ── duration ─────────────────────────────────────────────────────────────
+//
+// The duration the user picks is not decoration: a 1-tick bet and a 1-hour bet
+// are different questions. A long hold has more time for the regime that
+// justified the entry to decay, so it needs a longer evidence base and a
+// stronger reading before it fires. This turns the selected duration into the
+// scale of the analysis rather than a value the strategy ignores.
+//
+// Everything is expressed in approximate ticks so seconds, minutes and hours
+// become comparable (~2 ticks/second on Deriv's volatility indices).
+const TICKS_PER_UNIT = { t: 1, s: 2, m: 120, h: 7200, d: 172800 };
+
+export function durationProfile(params = {}) {
+  const dur = Math.max(1, +params.duration || 1);
+  const unit = params.unit || 't';
+  const horizon = Math.min(5000, dur * (TICKS_PER_UNIT[unit] || 1));
+  // Gentler than sqrt so a 5-tick default barely moves but a 1-hour bet
+  // materially widens the window it looks through.
+  const windowScale = Math.min(2.5, 1 + 0.3 * Math.log2(Math.max(1, horizon)));
+  const durZ = Math.min(0.8, 0.15 * Math.log2(Math.max(1, horizon)));
+  return { dur, unit, horizon, windowScale, durZ };
+}
+
 // ── digit tuning, one row per barrier ────────────────────────────────────
 //
 // baseline = the fair win probability of that exact contract, so the strategy
@@ -90,7 +113,8 @@ const MATCH_TUNING = { baseline: 0.1, zMin: 4.0, W: 160 };
 const DIFF_TUNING = { baseline: 0.9, zMin: 1.2, W: 60 };
 
 function digitSignal(digits, kind, barrier, tune, params) {
-  const W = params.window || tune.W;
+  const prof = durationProfile(params);
+  const W = Math.round(Math.max(params.window || tune.W, tune.W) * prof.windowScale);
   const w = digits.slice(-W);
   const n = w.length;
   if (n < Math.min(40, W)) return null;
@@ -119,7 +143,7 @@ function digitSignal(digits, kind, barrier, tune, params) {
   const p = mk == null ? emp : 0.6 * emp + 0.4 * mk;
   const base = tune.baseline;
   const z = zScore(p, base, n);
-  const zMin = (params.zMin > 0 ? params.zMin : tune.zMin) * (params.zMult || 1);
+  const zMin = (params.zMin > 0 ? params.zMin : tune.zMin) * (params.zMult || 1) + prof.durZ;
   if (z < zMin) return null;
 
   const edge = p - base;
@@ -133,6 +157,7 @@ function digitSignal(digits, kind, barrier, tune, params) {
   return {
     conf, p, z,
     rationale: `${kind}${barrier} · p=${(p * 100).toFixed(1)}% (break-even ${(base * 100).toFixed(0)}%, z=${z.toFixed(1)})`,
+    dur: `${prof.dur}${prof.unit}`,
     now: cur,
   };
 }
@@ -145,28 +170,37 @@ function closesOf(candles) { return candles.map(c => c.close); }
 // thresholds, so a Turbo (needs a strong sustained move) behaves differently
 // from a Rise/Fall (accepts a mild tilt).
 function trendSignal(candles, dir, cfg, params) {
+  const prof = durationProfile(params);
   const n = candles.length;
-  if (n < Math.max(cfg.slow + 2, 22)) return null;
+  // A longer hold needs a longer history to confirm the trend, so the slow
+  // window (and the required history) scales with the selected duration.
+  const slow = Math.round(cfg.slow * prof.windowScale);
+  if (n < Math.max(slow + 2, 22)) return null;
   const cl = closesOf(candles);
-  const fast = ema(cl, cfg.fast);
-  const slow = ema(cl, cfg.slow);
-  if (fast == null || slow == null) return null;
+  const fast = ema(cl, Math.max(2, Math.round(cfg.fast * prof.windowScale)));
+  const slowE = ema(cl, slow);
+  if (fast == null || slowE == null) return null;
   const r = rsi(cl, 14) ?? 50;
-  const momBars = cfg.mom || 5;
+  const momBars = Math.max(2, Math.round((cfg.mom || 5) * prof.windowScale));
   const mom = cl[n - 1] - cl[n - 1 - momBars];
-  const slope = (fast - slow) / (slow || 1e-9);
+  const slope = (fast - slowE) / (slowE || 1e-9);
 
   const want = dir === 'up' ? 1 : -1;
   if (Math.sign(slope) !== want || Math.sign(mom) !== want) return null;
   const rOk = dir === 'up' ? r > cfg.rsiLo : r < cfg.rsiHi;
   if (!rOk) return null;
-  if (Math.abs(slope) < cfg.minSlope) return null;
+  // Longer holds clear a higher bar: the move must be more decisive.
+  if (Math.abs(slope) < cfg.minSlope * (1 + prof.durZ)) return null;
 
   const strength = Math.min(1, Math.abs(slope) / (cfg.minSlope * 3));
   const conf = Math.round(Math.min(96, cfg.base + strength * 26 + (dir === 'up' ? r - 50 : 50 - r) * 0.3));
   const minConf = params.minConf ?? 0;
   if (conf < minConf) return null;
-  return { conf, rationale: `${dir === 'up' ? 'bull' : 'bear'} trend · slope ${(slope * 100).toFixed(3)}% · RSI ${r.toFixed(0)}` };
+  return {
+    conf,
+    rationale: `${dir === 'up' ? 'bull' : 'bear'} trend · slope ${(slope * 100).toFixed(3)}% · RSI ${r.toFixed(0)}`,
+    dur: `${prof.dur}${prof.unit}`,
+  };
 }
 
 // Volatility-regime detection for Touch and No Touch. The short-term average
@@ -175,41 +209,56 @@ function trendSignal(candles, dir, cfg, params) {
 // likely to be reached) and <1 when it is contracting (the barrier is likely
 // to hold).
 function volSignal(candles, wantTouch, params) {
+  const prof = durationProfile(params);
   const n = candles.length;
-  if (n < 32) return null;
+  const shortP = Math.max(3, Math.round(5 * prof.windowScale));
+  const longP = Math.max(12, Math.round(30 * prof.windowScale));
+  if (n < longP + 2) return null;
   const tr = c => c.high - c.low;
   const atr = (arr, p) => arr.slice(-p).reduce((s, c) => s + tr(c), 0) / p;
-  const short = atr(candles, 5);
-  const long = atr(candles, 30) || 1e-9;
+  const short = atr(candles, shortP);
+  const long = atr(candles, longP) || 1e-9;
   const expansion = short / long;
 
   if (wantTouch) {
-    if (expansion < 1.3) return null;
-    const conf = Math.round(Math.min(95, 62 + (expansion - 1.3) * 45));
-    return { conf, rationale: `volatility expanding · x${expansion.toFixed(2)}` };
+    // More time in the trade makes the barrier easier to reach, so a long
+    // Touch can accept a little less expansion; a short one needs more.
+    const need = 1.3 - prof.durZ * 0.25;
+    if (expansion < need) return null;
+    const conf = Math.round(Math.min(95, 62 + (expansion - need) * 45));
+    return { conf, rationale: `volatility expanding · x${expansion.toFixed(2)}`, dur: `${prof.dur}${prof.unit}` };
   }
-  if (expansion > 0.75) return null;
-  const conf = Math.round(Math.min(95, 62 + (0.75 - expansion) * 45));
-  return { conf, rationale: `volatility contracting · x${expansion.toFixed(2)}` };
+  // No Touch must hold the whole time, so a longer hold demands a tighter,
+  // more clearly contracting range.
+  const cap = 0.75 - prof.durZ * 0.25;
+  if (expansion > cap) return null;
+  const conf = Math.round(Math.min(95, 62 + (cap - expansion) * 45));
+  return { conf, rationale: `volatility contracting · x${expansion.toFixed(2)}`, dur: `${prof.dur}${prof.unit}` };
 }
 
 // Accumulators need a quiet, mean-reverting market: price oscillating inside a
 // tight band with no directional drift. That is the only regime where the
 // barrier survives to maturity.
 function accuSignal(candles, params) {
+  const prof = durationProfile(params);
   const n = candles.length;
-  if (n < 30) return null;
+  const p20 = Math.max(10, Math.round(20 * prof.windowScale));
+  if (n < p20 + 4) return null;
   const cl = closesOf(candles);
-  const sd = stddev(cl, 20);
-  const mean = sma(cl, 20);
+  const sd = stddev(cl, p20);
+  const mean = sma(cl, p20);
   if (sd == null || mean == null || mean === 0) return null;
   const width = (2 * sd) / mean;
-  const drift = Math.abs(cl[n - 1] - cl[n - 21]) / mean;
-  if (width > 0.0004 || drift > 0.0003) return null;
-  const conf = Math.round(Math.min(95, 66 + (0.0004 - width) * 20000 + (0.0003 - drift) * 10000));
+  const drift = Math.abs(cl[n - 1] - cl[n - 1 - p20]) / mean;
+  // A longer hold must stay inside a tighter band for longer, so the allowed
+  // width and drift shrink as duration grows.
+  const wCap = 0.0004 / (1 + prof.durZ);
+  const dCap = 0.0003 / (1 + prof.durZ);
+  if (width > wCap || drift > dCap) return null;
+  const conf = Math.round(Math.min(95, 66 + (wCap - width) * 20000 + (dCap - drift) * 10000));
   const minConf = params.minConf ?? 0;
   if (conf < minConf) return null;
-  return { conf, rationale: `tight band · width ${(width * 100).toFixed(3)}% · drift ${(drift * 100).toFixed(3)}%` };
+  return { conf, rationale: `tight band · width ${(width * 100).toFixed(3)}% · drift ${(drift * 100).toFixed(3)}%`, dur: `${prof.dur}${prof.unit}` };
 }
 
 // ── registry ─────────────────────────────────────────────────────────────
@@ -366,22 +415,24 @@ reg({
 });
 
 function evenOddSignal(digits, want, params) {
-  const tune = { baseline: 0.5, zMin: 2.1, W: 100 };
-  const W = params.window || tune.W;
+  const prof = durationProfile(params);
+  const W = Math.round(100 * prof.windowScale);
   const w = digits.slice(-W);
   const n = w.length;
   if (n < Math.min(40, W)) return null;
   const even = w.filter(d => d % 2 === 0).length;
   const p = want === 'even' ? even / n : 1 - even / n;
   const z = zScore(p, 0.5, n);
-  const zMin = tune.zMin * (params.zMult || 1);
+  // Parity has no house edge, so a longer hold raises both the evidence bar and
+  // the minimum edge it must show.
+  const zMin = 2.1 * (params.zMult || 1) + prof.durZ;
   if (z < zMin) return null;
   const edge = p - 0.5;
-  if (edge < (params.minEdge ?? 0.01)) return null;
+  if (edge < (params.minEdge ?? 0.01) + prof.durZ * 0.01) return null;
   const conf = Math.round(Math.max(60, Math.min(96, 60 + z * 5 + edge * 70)));
   const minConf = params.minConf ?? 0;
   if (conf < minConf) return null;
-  return { conf, p, z, rationale: `${want} · p=${(p * 100).toFixed(1)}% (z=${z.toFixed(1)})` };
+  return { conf, p, z, rationale: `${want} · p=${(p * 100).toFixed(1)}% (z=${z.toFixed(1)})`, dur: `${prof.dur}${prof.unit}` };
 }
 
 // ── lookup helpers ───────────────────────────────────────────────────────
