@@ -1246,6 +1246,14 @@ body {
   background: rgba(255, 68, 79, 0.12);
 }
 .automate-market__chip:disabled { opacity: 0.3; cursor: not-allowed; }
+.automate-mini {
+  height: 26px; padding: 0 12px; cursor: pointer; border-radius: 6px;
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+  background: transparent; color: var(--text-secondary, #8a8f9c);
+  font-size: 11px; font-weight: 700;
+}
+.automate-mini:hover:not(:disabled) { color: #fff; border-color: var(--coral, #ff444f); }
+.automate-mini:disabled { opacity: 0.35; cursor: default; }
 .automate-note { font-size: 10.5px; color: var(--text-secondary, #8a8f9c); margin: 6px 0 0; line-height: 1.35; }
 
 /* ── Multi-market scanner board ─────────────────────────────────────── */

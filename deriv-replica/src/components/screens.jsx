@@ -125,6 +125,9 @@ export function AutomateScreen({ engine, state, onLogin }) {
   const universal = !!state?.universal;
   const minConf = state?.universalMinConf ?? 80;
   const uni = state?.universalScan || [];
+  const up = state?.universalParams || {};
+  const uniMarkets = state?.universalSymbols || SYMBOLS.map(s => s.sym);
+  const uniPreferred = state?.universalMarkets || null;
   const autoMarket = state?.autoMarket || SYMBOLS[0].sym;
   const market = SYMBOLS.find(s => s.sym === autoMarket) || SYMBOLS[0];
 
@@ -139,6 +142,7 @@ export function AutomateScreen({ engine, state, onLogin }) {
       ? entry.barrier : 3
   );
   const [advanced, setAdvanced] = React.useState(false);
+  const [uniMoney, setUniMoney] = React.useState(false);
 
   // Live scanner board: refresh when a scan pass publishes, so the ranking
   // moves on screen without a full engine-state round trip.
@@ -282,9 +286,96 @@ export function AutomateScreen({ engine, state, onLogin }) {
 
             <div className="engine-stats">
               <Stat label="Qualifying" value={uni.length} />
+              <Stat label="Markets" value={uniMarkets.length} />
               <Stat label="Passes" value={state?.universalPasses ?? 0} />
               <Stat label="Scan p95" value={exec?.p95 != null ? `${exec.p95}ms` : '—'} />
             </div>
+
+            {/* Preferred markets — narrow the AI to the indices you want. */}
+            <div className="menu-toggle">
+              <span>Preferred markets</span>
+              <button
+                className="automate-mini"
+                onClick={() => engine.clearUniversalMarkets()}
+                type="button"
+                disabled={!uniPreferred}
+              >
+                All
+              </button>
+            </div>
+            <div className="automate-note">
+              {uniPreferred
+                ? `Trading ${uniMarkets.length} of ${SYMBOLS.length} markets — ${uniMarkets.join(', ')}. Tap a chip to add or remove it.`
+                : `Trading every market (${SYMBOLS.length}). Tap a chip to narrow the AI to just the markets you pick.`}
+            </div>
+            <div className="automate-market__grid">
+              {SYMBOLS.map(s => (
+                <button
+                  key={s.sym}
+                  className={`automate-market__chip${uniPreferred && uniPreferred.includes(s.sym) ? ' is-active' : ''}`}
+                  onClick={() => engine.toggleUniversalMarket(s.sym)}
+                  title={s.name}
+                  type="button"
+                >
+                  {s.sym}
+                </button>
+              ))}
+            </div>
+
+            {/* Stake, martingale and risk caps for the AI itself. */}
+            <button className="automate-advanced" onClick={() => setUniMoney(m => !m)} type="button">
+              {uniMoney ? '▾' : '▸'} Money management
+            </button>
+            {uniMoney && (
+              <>
+                <Stepper
+                  label="Base stake"
+                  value={up.stake ?? 1}
+                  min={0.35}
+                  max={200}
+                  onChange={v => engine.setUniversalParams({ stake: v })}
+                />
+                <label className="menu-toggle">
+                  <span>Martingale</span>
+                  <input
+                    type="checkbox"
+                    checked={!!up.martingale}
+                    onChange={e => engine.setUniversalParams({ martingale: e.target.checked })}
+                  />
+                </label>
+                {up.martingale && (
+                  <>
+                    <Stepper
+                      label="Multiplier"
+                      value={up.martMult ?? 2}
+                      step={0.5}
+                      min={1.1}
+                      max={5}
+                      onChange={v => engine.setUniversalParams({ martMult: v })}
+                    />
+                    <Stepper
+                      label="Max steps"
+                      value={up.martSteps ?? 3}
+                      step={1}
+                      min={1}
+                      max={12}
+                      decimals={0}
+                      onChange={v => engine.setUniversalParams({ martSteps: v })}
+                    />
+                    <div className="automate-note">
+                      After a loss the next stake is multiplied by {up.martMult ?? 2}, up to{' '}
+                      {up.martSteps ?? 3} step{(up.martSteps ?? 3) === 1 ? '' : 's'} — a run of{' '}
+                      {up.martSteps ?? 3} losses caps the ladder. A win resets it to the base stake.
+                    </div>
+                  </>
+                )}
+                <Stepper label="Take profit" value={up.takeProfit ?? 0} step={1} min={0} max={10000} onChange={v => engine.setUniversalParams({ takeProfit: v })} />
+                <Stepper label="Stop loss" value={up.stopLoss ?? 0} step={1} min={0} max={10000} onChange={v => engine.setUniversalParams({ stopLoss: v })} />
+                <Stepper label="Max consecutive losses" value={up.maxLosses ?? 0} step={1} min={0} max={50} decimals={0} onChange={v => engine.setUniversalParams({ maxLosses: v })} />
+                <Stepper label="Max trades this session" value={up.maxTrades ?? 0} step={5} min={0} max={500} decimals={0} onChange={v => engine.setUniversalParams({ maxTrades: v })} />
+                <div className="automate-note">0 = unlimited. Take profit, stop loss and the trade cap stop the engine automatically.</div>
+              </>
+            )}
 
             {uni.length > 0 ? (
               <div className="scanner-board">

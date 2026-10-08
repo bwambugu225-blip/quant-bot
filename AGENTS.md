@@ -97,6 +97,22 @@ Dependabot auto-merge workflow only merges when that `test` job is green.
   evaluator reports what the tape supports and never inflates a reading to clear
   the bar. On Deriv's fair random-walk indices an 80% reading is a statement
   about the measured recent sample, not a guarantee about the next contract.
+- **Preferred markets.** The user can narrow the AI to the indices they want.
+  `engine.universalMarkets` is an include list — `null` means the whole universe,
+  and the first chip tap starts a set (see `toggleUniversalMarket` /
+  `setUniversalMarkets` / `clearUniversalMarkets`). `universalSymbols()` resolves
+  it in registry order and both `_runUniversalScan` and `warmup()` honour it, so
+  a narrowed AI neither scans nor waits on excluded markets. The Automate tab
+  renders the chip grid plus a "Money management" panel.
+- **Martingale.** The AI has its own parameter block (`universalParams()` /
+  `setUniversalParams`) so stake, martingale and the risk caps never inherit a
+  value from whichever single contract is selected. Each bought contract pins
+  the params it was opened under (`_onBuy`), and settlement reads them back
+  (`_onContract`) instead of `paramsFor(autoContractKey)`. That was the bug: in
+  universal mode the winner is mirrored into `autoContractKey`, whose params
+  have martingale off, so a losing run never escalated the stake. A loss steps
+  the ladder (`_stakeFor` → `base × mult^steps`), a win resets it, and it is
+  capped at `martSteps`.
 
 ### Proposals are shaped to the market's own catalogue
 

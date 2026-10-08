@@ -143,3 +143,145 @@ test('universal warm-up waits for a slice of the universe, not one market', () =
   assert.equal(w.sym, 'ALL');
   assert.ok(w.need >= 1 && w.need <= SYMBOLS.length);
 });
+
+// ── preferred markets ────────────────────────────────────────────────────
+// Universal AI must let anyone steer it to the markets they want. With no
+// preference it scans the whole universe; picking a subset narrows the scan.
+
+test('the universe defaults to every market', () => {
+  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3' });
+  assert.equal(engine.universalMarkets, null);
+  assert.deepEqual(engine.universalSymbols(), SYMBOLS.map(s => s.sym));
+});
+
+test('picking a subset narrows the universal scan to those markets', () => {
+  // R_75 is the strongly-biased leader, but it is excluded here, so its edge
+  // must not surface at all.
+  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3', leader: 'R_25', leaderRate: 0.95 });
+  engine.setUniversalMarkets(['R_10', 'R_25', 'R_50']);
+  assert.deepEqual(engine.universalSymbols(), ['R_10', 'R_25', 'R_50']);
+
+  engine.setUniversal(true);
+  engine.running = true;
+  engine._universalAt = 0;
+  engine._runUniversalScan();
+  assert.ok(engine.universalCandidates.length > 0, 'the chosen markets should yield candidates');
+  assert.ok(engine.universalCandidates.every(c => ['R_10', 'R_25', 'R_50'].includes(c.sym)),
+    'the scan must not surface a market the user excluded');
+});
+
+test('the first tap starts a preference and the second adds to it', () => {
+  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3' });
+  engine.toggleUniversalMarket('R_75');
+  assert.deepEqual(engine.universalSymbols(), ['R_75'], 'the first tap picks just that market');
+  engine.toggleUniversalMarket('R_25');
+  assert.deepEqual(engine.universalSymbols(), ['R_25', 'R_75'], 'a second tap adds to the set');
+  engine.toggleUniversalMarket('R_75');
+  assert.deepEqual(engine.universalSymbols(), ['R_25'], 'tapping a picked market removes it');
+});
+
+test('a candidate on an excluded market is never proposed', () => {
+  const { engine, client } = makeEngine({ contractKey: 'DIGITOVER:3', leader: 'R_10', leaderRate: 0.95 });
+  engine.setUniversalMarkets(['R_10']); // R_75 is excluded
+  engine.setUniversal(true);
+  engine.running = true;
+  engine._universalAt = 0;
+  engine._runUniversalScan();
+  assert.ok(engine.universalCandidates.every(c => c.sym === 'R_10'));
+
+  // Universal mode re-confirms the best *allowed* candidate on any tick, so a
+  // tick from an excluded market still cannot produce an entry on it: every
+  // proposal carries an allowed symbol.
+  for (let i = 0; i < 4; i++) { engine.activeContracts.clear(); tick(engine, 'R_75', 5000 + i); }
+  assert.ok(client.proposals().length > 0, 'an allowed market must still trade');
+  assert.ok(client.proposals().every(p => p.underlying_symbol === 'R_10'),
+    'no proposal may be placed on an excluded market');
+});
+
+test('clearing the preference restores the whole universe', () => {
+  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3' });
+  engine.toggleUniversalMarket('R_10');
+  assert.ok(engine.universalMarkets);
+  engine.clearUniversalMarkets();
+  assert.equal(engine.universalMarkets, null);
+  assert.deepEqual(engine.universalSymbols(), SYMBOLS.map(s => s.sym));
+});
+
+test('turning every market off falls back to all rather than an empty universe', () => {
+  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3' });
+  for (const s of SYMBOLS) engine.toggleUniversalMarket(s.sym);
+  assert.equal(engine.universalMarkets, null, 'an empty set must fall back to all');
+  assert.ok(engine.universalSymbols().length === SYMBOLS.length);
+});
+
+test('warm-up is scoped to the preferred markets', () => {
+  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3' });
+  engine.setUniversalMarkets(['R_10', 'R_25']);
+  engine.setUniversal(true);
+  const w = engine.warmup();
+  assert.equal(w.markets, 2, 'warm-up must only require the chosen markets');
+  assert.equal(w.need, 1, 'a two-market set needs only one of them warm');
+});
+
+// ── martingale ───────────────────────────────────────────────────────────
+// Universal AI must actually escalate after a loss. The settlement path used
+// the mirrored contract's params (martingale off), so the ladder never stepped.
+
+test('universal martingale escalates the stake after a loss', () => {
+  const { engine, client } = makeEngine({ contractKey: 'DIGITOVER:3', leader: 'R_75', leaderRate: 0.95 });
+  engine.setUniversal(true);
+  engine.running = true;
+  engine.setUniversalParams({ martingale: true, martMult: 2, martSteps: 3, stake: 1 });
+  engine._universalAt = 0;
+  engine._runUniversalScan();
+  const sym = engine.universalCandidates[0].sym;
+
+  // First entry: base stake.
+  tick(engine, sym, 5000.44);
+  const first = client.proposals().at(-1);
+  assert.equal(first.amount, 1, 'the first entry is the base stake');
+
+  // Settle it as a loss; the ladder must step once.
+  engine._onBuy({ buy: { contract_id: 1, buy_price: 1, contract_type: 'DIGITOVER', longcode: 'x' } });
+  engine._onContract({ contract_id: 1, status: 'lost', profit: -1, is_sold: 1 });
+  assert.equal(engine._martSteps, 1, 'a loss must advance the martingale ladder');
+
+  // Next entry after the cadence window: stake must be base × multiplier.
+  engine._universalLastTradeAt = Date.now() - UNIVERSAL_MIN_GAP_MS - 1;
+  engine.activeContracts.clear();
+  tick(engine, sym, 5000.99);
+  const second = client.proposals().at(-1);
+  assert.equal(second.amount, 2, 'the next entry must be the martingale stake');
+});
+
+test('universal martingale resets to the base stake after a win', () => {
+  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3', leader: 'R_75', leaderRate: 0.95 });
+  engine.setUniversal(true);
+  engine.running = true;
+  engine.setUniversalParams({ martingale: true, martMult: 2, martSteps: 3, stake: 1 });
+  engine._martSteps = 2;
+
+  engine._onBuy({ buy: { contract_id: 5, buy_price: 4, contract_type: 'DIGITOVER', longcode: 'x' } });
+  engine._onContract({ contract_id: 5, status: 'won', profit: 4, is_sold: 1 });
+  assert.equal(engine._martSteps, 0, 'a win must reset the ladder');
+});
+
+test('martingale is capped at the configured number of steps', () => {
+  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3', leader: 'R_75', leaderRate: 0.95 });
+  engine.setUniversal(true);
+  engine.running = true;
+  engine.setUniversalParams({ martingale: true, martMult: 2, martSteps: 2, stake: 1 });
+  for (let i = 1; i <= 5; i++) {
+    engine._onBuy({ buy: { contract_id: i, buy_price: 1, contract_type: 'DIGITOVER', longcode: 'x' } });
+    engine._onContract({ contract_id: i, status: 'lost', profit: -1, is_sold: 1 });
+  }
+  assert.equal(engine._martSteps, 2, 'the ladder must not exceed max steps');
+});
+
+test('universal params are independent of the selected contract', () => {
+  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3' });
+  engine.setParams({ stake: 99, martingale: true });
+  engine.setUniversalParams({ stake: 2 });
+  assert.equal(engine.universalParams().stake, 2, 'the AI stake must not inherit the contract stake');
+  assert.equal(engine.universalParams().martingale, false, 'the AI must not inherit the contract martingale');
+});

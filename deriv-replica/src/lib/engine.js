@@ -103,6 +103,10 @@ export class Engine {
     this.universal = false;
     this.universalMinConf = UNIVERSAL_MIN_CONF;
     this.universalCandidates = [];
+    // Preferred markets for Universal AI. null = every market; a non-empty list
+    // narrows the scan to just those indices so the user can steer the AI away
+    // from markets they do not want to trade.
+    this.universalMarkets = null;
     this._universalAt = 0;
     this._universalPasses = 0;
     // Natural cadence: when the universal AI last opened a trade. Gates the loop
@@ -275,6 +279,8 @@ export class Engine {
       scanCount: this.scanner.scans,
       universal: this.universal,
       universalMinConf: this.universalMinConf,
+      universalMarkets: this.universalMarkets ? this.universalMarkets.slice() : null,
+      universalSymbols: this.universalSymbols(),
       universalScan: this.universalCandidates.slice(0, 10).map(c => ({
         sym: c.sym, key: c.key, label: c.label, family: c.family,
         conf: c.conf, dur: c.durLabel,
@@ -453,12 +459,61 @@ export class Engine {
     this._universalAt = Date.now();
     this.universalCandidates = evaluateUniversal({
       store: this.store,
-      symbols: SYMBOLS.map(s => s.sym),
+      symbols: this.universalSymbols(),
       params: this.universalParams(),
       minConf: this.universalMinConf,
     });
     this._universalPasses++;
     this.emit('universal', this.universalCandidates);
+  }
+
+  // The markets Universal AI is allowed to trade. `null` (the default) means
+  // the whole universe; once the user picks favourites it is narrowed to those
+  // symbols, in registry order so the scan stays deterministic.
+  universalSymbols() {
+    if (!this.universalMarkets || !this.universalMarkets.length) return SYMBOLS.map(s => s.sym);
+    const allowed = new Set(this.universalMarkets);
+    return SYMBOLS.filter(s => allowed.has(s.sym)).map(s => s.sym);
+  }
+
+  // Toggle one market in the Universal AI preference set. This is an include
+  // list: with nothing chosen the AI scans everything, and the first tap starts
+  // narrowing it to just the markets the user picks. Deselecting the last one
+  // returns to "all markets" rather than an empty, unusable universe.
+  toggleUniversalMarket(sym) {
+    if (!SYMBOLS.some(s => s.sym === sym)) return;
+    const all = SYMBOLS.map(s => s.sym);
+    const cur = this.universalMarkets ? this.universalMarkets.slice() : [];
+    const i = cur.indexOf(sym);
+    if (i >= 0) cur.splice(i, 1); else cur.push(sym);
+    // Keep registry order so the scan stays deterministic, and collapse a set
+    // that is empty or covers everything back to the "all markets" default.
+    this.universalMarkets = (cur.length && cur.length < all.length)
+      ? all.filter(s => cur.includes(s)) : null;
+    this._universalAt = 0;
+    this.universalCandidates = [];
+    this.log(`[AI] Markets → ${this.universalMarkets ? this.universalMarkets.join(', ') : 'all'}`, 'i');
+    this.emit('state', this.snapshot());
+    if (this.universal && this.running) this._runUniversalScan();
+  }
+
+  setUniversalMarkets(syms) {
+    const all = SYMBOLS.map(s => s.sym);
+    const next = Array.isArray(syms) ? syms.filter(s => all.includes(s)) : [];
+    this.universalMarkets = next.length && next.length < all.length ? next : null;
+    this._universalAt = 0;
+    this.universalCandidates = [];
+    this.emit('state', this.snapshot());
+    if (this.universal && this.running) this._runUniversalScan();
+  }
+
+  // Reset the Universal AI preference back to the whole universe.
+  clearUniversalMarkets() {
+    this.universalMarkets = null;
+    this._universalAt = 0;
+    this.universalCandidates = [];
+    this.emit('state', this.snapshot());
+    if (this.universal && this.running) this._runUniversalScan();
   }
 
   // The trade decision for universal mode, taken synchronously on the tick.
@@ -488,11 +543,21 @@ export class Engine {
     if (!this._universalParams) {
       this._universalParams = {
         stake: 1, accuracy: 'max', ...accuracyParams('max'),
-        takeProfit: 0, stopLoss: 0, maxTrades: 0,
+        takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0,
         martingale: false, martMult: 2, martSteps: 3,
       };
     }
     return this._universalParams;
+  }
+
+  // Merge a patch into the Universal AI parameter block. Kept separate from
+  // setParams so the AI's stake, martingale and risk caps never inherit a value
+  // the user set on some single contract.
+  setUniversalParams(patch) {
+    const next = { ...this.universalParams(), ...patch };
+    if (patch.accuracy) Object.assign(next, accuracyParams(patch.accuracy));
+    this._universalParams = next;
+    this.emit('state', this.snapshot());
   }
 
   setUniversal(on) {
@@ -772,7 +837,11 @@ export class Engine {
     if (msg.buy) {
       const b = msg.buy;
       const sym = this.lastSignal?.asset || this.selectedMarket;
-      this.activeContracts.set(b.contract_id, { id: b.contract_id, price: b.buy_price, time: Date.now(), sym });
+      // Pin the parameters this entry was opened under, so settlement applies
+      // the martingale ladder of the mode that actually traded — universal mode
+      // reads its own block, and a mid-flight mode switch cannot corrupt it.
+      const p = this.universal ? this.universalParams() : this.paramsFor(this.autoContractKey);
+      this.activeContracts.set(b.contract_id, { id: b.contract_id, price: b.buy_price, time: Date.now(), sym, params: { ...p } });
       this.trades++;
       this.positions = [{
         id: b.contract_id, contractType: b.longcode || b.contract_type,
@@ -801,7 +870,12 @@ export class Engine {
     this.toast(`${won ? 'WIN' : 'LOSS'} ${c.profit >= 0 ? '+' : ''}${c.profit.toFixed(2)}`, won ? 'win' : 'loss');
     this.log(`[${won ? 'WIN' : 'LOSS'}] ${c.profit >= 0 ? '+' : ''}${c.profit.toFixed(2)}`, won ? 's' : 'e');
 
-    const p = this.paramsFor(this.autoContractKey);
+    // Settle against the parameters the contract was opened under (pinned at
+    // buy time). In universal mode this is the AI's own block — without it the
+    // martingale ladder stepped on the mirrored contract's params, where
+    // martingale is off, so a losing run never escalated the stake.
+    const p = this.activeContracts.get(c.contract_id)?.params
+      || (this.universal ? this.universalParams() : this.paramsFor(this.autoContractKey));
     if (won) { this.wins++; this.consLoss = 0; this._martSteps = 0; }
     else {
       this.losses++; this.consLoss++;
@@ -900,7 +974,8 @@ export class Engine {
     if (this.universal) {
       // Universal mode trades whatever market qualifies, so it is warm as soon
       // as a reasonable slice of the universe has history — not just one index.
-      const syms = SYMBOLS.map(s => s.sym);
+      // When the user has narrowed the markets, warm-up is scoped to that set.
+      const syms = this.universalSymbols();
       const ready = syms.filter(sym => (this.store.digHist[sym] || []).length >= WARMUP_TICKS).length;
       const need = Math.max(1, Math.ceil(syms.length * 0.5));
       return { sym: 'ALL', have: ready, need, ready: ready >= need, markets: syms.length };
