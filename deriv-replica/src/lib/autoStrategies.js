@@ -958,28 +958,41 @@ function parseDuration(str) {
   return m ? { duration: parseInt(m[1], 10), unit: m[2] } : null;
 }
 
-// Uses the catalogue's duration_unit and unit_options to build a duration that
-// is both inside [min, max] and one of the offered step values.
+// Build a duration the market will accept. Uses the catalogue's own
+// `duration_unit` / `unit_options` when it publishes a step ladder, and
+// otherwise clamps the wanted duration into the declared [min, max]. That
+// clamp matters: a row like UPORDOWN intraday (2m–1d, no unit_options) rejects
+// "1m" with "Trading is not offered for this duration", so a sub-minimum
+// request has to be lifted to the minimum rather than left as-is.
 function normalizeDuration(spec, wantUnit, wantDur) {
   if (!spec) return null;
-  const unit = spec.duration_unit;
-  if (!unit || unit === 't') return null;
-  const opts = (spec.unit_options || []).map(d => ({ duration: parseInt(d, 10), unit })).filter(d => d.duration > 0);
-  if (!opts.length) return null;
   const min = parseDuration(spec.min_contract_duration);
   const max = parseDuration(spec.max_contract_duration);
+  const unit = spec.duration_unit || (min && min.unit) || (max && max.unit);
+  // Tick windows are governed by the catalogue's fixed tick count and handled
+  // by the digit/tick branch, not here.
+  if (!unit || unit === 't') return null;
+  const toSec = d => (UNIT_SECONDS[d.unit] || 0) * d.duration;
   const wantSec = (UNIT_SECONDS[wantUnit] || 0) * (wantDur || 0);
-  const okRange = d => {
-    const sec = UNIT_SECONDS[d.unit] * d.duration;
-    if (min && sec < UNIT_SECONDS[min.unit] * min.duration) return false;
-    if (max && sec > UNIT_SECONDS[max.unit] * max.duration) return false;
-    return true;
-  };
-  const inRange = opts.filter(okRange);
-  const pool = inRange.length ? inRange : opts;
-  if (!wantSec) return pool[0];
-  pool.sort((a, b) => Math.abs(UNIT_SECONDS[a.unit] * a.duration - wantSec) - Math.abs(UNIT_SECONDS[b.unit] * b.duration - wantSec));
-  return pool[0];
+
+  const opts = (spec.unit_options || []).map(d => ({ duration: parseInt(d, 10), unit })).filter(d => d.duration > 0);
+  if (opts.length && wantSec) {
+    const inRange = opts.filter(d => (!min || toSec(d) >= toSec(min)) && (!max || toSec(d) <= toSec(max)));
+    const pool = inRange.length ? inRange : opts;
+    pool.sort((a, b) => Math.abs(toSec(a) - wantSec) - Math.abs(toSec(b) - wantSec));
+    return pool[0];
+  }
+
+  const minSec = min ? toSec(min) : 0;
+  const maxSec = max ? toSec(max) : Infinity;
+  const alreadyValid = wantUnit === unit && wantDur && wantSec >= minSec && wantSec <= maxSec;
+  if (alreadyValid) return { duration: wantDur, unit };
+  let target = wantSec || minSec;
+  if (minSec && target < minSec) target = minSec;
+  if (maxSec && target > maxSec) target = maxSec;
+  const outUnit = (min && UNIT_SECONDS[min.unit]) ? min.unit : unit;
+  const step = UNIT_SECONDS[outUnit] || 1;
+  return { duration: Math.max(1, Math.round(target / step)), unit: outUnit };
 }
 
 // Pick the catalogue row for a category that fits the intended horizon: a tick

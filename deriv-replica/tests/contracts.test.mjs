@@ -84,6 +84,40 @@ test('a seconds contract is normalized into its published step', () => {
   assert.ok(['15', '30', '60'].includes(String(fields.duration)), `duration was ${fields.duration}`);
 });
 
+test('a duration below the market minimum is lifted to the minimum', () => {
+  // UPORDOWN intraday on the 1HZ indices publishes a 2m–1d window with no
+  // `unit_options`, and rejects anything under 2m with "Trading is not offered
+  // for this duration". The engine proposed 1m and every Universal AI entry on
+  // those markets was rejected; the catalogue minimum must lift it to 2m.
+  const UPORDOWN = [{
+    contract_type: 'UPORDOWN', contract_category: 'staysinout', sentiment: 'high_vol',
+    expiry_type: 'intraday', high_barrier: '+2.04', low_barrier: '-2.03',
+    min_contract_duration: '2m', max_contract_duration: '1d',
+  }];
+  const entry = AUTO_CONTRACTS.UPORDOWN;
+  const value = buildAutoValue(entry, { stake: 1, ...entry.defaults, duration: 1, unit: 'm' });
+  value.stake = 1;
+  const raw = buildProposal(entry.typeId, entry.side, value, '1HZ100V');
+  const { fields } = shapeProposal(entry, raw, UPORDOWN);
+  assert.equal(fields.duration_unit, 'm');
+  assert.equal(fields.duration, 2, 'a sub-minimum hold must rise to the catalogue minimum');
+});
+
+test('a duration above the market maximum is capped at the maximum', () => {
+  const UPORDOWN = [{
+    contract_type: 'UPORDOWN', contract_category: 'staysinout', sentiment: 'high_vol',
+    expiry_type: 'intraday', high_barrier: '+2.04', low_barrier: '-2.03',
+    min_contract_duration: '2m', max_contract_duration: '1h',
+  }];
+  const entry = AUTO_CONTRACTS.UPORDOWN;
+  const value = buildAutoValue(entry, { stake: 1, ...entry.defaults, duration: 3, unit: 'd' });
+  value.stake = 1;
+  const raw = buildProposal(entry.typeId, entry.side, value, '1HZ100V');
+  const { fields } = shapeProposal(entry, raw, UPORDOWN);
+  assert.ok(['60m', '1h'].includes(`${fields.duration}${fields.duration_unit}`),
+    `expected ~1h, got ${fields.duration}${fields.duration_unit}`);
+});
+
 test('an unknown catalogue leaves the raw fields untouched', () => {
   const entry = AUTO_CONTRACTS.TURBOSLONG;
   const value = buildAutoValue(entry, { stake: 1, ...entry.defaults });

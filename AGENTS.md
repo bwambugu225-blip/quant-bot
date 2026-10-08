@@ -113,6 +113,12 @@ Dependabot auto-merge workflow only merges when that `test` job is green.
   in-the-money rung; turbo and higher/lower/touch barriers snap to the
   published ladder. On a barrier rejection the engine adopts the ladder the
   rejection reports and resends once (non-barrier rejections are left logged).
+- Durations are clamped into the row's declared `[min, max]`. A row with no
+  published `unit_options` (e.g. UPORDOWN intraday on the 1HZ indices, 2m–1d)
+  rejects a sub-minimum hold outright with "Trading is not offered for this
+  duration", so the wanted duration is lifted to the minimum instead of sent
+  as-is. Without this every Universal AI entry defaulted to a 1m hold and was
+  rejected — the AI looked dead while it was in fact deciding and failing.
 - Honest limit: R_75's vanilla ladder moves by tens of points within a second,
   so those two contracts can still be rejected even on the retry. The engine
   skips them rather than sending a barrier the exchange will not take. A live
