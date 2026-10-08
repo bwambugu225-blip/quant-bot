@@ -147,6 +147,21 @@ Note: `node_modules/` and `dist/` are normally gitignored, but the current
 history also contains a forced commit of them (kept intentionally).
 `public_out/` is gitignored.
 
+### Build toolchain and the React 18 pin
+
+The Vite toolchain is on the current major: `vite@8` + `@vitejs/plugin-react@6`.
+These two move together (plugin-react 6 requires Vite 8), so a Dependabot PR
+that bumps only one of them can never `npm ci` on its own.
+
+React is deliberately held on **18.x**. `@deriv-com/quill-ui` pins
+`@headlessui/react@1.7.18`, whose peer range is `react ^16||^17||^18`. Installing
+React 19 with `--legacy-peer-deps` resolves the tree and even builds, but the
+app throws during render and the page comes up blank — which is exactly why the
+Vercel Preview deployments for the React 19 Dependabot PRs failed. `react` and
+`react-dom` **major** updates are ignored in `.github/dependabot.yml` until the
+Deriv UI stack ships a React-19-compatible release; remove the `ignore` entries
+at that point. React-patch/minor stays automatic.
+
 ## Deriv rebuild — live engine
 
 `deriv-replica/` is not a static mock: it is wired to the real Deriv WebSocket

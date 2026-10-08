@@ -11,6 +11,16 @@ updates:
     commit-message:
       prefix: "chore(deps)"
       prefix-development: "chore(dev-deps)"
+    # React 19 cannot be adopted yet. @deriv-com/quill-ui pins
+    # @headlessui/react@1.7.18, whose peer range stops at React 18; forcing
+    # React 19 resolves the install but the app throws at runtime and renders
+    # a blank page. Hold react/react-dom on the 18.x major until the Deriv UI
+    # stack ships a React-19-compatible release.
+    ignore:
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
     groups:
       # Patch/minor updates arrive as a single PR so CI runs once, not ten times.
       production-minor-patch:
