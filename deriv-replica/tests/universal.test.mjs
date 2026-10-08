@@ -16,7 +16,7 @@ test('the universal universe is the whole registry', () => {
   const keys = universalContracts().map(c => c.key).sort();
   const expected = Object.keys(AUTO_CONTRACTS).sort();
   assert.deepEqual(keys, expected);
-  assert.ok(keys.length >= 55, `expected the full registry, got ${keys.length}`);
+  assert.ok(keys.length >= 70, `expected the full registry, got ${keys.length}`);
 });
 
 test('duration ladder covers every unit and skips contracts without duration', () => {

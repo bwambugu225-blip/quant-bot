@@ -12,7 +12,7 @@
 // contract's break-even is inherently high (Differs ~90%) the win probability
 // is genuinely high; where it is low (Matches ~10%) no honest strategy can
 // promise a high win rate, and the registry says so.
-import { ema, rsi, stddev, sma } from './indicators.js';
+import { ema, rsi, stddev, sma, max, min } from './indicators.js';
 
 // ── shared statistics ────────────────────────────────────────────────────
 
@@ -261,6 +261,294 @@ function accuSignal(candles, params) {
   return { conf, rationale: `tight band · width ${(width * 100).toFixed(3)}% · drift ${(drift * 100).toFixed(3)}%`, dur: `${prof.dur}${prof.unit}` };
 }
 
+// ── path-dependent range contracts ───────────────────────────────────────
+//
+// "Stays Between" wins only if price never touches either barrier for the whole
+// life of the contract; "Goes Outside" is its mirror. This is a path property,
+// not an endpoint property, so the honest way to read it is to measure how a
+// barrier at this distance from spot has actually held over recent history.
+// We replay the tape: for each position, ask whether the price would have
+// touched a band of the same width within the hold window. That empirical
+// touch rate is what the payout must beat.
+// Half-width of the band to test. Anchor it to the instrument's typical
+// per-tick movement rather than the raw recent range, because the recent range
+// is itself contaminated by any volatility expansion we are trying to detect.
+// The width then scales with the square root of the hold (a random walk's
+// spread grows that way). A "stays" bet is placed wide to survive; a "breaks"
+// bet is placed tight to be reached.
+function bandHalfWidth(cl, hold, wantStays) {
+  const s = cl.slice(-60);
+  if (s.length < 2) return 0;
+  let sum = 0;
+  for (let i = 1; i < s.length; i++) sum += Math.abs(s[i] - s[i - 1]);
+  const step = sum / (s.length - 1);
+  const k = wantStays ? 1.4 : 0.35;
+  return k * step * Math.sqrt(Math.max(1, hold));
+}
+
+function rangeHoldSignal(candles, params, wantStays) {
+  const prof = durationProfile(params);
+  const hold = Math.max(2, Math.min(40, Math.round(prof.horizon)));
+  const n = candles.length;
+  const look = Math.max(20, Math.round(30 * prof.windowScale));
+  if (n < Math.max(hold + look, 80)) return null;
+  const cl = closesOf(candles);
+  const dist = bandHalfWidth(cl, hold, wantStays);
+  if (!(dist > 0)) return null;
+
+  // Replay: how often did a band this wide survive the hold window?
+  const from = Math.max(0, n - 220);
+  let hits = 0, trials = 0;
+  for (let i = from; i + hold < n; i++) {
+    const base = cl[i];
+    const hi = base + dist;
+    const lo = base - dist;
+    let touched = false;
+    for (let j = i + 1; j <= i + hold; j++) { if (cl[j] >= hi || cl[j] <= lo) { touched = true; break; } }
+    if (touched) hits++;
+    trials++;
+  }
+  if (trials < 20) return null;
+  const touchRate = hits / trials;
+  const holdRate = 1 - touchRate;
+
+  const p = wantStays ? holdRate : touchRate;
+  const z = zScore(p, 0.5, trials);
+  const zMin = 2.4 + prof.durZ * 1.2;
+  if (z < zMin) return null;
+  const conf = Math.round(Math.min(96, 60 + z * 5));
+  const minConf = params.minConf ?? 0;
+  if (conf < minConf) return null;
+  return {
+    conf, p, z,
+    rationale: `${wantStays ? 'stays' : 'breaks'} · ±${dist.toFixed(3)} band held ${(holdRate * 100).toFixed(0)}% over ${trials} replays`,
+    dur: `${prof.dur}${prof.unit}`,
+  };
+}
+
+// Ends Between/Outside only cares about the closing tick, so the same replay is
+// run against the endpoint rather than the path.
+function endsRangeSignal(candles, params, wantInside) {
+  const prof = durationProfile(params);
+  const hold = Math.max(2, Math.min(40, Math.round(prof.horizon)));
+  const n = candles.length;
+  const look = Math.max(20, Math.round(30 * prof.windowScale));
+  if (n < Math.max(hold + look, 80)) return null;
+  const cl = closesOf(candles);
+  const dist = bandHalfWidth(cl, hold, wantInside);
+  if (!(dist > 0)) return null;
+
+  const from = Math.max(0, n - 220);
+  let inside = 0, trials = 0;
+  for (let i = from; i + hold < n; i++) {
+    const base = cl[i];
+    const end = cl[i + hold];
+    if (end > base - dist && end < base + dist) inside++;
+    trials++;
+  }
+  if (trials < 20) return null;
+  const insideRate = inside / trials;
+  const p = wantInside ? insideRate : 1 - insideRate;
+  const z = zScore(p, 0.5, trials);
+  const zMin = 2.2 + prof.durZ * 1.2;
+  if (z < zMin) return null;
+  const conf = Math.round(Math.min(96, 60 + z * 5));
+  const minConf = params.minConf ?? 0;
+  if (conf < minConf) return null;
+  return {
+    conf, p, z,
+    rationale: `ends ${wantInside ? 'inside' : 'outside'} · ±${dist.toFixed(3)} band held ${(insideRate * 100).toFixed(0)}% of ${trials}`,
+    dur: `${prof.dur}${prof.unit}`,
+  };
+}
+
+// ── Only Ups / Only Downs ────────────────────────────────────────────────
+//
+// A run of `d` consecutive rises has fair probability ~2^-d, and it collapses
+// fast with duration, so this is a lottery-ticket contract by construction. The
+// only honest edge is momentum persistence: measure how often a run of the
+// required length has actually completed after a like-typed run, and require
+// the observed completion rate to clear the fair baseline. The confidence is
+// capped below the high-confidence band because the fair rate is genuinely low.
+function runSignal(digits, params, wantUp, duration) {
+  const d = Math.max(1, Math.round(duration || 3));
+  // Fair probability of a run of d same-direction moves. Using tick digit
+  // parity as the up/down proxy keeps this computable from the tick stream.
+  const fair = Math.pow(0.5, d);
+  const prof = durationProfile({ ...params, duration: d, unit: 't' });
+  const W = Math.round(Math.max(120, 40 * d) * prof.windowScale);
+  const w = digits.slice(-W);
+  if (w.length < Math.min(60, W)) return null;
+
+  let runs = 0, setups = 0;
+  for (let i = 2; i < w.length; i++) {
+    const ok = (a, b) => (wantUp ? b > a : b < a);
+    // Look for the start of a like-typed move, then check whether `d`
+    // consecutive moves continued the same way.
+    if (!ok(w[i - 1], w[i])) continue;
+    setups++;
+    let good = true;
+    for (let k = 1; k <= d; k++) {
+      if (i + k >= w.length) { good = false; break; }
+      if (!ok(w[i + k - 1], w[i + k])) { good = false; break; }
+    }
+    if (good) runs++;
+  }
+  if (setups < 15) return null;
+  const p = runs / setups;
+  const z = zScore(p, fair, setups);
+  const zMin = 2.2 + prof.durZ;
+  if (z < zMin) return null;
+  const conf = Math.round(Math.min(94, 58 + z * 5));
+  const minConf = params.minConf ?? 0;
+  if (conf < minConf) return null;
+  return {
+    conf, p, z,
+    rationale: `${wantUp ? 'only ups' : 'only downs'} ${d}t · completed ${(p * 100).toFixed(0)}% (fair ${(fair * 100).toFixed(0)}%)`,
+    dur: `${d}t`,
+  };
+}
+
+// ── Asian Up / Asian Down ────────────────────────────────────────────────
+//
+// The contract compares the last tick against the mean of the period. Prices
+// mean-revert at tick scale after a stretch, so the edge is a fade: bet the
+// side that the running mean is currently on, because the final tick is more
+// likely to close on the mean's side than to finish on the extreme side it
+// would need to beat it. We estimate the running mean from the recent window
+// and require the current price to sit far enough from it.
+function asianSignal(prices, params, wantUp) {
+  const prof = durationProfile(params);
+  const W = Math.max(20, Math.min(120, Math.round(prof.horizon)));
+  const w = prices.slice(-Math.max(W, 40));
+  const n = w.length;
+  if (n < 30) return null;
+  const mean = w.reduce((s, x) => s + x, 0) / n;
+  const sd = stddev(w, n);
+  if (!sd) return null;
+  const last = w[n - 1];
+  // Standardised distance of the last tick from the running average.
+  const d = (last - mean) / sd;
+  // Fade: if the last tick spiked above the mean, the pullback favours Down.
+  const want = wantUp ? -1 : 1;
+  if (Math.sign(d) !== want) return null;
+  const gap = Math.abs(d);
+  if (gap < 0.8) return null;      // too tight around the mean to have an edge
+  const z = zScore(Math.min(0.95, 0.5 + gap * 0.12), 0.5, n);
+  const zMin = 2.0 + prof.durZ;
+  if (z < zMin) return null;
+  const conf = Math.round(Math.min(94, 58 + z * 6));
+  const minConf = params.minConf ?? 0;
+  if (conf < minConf) return null;
+  return {
+    conf, z,
+    rationale: `${wantUp ? 'asian up' : 'asian down'} · last ${d > 0 ? '+' : ''}${d.toFixed(2)}σ vs mean`,
+    dur: `${prof.dur}${prof.unit}`,
+  };
+}
+
+// ── Reset Call / Reset Put ───────────────────────────────────────────────
+//
+// A reset converts a losing Call/Put into a second chance when price moves
+// against it near the midpoint. That makes the trade more forgiving than a
+// plain Rise/Fall, so the same trend confirmation is allowed to fire with a
+// slightly lower trend strength. No new data is needed: the reset is a
+// property of the contract, and the entry is a trend entry.
+function resetSignal(candles, dir, params) {
+  const sig = trendSignal(candles, dir, {
+    fast: 9, slow: 24, mom: 6, rsiLo: 53, rsiHi: 47, minSlope: 0.00045, base: 63,
+  }, params);
+  if (!sig) return null;
+  return { ...sig, rationale: `${sig.rationale} · reset window armed` };
+}
+
+// ── High Tick / Low Tick ─────────────────────────────────────────────────
+//
+// The five ticks in the window are exchangeable: with no edge each position
+// has a 20% chance of being the extreme. The only exploitable structure is a
+// short-horizon drift that makes a particular slot more likely to print the
+// extreme. We look at the recent sequence's AR(1) sign — if moves persist, the
+// extreme tends to land late in the window; if they reverse, early. We then
+// pick the slot the drift favours and require its measured hit rate to clear
+// the 20% fair baseline.
+function tickExtremeSignal(prices, params, wantHigh, selectedTick) {
+  const slot = Math.max(1, Math.min(5, Math.round(selectedTick || 3)));
+  const w = prices.slice(-200);
+  const n = w.length;
+  if (n < 60) return null;
+  // AR(1) on tick-to-tick changes.
+  let num = 0, den = 0, prev = null;
+  const deltas = [];
+  for (let i = 1; i < n; i++) deltas.push(w[i] - w[i - 1]);
+  for (let i = 1; i < deltas.length; i++) { if (prev != null) { num += deltas[i] * prev; den += prev * prev; } prev = deltas[i]; }
+  const ar = den > 0 ? num / den : 0;
+  const persist = ar > 0.05;
+  const reverse = ar < -0.05;
+  // Slot prior: persistence pushes the extreme toward the end of the window,
+  // reversal pushes it toward the start, noise is neutral (slot 3).
+  const favoured = persist ? (wantHigh ? 5 : 1) : reverse ? (wantHigh ? 1 : 5) : 3;
+  if (!persist && !reverse && slot !== 3) return null;
+  // Replay how often this slot was the extreme over recent windows.
+  let hits = 0, trials = 0;
+  for (let i = 5; i < n; i += 1) {
+    const win = w.slice(i - 5, i);
+    if (win.length < 5) continue;
+    let idx = 0;
+    for (let k = 1; k < 5; k++) { if (wantHigh ? win[k] > win[idx] : win[k] < win[idx]) idx = k; }
+    if (idx + 1 === slot) hits++;
+    trials++;
+  }
+  if (trials < 30) return null;
+  const p = hits / trials;
+  const z = zScore(p, 0.2, trials);
+  const zMin = 2.4;
+  if (z < zMin) return null;
+  const conf = Math.round(Math.min(92, 55 + z * 6));
+  const minConf = params.minConf ?? 0;
+  if (conf < minConf) return null;
+  return {
+    conf, p, z,
+    rationale: `${wantHigh ? 'high' : 'low'} tick slot ${slot} · hit ${(p * 100).toFixed(0)}% (fair 20%, AR ${ar.toFixed(2)})`,
+  };
+}
+
+// ── Lookback options ─────────────────────────────────────────────────────
+//
+// Lookbacks pay on the range the price covers, so the trade is a bet on
+// volatility expansion. The signal must read an expanding range (recent true
+// range above the longer baseline), and the direction chooses which leg of the
+// range the payout rides. High-Low pays on the full range and is directionless.
+function lookbackSignal(candles, params, mode) {
+  const prof = durationProfile(params);
+  const n = candles.length;
+  const shortP = Math.max(4, Math.round(6 * prof.windowScale));
+  const longP = Math.max(14, Math.round(30 * prof.windowScale));
+  if (n < longP + 2) return null;
+  // Average off close-to-close moves, so the expansion ratio is scale-free and
+  // works the same across instrument price levels.
+  const cl = closesOf(candles);
+  const step = (arr, p) => {
+    const s = arr.slice(-(p + 1));
+    if (s.length < 2) return 0;
+    let sum = 0;
+    for (let i = 1; i < s.length; i++) sum += Math.abs(s[i] - s[i - 1]);
+    return sum / (s.length - 1);
+  };
+  const short = step(cl, shortP);
+  const long = step(cl, longP) || 1e-9;
+  const expansion = short / long;
+  const need = mode === 'highlow' ? 1.35 : 1.25;
+  if (expansion < need) return null;
+  const conf = Math.round(Math.min(95, 62 + (expansion - need) * 45));
+  const minConf = params.minConf ?? 0;
+  if (conf < minConf) return null;
+  return {
+    conf,
+    rationale: `range expanding x${expansion.toFixed(2)} · ${mode} payout rides the move`,
+    dur: `${prof.dur}${prof.unit}`,
+  };
+}
+
 // ── registry ─────────────────────────────────────────────────────────────
 
 export const AUTO_CONTRACTS = {};
@@ -273,6 +561,12 @@ export const AUTO_FAMILIES = [
   { id: 'multipliers', label: 'Multipliers' },
   { id: 'turbos', label: 'Turbos' },
   { id: 'vanillas', label: 'Vanillas' },
+  { id: 'ranges', label: 'Stays/Ends Between' },
+  { id: 'runs', label: 'Only Ups/Downs' },
+  { id: 'asians', label: 'Asian Up/Down' },
+  { id: 'resets', label: 'Reset Call/Put' },
+  { id: 'highs_lows', label: 'High/Low Tick' },
+  { id: 'lookbacks', label: 'Lookbacks' },
 ];
 
 function reg(entry) { AUTO_CONTRACTS[entry.key] = entry; }
@@ -348,6 +642,133 @@ dirPrice('VANILLALONGCALL', 'vanillas', 'up', { fast: 12, slow: 40, mom: 12, rsi
   'Call', 'Broad uptrend into expiry.', 'payout-priced');
 dirPrice('VANILLALONGPUT', 'vanillas', 'down', { fast: 12, slow: 40, mom: 12, rsiLo: 54, rsiHi: 46, minSlope: 0.0005, base: 63 },
   'Put', 'Broad downtrend into expiry.', 'payout-priced');
+
+// ── Stays Between / Goes Outside (path-dependent range) ──────────────────
+reg({
+  key: 'RANGE', typeId: 'stays_goes', side: 'up', family: 'ranges', label: 'Stays Between',
+  digitFamily: false, inputs: ['stake', 'duration', 'barrier', 'barrier2', 'strategy'],
+  defaults: { duration: 5, unit: 't', barrier: '+1.51', barrier2: '-1.51' },
+  range: 'stays', winNote: 'payout-priced',
+  note: 'Range holds without a barrier touch for the whole hold.',
+  signal: (ctx) => rangeHoldSignal(ctx.candles, ctx.params, true),
+});
+reg({
+  key: 'UPORDOWN', typeId: 'stays_goes', side: 'down', family: 'ranges', label: 'Goes Outside',
+  digitFamily: false, inputs: ['stake', 'duration', 'barrier', 'barrier2', 'strategy'],
+  defaults: { duration: 5, unit: 't', barrier: '+1.51', barrier2: '-1.51' },
+  range: 'goes', winNote: 'payout-priced',
+  note: 'A barrier touch occurs at some point in the hold.',
+  signal: (ctx) => rangeHoldSignal(ctx.candles, ctx.params, false),
+});
+
+// ── Ends Between / Ends Outside (endpoint range) ─────────────────────────
+reg({
+  key: 'EXPIRYRANGE', typeId: 'ends_between', side: 'up', family: 'ranges', label: 'Ends Between',
+  digitFamily: false, inputs: ['stake', 'duration', 'barrier', 'barrier2', 'strategy'],
+  defaults: { duration: 5, unit: 't', barrier: '+1.51', barrier2: '-1.51' },
+  range: 'ends_in', winNote: 'payout-priced',
+  note: 'Closing price lands strictly inside the band.',
+  signal: (ctx) => endsRangeSignal(ctx.candles, ctx.params, true),
+});
+reg({
+  key: 'EXPIRYMISS', typeId: 'ends_between', side: 'down', family: 'ranges', label: 'Ends Outside',
+  digitFamily: false, inputs: ['stake', 'duration', 'barrier', 'barrier2', 'strategy'],
+  defaults: { duration: 5, unit: 't', barrier: '+1.51', barrier2: '-1.51' },
+  range: 'ends_out', winNote: 'payout-priced',
+  note: 'Closing price lands outside the band.',
+  signal: (ctx) => endsRangeSignal(ctx.candles, ctx.params, false),
+});
+
+// ── Only Ups / Only Downs (momentum runs) ────────────────────────────────
+reg({
+  key: 'RUNHIGH', typeId: 'runs', side: 'up', family: 'runs', label: 'Only Ups',
+  digitFamily: true, inputs: ['stake', 'duration', 'strategy'],
+  defaults: { duration: 3, unit: 't' },
+  note: 'Every tick rises; one against ends it. Lottery-ticket by nature.', winNote: '2⁻ᵈ fair',
+  signal: (ctx) => runSignal(ctx.digits, ctx.params, true, ctx.params.duration ?? 3),
+});
+reg({
+  key: 'RUNLOW', typeId: 'runs', side: 'down', family: 'runs', label: 'Only Downs',
+  digitFamily: true, inputs: ['stake', 'duration', 'strategy'],
+  defaults: { duration: 3, unit: 't' },
+  note: 'Every tick falls; one against ends it. Lottery-ticket by nature.', winNote: '2⁻ᵈ fair',
+  signal: (ctx) => runSignal(ctx.digits, ctx.params, false, ctx.params.duration ?? 3),
+});
+
+// ── Asian Up / Asian Down (mean-reversion fade) ──────────────────────────
+reg({
+  key: 'ASIANU', typeId: 'asians', side: 'up', family: 'asians', label: 'Asian Up',
+  digitFamily: false, inputs: ['stake', 'duration', 'strategy'],
+  defaults: { duration: 5, unit: 't' },
+  note: 'Last tick closes above the period average.', winNote: '~50% fair',
+  signal: (ctx) => asianSignal(ctx.prices, ctx.params, true),
+});
+reg({
+  key: 'ASIAND', typeId: 'asians', side: 'down', family: 'asians', label: 'Asian Down',
+  digitFamily: false, inputs: ['stake', 'duration', 'strategy'],
+  defaults: { duration: 5, unit: 't' },
+  note: 'Last tick closes below the period average.', winNote: '~50% fair',
+  signal: (ctx) => asianSignal(ctx.prices, ctx.params, false),
+});
+
+// ── Reset Call / Reset Put ───────────────────────────────────────────────
+reg({
+  key: 'RESETCALL', typeId: 'resets', side: 'up', family: 'resets', label: 'Reset Call',
+  digitFamily: false, inputs: ['stake', 'duration', 'strategy'],
+  defaults: { duration: 5, unit: 't' },
+  note: 'Uptrend entry with the midpoint reset as a second chance.', winNote: '~50% fair',
+  signal: (ctx) => resetSignal(ctx.candles, 'up', ctx.params),
+});
+reg({
+  key: 'RESETPUT', typeId: 'resets', side: 'down', family: 'resets', label: 'Reset Put',
+  digitFamily: false, inputs: ['stake', 'duration', 'strategy'],
+  defaults: { duration: 5, unit: 't' },
+  note: 'Downtrend entry with the midpoint reset as a second chance.', winNote: '~50% fair',
+  signal: (ctx) => resetSignal(ctx.candles, 'down', ctx.params),
+});
+
+// ── High Tick / Low Tick (five-tick extreme) ─────────────────────────────
+// One entry per direction; the predicted slot is a parameter (1–5), so the UI
+// changes the slot without changing the contract.
+reg({
+  key: 'TICKHIGH', typeId: 'highs_lows', side: 'up', family: 'highs_lows', label: 'High Tick',
+  digitFamily: false, inputs: ['stake', 'selectedTick', 'strategy'],
+  defaults: { selectedTick: 3 },
+  winNote: '20% fair',
+  note: 'Your chosen tick is the highest of the next five.',
+  signal: (ctx) => tickExtremeSignal(ctx.prices, ctx.params, true, ctx.params.selectedTick ?? 3),
+});
+reg({
+  key: 'TICKLOW', typeId: 'highs_lows', side: 'down', family: 'highs_lows', label: 'Low Tick',
+  digitFamily: false, inputs: ['stake', 'selectedTick', 'strategy'],
+  defaults: { selectedTick: 3 },
+  winNote: '20% fair',
+  note: 'Your chosen tick is the lowest of the next five.',
+  signal: (ctx) => tickExtremeSignal(ctx.prices, ctx.params, false, ctx.params.selectedTick ?? 3),
+});
+
+// ── Lookbacks (range expansion, multiplier payout) ───────────────────────
+reg({
+  key: 'LBFLOATCALL', typeId: 'lookbacks', side: 'up', family: 'lookbacks', label: 'Close-Low',
+  digitFamily: false, inputs: ['stake', 'duration', 'multiplier', 'strategy'],
+  defaults: { duration: 5, unit: 't', multiplier: 1 },
+  note: 'Rally off the low — pay rides close minus low.', winNote: 'payout-priced',
+  signal: (ctx) => lookbackSignal(ctx.candles, ctx.params, 'closelow'),
+});
+reg({
+  key: 'LBFLOATPUT', typeId: 'lookbacks', side: 'down', family: 'lookbacks', label: 'High-Close',
+  digitFamily: false, inputs: ['stake', 'duration', 'multiplier', 'strategy'],
+  defaults: { duration: 5, unit: 't', multiplier: 1 },
+  note: 'Reversal off the high — pay rides high minus close.', winNote: 'payout-priced',
+  signal: (ctx) => lookbackSignal(ctx.candles, ctx.params, 'highclose'),
+});
+reg({
+  key: 'LBHIGHLOW', typeId: 'lookbacks_highlow', side: 'up', family: 'lookbacks', label: 'High-Low',
+  digitFamily: false, inputs: ['stake', 'duration', 'multiplier', 'strategy'],
+  defaults: { duration: 5, unit: 't', multiplier: 1 },
+  note: 'Directionless range play — pay rides high minus low.', winNote: 'payout-priced',
+  signal: (ctx) => lookbackSignal(ctx.candles, ctx.params, 'highlow'),
+});
 
 // Digits — Even/Odd plus every Over/Under/Match/Diff barrier.
 reg({
@@ -468,6 +889,8 @@ export function buildAutoValue(entry, params) {
     cancellation: params.cancellation ?? '',
     equals: !!entry.equals,
     barrier: params.barrier ?? entry.defaults.barrier ?? '+0.10',
+    barrier2: params.barrier2 ?? entry.defaults.barrier2 ?? '-0.10',
+    selectedTick: params.selectedTick ?? entry.defaults.selectedTick ?? entry.selectedTick ?? 3,
     digit: entry.barrier,
   };
   if (entry.kind && (entry.kind === 'over' || entry.kind === 'under' || entry.kind === 'match' || entry.kind === 'diff')) {

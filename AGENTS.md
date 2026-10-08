@@ -47,7 +47,7 @@ Dependabot auto-merge workflow only merges when that `test` job is green.
   dependency). `tests/helpers.mjs` builds deterministic tick streams and a fake
   WebSocket client — only the socket boundary (`send`/`buy`) is faked; engine
   routing, strategies, and proposal construction are the real code.
-- `tests/engine.test.mjs` covers the registry, the 55 contracts firing in their
+- `tests/engine.test.mjs` covers the registry, the 70 contracts firing in their
   own regime, accuracy ordering, duration-aware analysis, the multi-market
   scanner, lightning execution, proposal→buy→settle, warm-up, and the session
   guards.
@@ -93,7 +93,41 @@ Dependabot auto-merge workflow only merges when that `test` job is green.
   the bar. On Deriv's fair random-walk indices an 80% reading is a statement
   about the measured recent sample, not a guarantee about the next contract.
 
-  practice the tape is already warm and the start is immediate.
+### Tick-based contract coverage
+
+The registry covers Deriv's full tick-based catalogue (70 contracts). The
+families added on top of the original directional/digit set:
+
+| Family | Types | Inputs | Edge read from |
+|--------|-------|--------|----------------|
+| Stays/Goes | `RANGE`, `UPORDOWN` | `barrier` + `barrier2` | replay: did a step-scaled band survive the hold? |
+| Ends Between/Outside | `EXPIRYRANGE`, `EXPIRYMISS` | `barrier` + `barrier2` | replay: did the endpoint close inside the band? |
+| Only Ups/Downs | `RUNHIGH`, `RUNLOW` | duration (ticks) | run completion rate vs the `2^-d` fair baseline |
+| Asian Up/Down | `ASIANU`, `ASIAND` | duration | last tick's standardised distance from the running mean |
+| Reset Call/Put | `RESETCALL`, `RESETPUT` | duration | trend confirmation, with the reset as a second chance |
+| High/Low Tick | `TICKHIGH`, `TICKLOW` | `selected_tick` (1–5) | AR(1) drift picks the slot; slot hit-rate vs 20% fair |
+| Lookbacks | `LBFLOATCALL`, `LBFLOATPUT`, `LBHIGHLOW` | duration + `multiplier` | volatility expansion (short vs long avg move) |
+
+Notes on honesty:
+
+- The range ("Stays/Goes", "Ends") strategies are the most conservative. The
+  band half-width is anchored to the instrument's typical per-tick step (scaled
+  by `sqrt(hold)`), not the raw recent range, because the recent range is itself
+  contaminated by any expansion we are trying to detect. The reading is a
+  historical replay, so a high confidence means "this band held this often at
+  this width over the sample", never "it will hold".
+- Only Ups/Downs confidence is capped near 94% because the fair rate (2⁻ᵈ) is
+  genuinely low; the strategy reports the measured run-completion rate, not a
+  promise.
+- High/Low Tick is a lottery contract: the 5 slots are exchangeable and the
+  only structure is short-horizon autocorrelation. The signal refuses to fire
+  unless a slot's hit rate clears the 20% baseline by a real margin.
+- `selected_tick` is a parameter, not a separate contract: one `TICKHIGH` /
+  `TICKLOW` entry, with the slot chosen in the Automate panel's segmented
+  control.
+- The Asian and High/Low Tick signals read the raw tick tape
+  (`ctx.prices`, from `store.livePrices(sym)`), which the engine now passes into
+  every signal context alongside `candles` and `digits`.
 
 ## Deployment (Vercel)
 
@@ -136,7 +170,7 @@ API (same transport as `bot.html`).
 - `src/lib/engine.js` — execution: proposals, buys, contract lifecycle,
   auto-engine run/stop, manual Rise/Fall and digit trades, martingale, Kelly
   sizing, win/loss bookkeeping.
-- `src/lib/autoStrategies.js` — the per-contract strategy registry (55
+- `src/lib/autoStrategies.js` — the per-contract strategy registry (70
   contracts). Each contract carries its own signal function, tuned thresholds
   and defaults. `ACCURACY_LEVELS` (Max/High/Balanced) maps one UI choice onto
   the three gates every signal is checked against: `minConf`, `minEdge` and a
@@ -216,11 +250,15 @@ internally and sends `CALL`/`PUT` to Deriv; digit sub-types map to
   `inputs` that type actually needs, because Deriv trade types do not share a
   parameter set: Rise/Fall → duration + stake (+ `equals` → `CALLE`/`PUTE`);
   Higher/Lower, Touch/No Touch, Turbos, Vanillas → duration + stake + barrier;
-  Matches/Differs and Over/Under → duration + stake + last-digit barrier;
-  Even/Odd → duration + stake; Accumulators → stake + `growth_rate` + risk
-  limits, **no duration**; Multipliers → stake + `multiplier` + risk +
-  optional cancellation. `buildProposal()` maps form state onto the exact
-  `proposal` payload.
+  Stays Between/Goes Outside and Ends Between/Outside → duration + stake +
+  `barrier` + `barrier2` (the two-barrier range); Only Ups/Downs, Asian Up/Down,
+  Reset Call/Put → duration + stake; High/Low Tick → stake + `selected_tick`
+  (the fixed five-tick window takes **no** duration); Lookbacks → duration +
+  stake + `multiplier`; Matches/Differs and Over/Under → duration + stake +
+  last-digit barrier; Even/Odd → duration + stake; Accumulators → stake +
+  `growth_rate` + risk limits, **no duration**; Multipliers → stake +
+  `multiplier` + risk + optional cancellation. `buildProposal()` maps form state
+  onto the exact `proposal` payload.
 - Digits must be read at the symbol's pip precision. The API sends raw JSON
   numbers, so a real price of `1296.20` arrives as `1296.2` and reading the
   last character yields `2` instead of `0`. `marketStore.js` therefore pins

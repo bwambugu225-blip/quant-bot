@@ -585,6 +585,34 @@ export function AutomateScreen({ engine, state, onLogin }) {
                 />
               </div>
             )}
+            {entry.inputs.includes('barrier2') && (
+              <div className="engine-stake engine-stake--compact">
+                <span className="engine-stake__label">Low barrier</span>
+                <input
+                  className="engine-stake__input"
+                  value={p.barrier2 ?? '-0.10'}
+                  onChange={e => set({ barrier2: e.target.value })}
+                  spellCheck={false}
+                />
+              </div>
+            )}
+            {entry.inputs.includes('selectedTick') && (
+              <div className="menu-toggle">
+                <span>Selected tick</span>
+                <div className="menu-seg">
+                  {[1, 2, 3, 4, 5].map(t => (
+                    <button
+                      key={t}
+                      className={`menu-seg__btn${(p.selectedTick ?? 3) === t ? ' is-active' : ''}`}
+                      onClick={() => set({ selectedTick: t })}
+                      type="button"
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             {entry.inputs.includes('growthRate') && (
               <Stepper
                 label="Growth rate"

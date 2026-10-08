@@ -358,6 +358,9 @@ export class Engine {
     // directional contracts, which need a completed candle.
     if (sym !== this.autoMarket) return;
     if (entry.digitFamily) this._evaluateDigit(sym, entry);
+    // High/Low Tick is a tick-window contract, not a candle contract, so it
+    // reads the live tape on every tick even though it is not digit-based.
+    else if (entry.typeId === 'highs_lows') this._evaluateDirectional(sym, entry);
     else if (closed) this._evaluateDirectional(sym, entry);
   }
 
@@ -376,6 +379,9 @@ export class Engine {
     const ctx = {
       candles: this.store.candles[sym] || [],
       digits: this.store.digHist[sym] || [],
+      // Raw tick prices, used by the Asian and High/Low Tick contracts, which
+      // reason about the tick sequence rather than candle closes.
+      prices: this.store.livePrices ? this.store.livePrices(sym) : (this.store.liveBuf[sym] || []),
       params: p,
     };
     try {

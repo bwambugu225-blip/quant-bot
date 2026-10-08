@@ -86,14 +86,21 @@ export function evaluateUniversal({ store, symbols, params = {}, minConf = UNIVE
     for (const sym of syms) {
       const candles = store.candles[sym] || [];
       const digits = entry.digitFamily ? (store.digHist[sym] || []) : [];
+      const prices = store.livePrices ? store.livePrices(sym) : (store.liveBuf?.[sym] || []);
       // Every strategy needs a populated window; 80 is the floor the scanner
       // already uses, and it is below the narrowest digit window (60 ticks).
-      const ready = entry.digitFamily ? digits.length >= 80 : candles.length >= 80;
+      const ready = entry.digitFamily ? digits.length >= 80
+        : entry.inputs?.includes('selectedTick') ? prices.length >= 80
+          : candles.length >= 80;
       if (!ready) continue;
 
       for (const { dur, unit } of durations) {
         const p = candidateParams(entry, params.accuracy, dur, unit);
-        const sig = runSignal(entry, { candles, digits, params: p });
+        const sig = runSignal(entry, {
+          candles, digits,
+          prices: store.livePrices ? store.livePrices(sym) : (store.liveBuf?.[sym] || []),
+          params: p,
+        });
         if (!sig || sig.conf == null || sig.conf < minConf) continue;
         out.push({
           sym, entry, sig,
@@ -121,7 +128,11 @@ export function confirmCandidate(candidate, store, accuracy, minConf = UNIVERSAL
   const candles = store.candles[sym] || [];
   const digits = entry.digitFamily ? (store.digHist[sym] || []) : [];
   const p = candidateParams(entry, accuracy, candidate.duration, candidate.unit);
-  const sig = runSignal(entry, { candles, digits, params: p });
+  const sig = runSignal(entry, {
+    candles, digits,
+    prices: store.livePrices ? store.livePrices(sym) : (store.liveBuf?.[sym] || []),
+    params: p,
+  });
   if (!sig || sig.conf == null || sig.conf < minConf) return null;
   return sig;
 }

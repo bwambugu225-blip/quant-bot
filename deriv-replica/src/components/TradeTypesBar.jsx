@@ -7,7 +7,7 @@ import { TRADE_TYPES } from '../lib/contracts.js';
 export default function TradeTypesBar({ type, onSelect, onViewAll }) {
   return (
     <div className="tt-bar" role="tablist">
-      {TRADE_TYPES.map(t => (
+      {TRADE_TYPES.filter(t => !t.hidden).map(t => (
         <button
           key={t.id}
           role="tab"

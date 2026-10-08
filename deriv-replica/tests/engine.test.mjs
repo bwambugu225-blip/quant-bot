@@ -16,7 +16,7 @@ const ALL = AUTO_FAMILIES.flatMap(f => contractsForFamily(f.id));
 
 // ── registry integrity ───────────────────────────────────────────────────
 test('every contract is well formed', () => {
-  assert.equal(ALL.length, 55, 'contract count changed — update expectations');
+  assert.equal(ALL.length, 70, 'contract count changed — update expectations');
   for (const c of ALL) {
     assert.equal(typeof c.signal, 'function', `${c.key} has no signal fn`);
     assert.ok(AUTO_CONTRACTS[c.key], `${c.key} not registered`);
@@ -25,19 +25,88 @@ test('every contract is well formed', () => {
 });
 
 // ── strategies fire in their own regime ──────────────────────────────────
-test('all 55 contracts produce a signal in their matching regime (Max accuracy)', () => {
+test('all 70 contracts produce a signal in their matching regime (Max accuracy)', () => {
   const dead = [];
   for (const c of ALL) {
     let fired = false;
     for (let seed = 1; seed <= 12 && !fired; seed++) {
       const params = { stake: 1, ...accuracyParams('max'), ...c.defaults };
-      const ctx = { ...ctxFor(c, seed), params };
-      const sig = c.signal(ctx);
-      if (sig && sig.conf != null) fired = true;
+      // High/Low Tick carries the predicted slot as a parameter (the UI's
+      // segmented control); sweep it the way a user would.
+      const slots = c.inputs.includes('selectedTick') ? [1, 2, 3, 4, 5] : [undefined];
+      for (const st of slots) {
+        const ctx = { ...ctxFor(c, seed), params: st == null ? params : { ...params, selectedTick: st } };
+        const sig = c.signal(ctx);
+        if (sig && sig.conf != null) { fired = true; break; }
+      }
     }
     if (!fired) dead.push(c.key);
   }
   assert.deepEqual(dead, [], `contracts that never fire: ${dead.join(', ')}`);
+});
+
+test('Only Ups and Only Downs never both fire on one tape', () => {
+  const t = ctxFor(AUTO_CONTRACTS.RUNHIGH, 1);
+  const params = { stake: 1, ...accuracyParams('max'), ...AUTO_CONTRACTS.RUNHIGH.defaults };
+  const up = AUTO_CONTRACTS.RUNHIGH.signal({ ...t, params });
+  const down = AUTO_CONTRACTS.RUNLOW.signal({ ...t, params });
+  assert.ok(!(up && down), 'Only Ups and Only Downs both fired on one tape');
+});
+
+// High/Low Tick requires the live price tape, not just candles.
+test('High/Low Tick reads the live tick tape and refuses without one', () => {
+  const entry = AUTO_CONTRACTS.TICKHIGH;
+  const base = { stake: 1, ...accuracyParams('max'), ...entry.defaults };
+  const prices = ctxFor(entry, 1).prices;
+  // The drift on this tape favours slot 1; sweep the parameter as the UI does.
+  let fired = null;
+  for (let st = 1; st <= 5 && !fired; st++) {
+    fired = entry.signal({ candles: [], digits: [], prices, params: { ...base, selectedTick: st } });
+  }
+  assert.ok(fired && fired.conf != null, 'High Tick did not fire on a drifting tape');
+  const without = entry.signal({ candles: [], digits: [], prices: [], params: base });
+  assert.equal(without, null, 'High Tick fired with no tick tape');
+});
+
+// The new products must build the exact proposal fields Deriv expects.
+test('new contract families build the correct proposal fields', () => {
+  const base = { duration: 5, unit: 't', stake: 1 };
+
+  const stays = buildProposal('stays_goes', 'up', { ...base, barrier: '+1.51', barrier2: '-1.51' }, 'R_10');
+  assert.equal(stays.contract_type, 'RANGE');
+  assert.equal(stays.barrier, '+1.51');
+  assert.equal(stays.barrier2, '-1.51');
+
+  const goes = buildProposal('stays_goes', 'down', { ...base, barrier: '+1.51', barrier2: '-1.51' }, 'R_10');
+  assert.equal(goes.contract_type, 'UPORDOWN');
+
+  const endsIn = buildProposal('ends_between', 'up', { ...base, barrier: '+1.51', barrier2: '-1.51' }, 'R_10');
+  assert.equal(endsIn.contract_type, 'EXPIRYRANGE');
+  const endsOut = buildProposal('ends_between', 'down', { ...base, barrier: '+1.51', barrier2: '-1.51' }, 'R_10');
+  assert.equal(endsOut.contract_type, 'EXPIRYMISS');
+
+  assert.equal(buildProposal('runs', 'up', base, 'R_100').contract_type, 'RUNHIGH');
+  assert.equal(buildProposal('runs', 'down', base, 'R_100').contract_type, 'RUNLOW');
+  assert.equal(buildProposal('asians', 'up', base, 'R_100').contract_type, 'ASIANU');
+  assert.equal(buildProposal('asians', 'down', base, 'R_100').contract_type, 'ASIAND');
+  assert.equal(buildProposal('resets', 'up', base, 'R_100').contract_type, 'RESETCALL');
+  assert.equal(buildProposal('resets', 'down', base, 'R_100').contract_type, 'RESETPUT');
+
+  // High/Low Tick: duration is the fixed five-tick window, selected_tick is 1–5.
+  const high = buildProposal('highs_lows', 'up', { stake: 1, selectedTick: 5 }, 'R_100');
+  assert.equal(high.contract_type, 'TICKHIGH');
+  assert.equal(high.selected_tick, 5);
+  assert.equal(high.duration, undefined, 'tick-extreme products take no duration');
+  const clamped = buildProposal('highs_lows', 'down', { stake: 1, selectedTick: 9 }, 'R_100');
+  assert.equal(clamped.contract_type, 'TICKLOW');
+  assert.equal(clamped.selected_tick, 5, 'selected_tick clamps to the 5-tick window');
+
+  // Lookbacks: multiplier payout, close-low / high-close / high-low.
+  const cl = buildProposal('lookbacks', 'up', { ...base, multiplier: 10 }, 'R_100');
+  assert.equal(cl.contract_type, 'LBFLOATCALL');
+  assert.equal(cl.multiplier, 10);
+  assert.equal(buildProposal('lookbacks', 'down', { ...base, multiplier: 10 }, 'R_100').contract_type, 'LBFLOATPUT');
+  assert.equal(buildProposal('lookbacks_highlow', 'up', { ...base, multiplier: 10 }, 'R_100').contract_type, 'LBHIGHLOW');
 });
 
 // ── accuracy presets are ordered and honest ──────────────────────────────

@@ -141,6 +141,91 @@ export const TRADE_TYPES = [
     sides: ['Call', 'Put'],
     barrierKind: 'price',
   },
+  {
+    id: 'stays_goes',
+    label: 'Stays/Goes',
+    tooltip: 'Earn if the price stays inside or breaks out of a two-barrier range.',
+    category: 'directional',
+    inputs: ['duration', 'stake', 'barrier', 'barrier2'],
+    durationUnits: ['t', 's', 'm', 'h'],
+    contracts: { up: 'RANGE', down: 'UPORDOWN' },
+    sides: ['Stays Between', 'Goes Outside'],
+    barrierKind: 'range',
+  },
+  {
+    id: 'ends_between',
+    label: 'Ends Between/Outside',
+    tooltip: 'Earn if the expiry price lands inside or outside a two-barrier range.',
+    category: 'directional',
+    inputs: ['duration', 'stake', 'barrier', 'barrier2'],
+    durationUnits: ['t', 's', 'm', 'h'],
+    contracts: { up: 'EXPIRYRANGE', down: 'EXPIRYMISS' },
+    sides: ['Ends Between', 'Ends Outside'],
+    barrierKind: 'range',
+  },
+  {
+    id: 'runs',
+    label: 'Only Ups/Downs',
+    tooltip: 'Earn if every tick in the contract runs the same way.',
+    category: 'directional',
+    inputs: ['duration', 'stake'],
+    durationUnits: ['t'],
+    contracts: { up: 'RUNHIGH', down: 'RUNLOW' },
+    sides: ['Only Ups', 'Only Downs'],
+  },
+  {
+    id: 'asians',
+    label: 'Asian Up/Down',
+    tooltip: 'Earn if the last tick is above or below the period average.',
+    category: 'directional',
+    inputs: ['duration', 'stake'],
+    durationUnits: ['t', 's', 'm', 'h'],
+    contracts: { up: 'ASIANU', down: 'ASIAND' },
+    sides: ['Asian Up', 'Asian Down'],
+  },
+  {
+    id: 'resets',
+    label: 'Reset Call/Put',
+    tooltip: 'Call/Put with a midpoint reset that gives a second chance.',
+    category: 'directional',
+    inputs: ['duration', 'stake'],
+    durationUnits: ['t', 's', 'm', 'h'],
+    contracts: { up: 'RESETCALL', down: 'RESETPUT' },
+    sides: ['Reset Call', 'Reset Put'],
+  },
+  {
+    id: 'highs_lows',
+    label: 'High/Low Tick',
+    tooltip: 'Predict which of the next five ticks is the highest or lowest.',
+    category: 'directional',
+    inputs: ['stake', 'selectedTick'],
+    durationUnits: [],
+    contracts: { up: 'TICKHIGH', down: 'TICKLOW' },
+    sides: ['High Tick', 'Low Tick'],
+    tickWindow: 5,
+  },
+  {
+    id: 'lookbacks',
+    label: 'Lookbacks',
+    tooltip: 'Payout scales with the range the price covers over the period.',
+    category: 'growth_based',
+    inputs: ['duration', 'stake', 'multiplier'],
+    durationUnits: ['t', 's', 'm', 'h'],
+    contracts: { up: 'LBFLOATCALL', down: 'LBFLOATPUT' },
+    extras: { highLow: 'LBHIGHLOW' },
+    sides: ['Close-Low', 'High-Close'],
+  },
+  {
+    id: 'lookbacks_highlow',
+    label: 'High-Low',
+    tooltip: 'Payout scales with the high-to-low range over the period.',
+    category: 'growth_based',
+    inputs: ['duration', 'stake', 'multiplier'],
+    durationUnits: ['t', 's', 'm', 'h'],
+    contracts: { up: 'LBHIGHLOW', down: 'LBHIGHLOW' },
+    sides: ['High-Low'],
+    hidden: true,
+  },
 ];
 
 export function findTradeType(id) {
@@ -181,6 +266,11 @@ export function buildProposal(type, side, value, symbol) {
   }
   if (t.inputs.includes('digit')) fields.barrier = String(value.digit);
   if (t.inputs.includes('barrier')) fields.barrier = String(value.barrier);
+  // Two-barrier products (Stays Between/Goes Outside, Ends Between/Outside)
+  // send the low barrier separately as barrier2.
+  if (t.inputs.includes('barrier2')) fields.barrier2 = String(value.barrier2 ?? value.barrier);
+  // High/Low Tick predicts a tick position within the five-tick window.
+  if (t.inputs.includes('selectedTick')) fields.selected_tick = Math.max(1, Math.min(5, Math.round(+value.selectedTick || 1)));
   if (t.inputs.includes('growthRate')) fields.growth_rate = +value.growthRate || 0.01;
   if (t.inputs.includes('multiplier')) fields.multiplier = +value.multiplier || 100;
   if (t.inputs.includes('cancellation') && value.cancellation) fields.cancellation = value.cancellation;

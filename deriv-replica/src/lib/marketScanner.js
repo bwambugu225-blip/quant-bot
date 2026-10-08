@@ -54,13 +54,16 @@ export class MarketScanner {
       const ctx = {
         candles: store.candles[sym] || [],
         digits: store.digHist[sym] || [],
+        prices: store.livePrices ? store.livePrices(sym) : (store.liveBuf?.[sym] || []),
         params,
       };
       let sig = null;
       try { sig = entry.signal(ctx); } catch { sig = null; }
       const ready = entry.digitFamily
         ? (store.digHist[sym]?.length || 0) >= 80
-        : (store.candles[sym]?.length || 0) >= 80;
+        : entry.inputs?.includes('selectedTick')
+          ? (ctx.prices.length || 0) >= 80
+          : (store.candles[sym]?.length || 0) >= 80;
 
       const score = this._score(sig, ready, ctx, entry, params);
 

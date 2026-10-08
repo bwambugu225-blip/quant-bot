@@ -94,6 +94,12 @@ export function pullback(dir, n = 200, seed = 9) {
 // high-baseline contract (e.g. "Over 0") gets a correspondingly stronger tape.
 export function ctxFor(entry, seed = 1, rate) {
   if (entry.digitFamily) {
+    // Only Ups / Only Downs need a tape whose values run in one direction, so
+    // consecutive digits actually form a run. All other digit contracts are
+    // tested on a stream biased toward their own hit predicate.
+    if (entry.key === 'RUNHIGH' || entry.key === 'RUNLOW') {
+      return { digits: runTape(entry.key === 'RUNHIGH', seed), candles: [] };
+    }
     const base = entry.tune?.baseline ?? 0.85;
     const r = rate ?? Math.min(0.99, base + 0.15);
     return { digits: digitStream(predFor(entry), r, 900, seed * 31 + 7), candles: [] };
@@ -102,11 +108,65 @@ export function ctxFor(entry, seed = 1, rate) {
     case 'ACCU': return { digits: [], candles: quiet(140, seed) };
     case 'ONETOUCH': return { digits: [], candles: vol(true, 140, seed) };
     case 'NOTOUCH': return { digits: [], candles: vol(false, 140, seed) };
+    // Path/endpoint range contracts: a narrow, steady market holds the band.
+    case 'RANGE': return { digits: [], candles: quiet(200, seed) };
+    case 'EXPIRYRANGE': return { digits: [], candles: quiet(200, seed) };
+    // Their mirrors need an expanding market that breaches the band.
+    case 'UPORDOWN': return { digits: [], candles: vol(true, 200, seed) };
+    case 'EXPIRYMISS': return { digits: [], candles: vol(true, 200, seed) };
+    // Asian fade: a strong burst away from the mean so the fade has room.
+    case 'ASIANU': return { digits: [], candles: [], prices: asianSpike(-1, seed) };
+    case 'ASIAND': return { digits: [], candles: [], prices: asianSpike(1, seed) };
+    // High/Low tick: a persisting drift puts the extreme at one end of the window.
+    case 'TICKHIGH': case 'TICKLOW': return { digits: [], candles: [], prices: driftTape(seed) };
+    // Lookbacks pay on range expansion.
+    case 'LBFLOATCALL': case 'LBFLOATPUT': case 'LBHIGHLOW':
+      return { digits: [], candles: vol(true, 200, seed) };
     case 'MULTUP': case 'MULTDOWN':
       return { digits: [], candles: pullback(entry.side === 'down' ? -1 : 1, 200, seed) };
     default:
       return { digits: [], candles: trend(entry.side === 'down' ? -1 : 1, 200, seed) };
   }
+}
+
+// A price tape that rises then drops hard (dir=+1) or falls then spikes
+// (dir=-1), so the last tick sits far from the running mean.
+export function asianSpike(dir, seed = 1) {
+  const r = lcg(seed); const out = []; let px = 1000;
+  for (let i = 0; i < 200; i++) {
+    px += (dir > 0 ? 1 : -1) * 0.02 + (r() - 0.5) * 0.05;
+    if (i > 180) px += (dir > 0 ? 1 : -1) * 2.5;   // sharp displacement at the end
+    out.push(px);
+  }
+  return out;
+}
+
+// A price tape with positive autocorrelation: each move tends to continue the
+// previous one, so the extreme lands late (High) / early (Low) in a 5-tick
+// window.
+export function driftTape(seed = 1) {
+  const r = lcg(seed); const out = []; let px = 1000; let last = 0;
+  for (let i = 0; i < 200; i++) {
+    const step = (last > 0 ? 0.6 : last < 0 ? -0.6 : 0) + (r() - 0.5) * 0.4;
+    last = step;
+    px += step;
+    out.push(px);
+  }
+  return out;
+}
+
+// A digit tape with a strong directional drift, so consecutive digits form
+// long runs. `up` produces strictly increasing digits, `down` decreasing ones.
+export function runTape(up, seed = 1) {
+  const r = lcg(seed); const out = []; let d = up ? 0 : 9;
+  for (let i = 0; i < 900; i++) {
+    // Mostly step in the run direction; rarely step back, as a real run breaks.
+    const step = r() < 0.9 ? (up ? 1 : -1) : (up ? -1 : 1);
+    d = Math.max(0, Math.min(9, d + step));
+    if (d === 0 || d === 9) d = up ? 1 : 8;   // stay mid-band so comparisons vary
+    out.push(d);
+  }
+  return out;
 }
 
 // ── fake WebSocket client ────────────────────────────────────────────────
