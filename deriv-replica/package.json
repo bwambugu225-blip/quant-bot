@@ -12,7 +12,7 @@
   "dependencies": {
     "@deriv-com/quill-ui": "^1.24.12",
     "@deriv/quill-icons": "^2.14.2",
-    "react": "^18.3.1",
+    "react": "^19.3.0",
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
