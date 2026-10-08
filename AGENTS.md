@@ -87,6 +87,11 @@ Dependabot auto-merge workflow only merges when that `test` job is green.
   the Trade tab and stats line show what is actually running. Execution uses the
   same proposal path (and the same sub-100ms decision timing) as the single
   contract.
+- **Natural cadence.** Universal mode trades *at most* once per
+  `UNIVERSAL_MIN_GAP_MS` (5s, ~10 ticks on the volatility indices). The gate is
+  a ceiling on frequency, never a trigger: the AI still only trades when a live
+  reading clears the confidence bar, so a quiet window correctly produces zero
+  trades. It never fabricates an entry to hit a beat.
 - Honest limit: only contracts whose own fair win rate is high can reach a high
   confidence. A Matches bet (~10% fair) can never honestly read 80%; the
   evaluator reports what the tape supports and never inflates a reading to clear

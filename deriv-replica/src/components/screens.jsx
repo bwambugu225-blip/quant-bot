@@ -258,7 +258,7 @@ export function AutomateScreen({ engine, state, onLogin }) {
         </label>
         <div className="automate-note">
           {universal
-            ? `Every index is scored against every contract at several auto-picked durations. The best reading that clears ${minConf}% is traded — any market, any contract, duration chosen automatically.`
+            ? `Every index is scored against every contract at several auto-picked durations. It trades at most once every ~5s — and only when the best reading still clears ${minConf}% on the live tape. Nothing is forced on a timer: a quiet market simply produces no trades.`
             : 'Off. The engine trades the single contract selected below. Turn this on to let it choose the contract, the market and the duration itself.'}
         </div>
 

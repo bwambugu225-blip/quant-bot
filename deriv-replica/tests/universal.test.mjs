@@ -11,6 +11,7 @@ import { AUTO_CONTRACTS } from '../src/lib/autoStrategies.js';
 import {
   evaluateUniversal, durationLadder, universalContracts, UNIVERSAL_MIN_CONF,
 } from '../src/lib/universalAI.js';
+import { UNIVERSAL_MIN_GAP_MS } from '../src/lib/engine.js';
 
 test('the universal universe is the whole registry', () => {
   const keys = universalContracts().map(c => c.key).sort();
@@ -95,6 +96,36 @@ test('universal mode places no trade when nothing clears the bar', () => {
     tick(engine, 'R_75', 5000.44);
     assert.equal(client.proposals().length, 0, 'silence is the correct action');
   }
+});
+
+// Natural cadence. The universal AI must trade at most once per
+// UNIVERSAL_MIN_GAP_MS, so a burst of qualifying ticks cannot open a string of
+// overlapping entries. This is the "trade the tape, not a timer" guarantee.
+test('universal mode will not trade twice inside the natural cadence window', () => {
+  const { engine, client } = makeEngine({ contractKey: 'DIGITOVER:3', leader: 'R_75', leaderRate: 0.95 });
+  engine.setUniversal(true);
+  engine.running = true;
+  engine._runUniversalScan();
+  const sym = engine.universalCandidates[0].sym;
+
+  // A fast burst of qualifying ticks with each prior contract treated as
+  // settled: only the first may enter, the rest are held back by the cadence
+  // gate even though the tape still qualifies.
+  for (let i = 0; i < 8; i++) {
+    engine.activeContracts.clear();
+    tick(engine, sym, 5000.44 + i * 0.01);
+  }
+  assert.equal(client.proposals().length, 1, 'cadence must cap entries at one per window');
+
+  // Once the window has elapsed the next qualifying tick may trade again.
+  engine._universalLastTradeAt = Date.now() - UNIVERSAL_MIN_GAP_MS - 1;
+  engine.activeContracts.clear();
+  tick(engine, sym, 5000.99);
+  assert.equal(client.proposals().length, 2, 'a new trade is allowed after the gap');
+});
+
+test('the cadence window is the natural ~5s, not a forced interval', () => {
+  assert.equal(UNIVERSAL_MIN_GAP_MS, 5000);
 });
 
 test('the threshold is clamped to a usable range', () => {

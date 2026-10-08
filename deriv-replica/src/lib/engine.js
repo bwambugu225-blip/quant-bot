@@ -30,6 +30,15 @@ const EXEC_WINDOW = 40;
 // first signal can never be computed on a cold tape.
 const WARMUP_TICKS = 100;
 
+// Natural trading cadence for Universal AI. The whole point of a universal
+// evaluator is to trade when the tape offers something, not to manufacture a
+// bet on a timer — so it trades *at most* once per ~5s, and only when a
+// candidate still clears the bar. This is a ceiling on frequency, never a
+// trigger: a quiet stretch correctly produces zero trades. 5s is ~10 ticks on
+// Deriv's volatility indices, which is the shortest hold whose entry can still
+// be justified by the reading that produced it (see Universal AI in AGENTS.md).
+export const UNIVERSAL_MIN_GAP_MS = 5000;
+
 // Only the two inputs worth exposing are stored per contract: the stake and
 // the accuracy level. Everything else (duration, barrier, digit, martingale,
 // risk caps) is a per-family default, so switching contracts never leaves a
@@ -89,6 +98,9 @@ export class Engine {
     this.universalCandidates = [];
     this._universalAt = 0;
     this._universalPasses = 0;
+    // Natural cadence: when the universal AI last opened a trade. Gates the loop
+    // below so it cannot fire several entries within the same few seconds.
+    this._universalLastTradeAt = 0;
 
     // Execution latency, measured tick→proposal-sent and tick→contract-live.
     this._execSamples = [];
@@ -436,6 +448,10 @@ export class Engine {
 
   // The trade decision for universal mode, taken synchronously on the tick.
   _universalTick() {
+    // Natural cadence: at most one entry per UNIVERSAL_MIN_GAP_MS. This is the
+    // difference between a bot that trades the tape and one that trades a timer
+    // — when nothing clears the bar in the window, it simply does not trade.
+    if (Date.now() - this._universalLastTradeAt < UNIVERSAL_MIN_GAP_MS) return;
     const list = this.universalCandidates;
     if (!list.length) return;
     const p = this.universalParams();
@@ -445,6 +461,7 @@ export class Engine {
     for (const cand of list.slice(0, 8)) {
       const sig = confirmCandidate(cand, this.store, p.accuracy, this.universalMinConf);
       if (!sig) continue;
+      this._universalLastTradeAt = Date.now();
       this._executeUniversal(cand, sig);
       return;
     }
@@ -466,6 +483,7 @@ export class Engine {
   setUniversal(on) {
     this.universal = !!on;
     this._universalAt = 0;
+    this._universalLastTradeAt = 0;
     this.universalCandidates = [];
     if (this.universal) this._runUniversalScan();
     this.log(`[AI] Universal scanner ${this.universal ? 'on — any market, any contract' : 'off'}`, 'i');
@@ -726,6 +744,7 @@ export class Engine {
     this._lastSwitchReason = '';
     this._scanAt = 0;
     this._universalAt = 0;
+    this._universalLastTradeAt = 0;
     this._execSamples = [];
     // Prime the scanner at once so the lightning path has a ranking to use on
     // the very first tick rather than waiting a full cadence.
