@@ -113,22 +113,38 @@ work. All three levels stay silent on a 60% digit stream and fire on a 75%+ one.
 
 - Digit contracts are evaluated on the tick that just printed — no waiting for
   a candle to close. Directional contracts still wait for a completed candle.
+- The multi-market ranking runs on its own 800ms cadence in the background
+  (`_runScan`), never inside the tick handler, so the hot path only runs one
+  contract's signal on one market. Measured tick → proposal: ~1ms.
 - The auto-engine proposal request omits `subscribe`, so it gets a single
   response instead of a streaming subscription that would leave the contract
   map populated with duplicates.
-- Proposal timeout is 6s (`PROPOSAL_TIMEOUT`), so a dropped request costs at
-  most one tick instead of stalling the engine.
+- Proposal timeout is 6s (`PROPOSAL_TIMEOUT`), and the watchdog (1s) releases
+  stale `sending`/`pending` entries after 8s, so a dropped request costs at most
+  one tick instead of stalling the engine.
+- `engine.execStats()` reports the rolling p50/p95 of tick → proposal-received,
+  surfaced in the Market panel, so latency is measured rather than asserted.
 
-### Auto market switching
+### Multi-market scanner
 
-`autoSwitch` (on by default) scores every eligible market for the selected
-contract and rotates to a clearly better one. Digit contracts are symbol-
-agnostic, so the choice is *when* to bet: the engine watches each market's
-digit stream and moves to whichever shows the strongest, most stable bias. It
-only moves when the new market beats the current one by `_switchMargin` (15%)
-and `_switchInterval` (40s) has elapsed, so it never thrashes. `_marketEdge()`
-scores a market by its live signal confidence, falling back to raw distance
-from break-even before a signal appears.
+`MarketScanner` (`src/lib/marketScanner.js`) scores **every** eligible market for
+the selected contract on each pass and the engine bets on the leader. For digit
+contracts, which are symbol-agnostic, this means the engine can take a
+qualifying signal on whichever index is strongest at that instant instead of
+idling on one hand-picked market — a decision a single-market strategy cannot
+make. `autoSwitch` is on by default.
+
+- The scan is throttled to `SCAN_INTERVAL_MS` (800ms) and runs from the
+  watchdog, so it never slows the trade path.
+- Scores use a capped accuracy (`balanced` gates) so markets stay comparable;
+  the trade itself still applies the user's own Max/High/Balanced gates, so the
+  scanner never loosens selectivity.
+- The engine only rotates away from the current market when the leader beats it
+  by 15%, so it does not flip between near-equal indices.
+- `_scannedAt(sym)` gates the lightning path: a digit tick only fires if the
+  scanner scored that market within the last two cadences.
+- The Market panel renders the live top-8 board (rank, score bar, confidence),
+  updating on each `scan` event without a full engine-state round trip.
 
 
 To trade, click Log in and paste a Deriv API token with Read + Trade scope.

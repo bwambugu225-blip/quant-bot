@@ -137,6 +137,19 @@ export function AutomateScreen({ engine, state, onLogin }) {
   );
   const [advanced, setAdvanced] = React.useState(false);
 
+  // Live scanner board: refresh when a scan pass publishes, so the ranking
+  // moves on screen without a full engine-state round trip.
+  const [scan, setScan] = React.useState(state?.scan || []);
+  const exec = state?.exec;
+  React.useEffect(() => {
+    const onScan = rows => setScan(rows || []);
+    engine.on('scan', onScan);
+    setScan(engine.scanner?.top(8) || state?.scan || []);
+    return () => {
+      engine._listeners.scan = (engine._listeners.scan || []).filter(fn => fn !== onScan);
+    };
+  }, [engine]);
+
   // Keep the selectors in step when the engine switches contract elsewhere.
   React.useEffect(() => { setFamily(entry.family); }, [entry.family]);
   React.useEffect(() => {
@@ -312,38 +325,79 @@ export function AutomateScreen({ engine, state, onLogin }) {
         </div>
       </div>
 
-      {/* ── Market (auto by default) ────────────────────────────────── */}
+      {/* ── Market: multi-market scanner ────────────────────────────── */}
       <div className="menu-section">
         <div className="menu-section__title">Market</div>
         <label className="menu-toggle">
-          <span>Auto-switch to the strongest market</span>
+          <span>Multi-market scanner</span>
           <input
             type="checkbox"
             checked={state?.autoSwitch !== false}
             onChange={e => engine.setAutoSwitch(e.target.checked)}
           />
         </label>
+        <div className="automate-note">
+          {state?.autoSwitch !== false
+            ? 'Every eligible market is scored on each pass and the trade is taken on whichever one is strongest right now — so the strategy chooses where to trade, not just when.'
+            : 'Scanner off — the engine trades the manually selected market only.'}
+        </div>
+
         <div className="automate-market__current">
           <span className="automate-market__name">{market.name}</span>
-          <span className="automate-market__sym">{market.sym} · {market.cat}</span>
+          <span className="automate-market__sym">
+            {market.sym} · {market.cat}
+            {exec && exec.p50 != null ? ` · exec p50 ${exec.p50}ms` : ''}
+          </span>
         </div>
-        <div className="automate-market__grid">
-          {SYMBOLS.map(s => {
-            const disabled = entry.digitFamily && !isDigitSymbol(s.sym);
-            return (
+
+        {state?.autoSwitch !== false && scan.length > 0 && (
+          <div className="scanner-board">
+            <div className="scanner-board__head">
+              <span>Live scan</span>
+              <span>{state?.scanCount ?? 0} passes{exec?.p95 != null ? ` · p95 ${exec.p95}ms` : ''}</span>
+            </div>
+            {scan.map((r, i) => (
               <button
-                key={s.sym}
-                className={`automate-market__chip${s.sym === autoMarket ? ' is-active' : ''}`}
-                onClick={() => !disabled && engine.setMarket(s.sym)}
-                disabled={disabled}
-                title={disabled ? 'Digits need a Volatility index' : s.name}
+                key={r.sym}
+                className={`scanner-row${r.sym === autoMarket ? ' is-active' : ''}`}
+                onClick={() => engine.setMarket(r.sym)}
                 type="button"
               >
-                {s.sym}
+                <span className="scanner-row__rank">{i + 1}</span>
+                <span className="scanner-row__sym">{r.sym}</span>
+                <span className="scanner-row__bar">
+                  <span
+                    className="scanner-row__fill"
+                    style={{ width: `${Math.max(4, Math.min(100, ((r.score ?? 0) / 120) * 100))}%` }}
+                  />
+                </span>
+                <span className="scanner-row__val">
+                  {r.conf != null ? `${r.conf}%` : r.score != null ? `${Math.round(r.score)}` : '—'}
+                </span>
               </button>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
+
+        {state?.autoSwitch === false && (
+          <div className="automate-market__grid">
+            {SYMBOLS.map(s => {
+              const disabled = entry.digitFamily && !isDigitSymbol(s.sym);
+              return (
+                <button
+                  key={s.sym}
+                  className={`automate-market__chip${s.sym === autoMarket ? ' is-active' : ''}`}
+                  onClick={() => !disabled && engine.setMarket(s.sym)}
+                  disabled={disabled}
+                  title={disabled ? 'Digits need a Volatility index' : s.name}
+                  type="button"
+                >
+                  {s.sym}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* ── Strategy: the two decisions that matter ─────────────────── */}

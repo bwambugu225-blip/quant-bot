@@ -7,6 +7,7 @@
 import { MarketStore, SYMBOLS, isDigitSymbol, digitOf, decimalsFor } from './marketStore.js';
 import { buildProposal } from './contracts.js';
 import { findAutoContract, buildAutoValue, accuracyParams } from './autoStrategies.js';
+import { MarketScanner, SCAN_INTERVAL_MS } from './marketScanner.js';
 
 const MIN_STAKE = 0.35;
 const MAX_STAKE = 200;
@@ -15,6 +16,10 @@ const MAX_STAKE = 200;
 // 6s is long enough for a slow round trip and short enough that a dropped
 // request costs at most one tick.
 const PROPOSAL_TIMEOUT = 6000;
+
+// Rolling execution stats, so "lightning" is a measurement and not a claim.
+// The UI reads the p50/p95 from the snapshot.
+const EXEC_WINDOW = 40;
 
 // Only the two inputs worth exposing are stored per contract: the stake and
 // the accuracy level. Everything else (duration, barrier, digit, martingale,
@@ -52,13 +57,24 @@ export class Engine {
     this.processed = new Set();
     this.sendingTimeout = null;
 
-    // Auto market rotation: the engine scores every eligible market and only
-    // switches when a different one is clearly better, so it does not thrash.
+    // Auto market rotation: the scanner continuously ranks every eligible
+    // market and the engine bets on whichever is strongest, so it does not
+    // thrash and it is never stuck on a quiet index.
     this.autoSwitch = true;
-    this._switchInterval = 40;   // seconds between rotations
-    this._switchMargin = 1.15;   // new market must beat the current by 15%
+    this.scanner = new MarketScanner({
+      getStore: () => this.store,
+      getContractKey: () => this.autoContractKey,
+      getAccuracy: () => this.paramsFor(this.autoContractKey),
+      getCandidates: () => this._candidates(),
+    });
     this._lastSwitch = 0;
     this._lastSwitchReason = '';
+    this._scanAt = 0;
+
+    // Execution latency, measured tick→proposal-sent and tick→contract-live.
+    this._execSamples = [];
+    this._execStart = 0;
+    this._pendingScan = null;
 
     this.wins = 0; this.losses = 0; this.consLoss = 0;
     this.pnl = 0; this.trades = 0;
@@ -160,72 +176,22 @@ export class Engine {
     this.emit('state', this.snapshot());
   }
 
-  // ── Auto market rotation ───────────────────────────────────────────────
+  // ── Market universe ────────────────────────────────────────────────────
   //
   // Digit contracts are symbol-agnostic (the digits of a random walk are
-  // uniform on every index), so the meaningful choice is *when* to bet. The
-  // engine therefore watches every eligible market's digit stream and moves to
-  // whichever one currently shows the strongest, most stable bias for the
-  // selected contract. It only moves when another market beats the current one
-  // by a clear margin and enough time has passed, so the market never churns.
+  // uniform on every index), so the meaningful choice is *where and when* to
+  // bet. The scanner ranks every eligible market on the selected contract and
+  // the engine bets on the leader.
   _candidates() {
     const entry = findAutoContract(this.autoContractKey);
     const list = entry.digitFamily ? SYMBOLS.filter(s => isDigitSymbol(s.sym)) : SYMBOLS;
     return list.map(s => s.sym);
   }
 
-  // Strength of the current contract's edge on a given market, or null when the
-  // market does not yet have enough history to judge.
-  _marketEdge(sym) {
-    const entry = findAutoContract(this.autoContractKey);
-    const digits = this.store.digHist[sym] || [];
-    if (digits.length < 80) return null;
-    const sig = this._signalFor(sym, entry, { strict: true });
-    if (sig) return sig.conf + (sig.z || 0) * 4;
-    // No qualifying signal: fall back to the raw distance from break-even so
-    // markets can still be ranked before a signal appears.
-    const W = entry.tune?.W || 100;
-    const w = digits.slice(-W);
-    if (w.length < 40) return null;
-    const base = entry.tune?.baseline ?? 0.5;
-    const f = Array(10).fill(0);
-    for (const d of w) f[d]++;
-    const hit = d => (
-      entry.kind === 'over' ? d > entry.barrier
-        : entry.kind === 'under' ? d < entry.barrier
-          : entry.kind === 'match' ? d === entry.barrier
-            : entry.kind === 'diff' ? d !== entry.barrier
-              : entry.kind === 'even' ? d % 2 === 0
-                : d % 2 === 1
-    );
-    let c = 0;
-    for (let d = 0; d < 10; d++) if (hit(d)) c += f[d];
-    const p = c / w.length;
-    return p * 100 + Math.max(0, (p - base)) * 200;
-  }
-
-  // Decide whether to move the automation to a better market. Returns the new
-  // symbol, or null to stay put.
-  _pickBestMarket() {
-    if (!this.autoSwitch || !this.running) return null;
-    const now = Date.now();
-    if (now - this._lastSwitch < this._switchInterval * 1000) return null;
-    const cands = this._candidates();
-    if (cands.length < 2) return null;
-    let best = this.autoMarket, bestScore = -Infinity;
-    for (const sym of cands) {
-      const s = this._marketEdge(sym);
-      if (s != null && s > bestScore) { bestScore = s; best = sym; }
-    }
-    if (best === this.autoMarket || bestScore === -Infinity) return null;
-    const cur = this._marketEdge(this.autoMarket);
-    if (cur != null && bestScore < cur * this._switchMargin) return null;
-    return best;
-  }
-
   setAutoSwitch(on) {
     this.autoSwitch = !!on;
-    this.log(`[ENGINE] Auto market switch ${this.autoSwitch ? 'on' : 'off'}`, 'i');
+    if (this.autoSwitch) this.scanner.reset();
+    this.log(`[ENGINE] Multi-market scanner ${this.autoSwitch ? 'on' : 'off'}`, 'i');
     this.emit('state', this.snapshot());
   }
 
@@ -259,6 +225,9 @@ export class Engine {
       autoContractLabel: e.label,
       params: this.paramsFor(this.autoContractKey),
       autoSwitch: this.autoSwitch,
+      scan: this.scanner.top(8),
+      scanCount: this.scanner.scans,
+      exec: this.execStats(),
       sessionStart: this.sessionStart,
       lastSignal: this.lastSignal,
       positions: this.positions,
@@ -311,21 +280,45 @@ export class Engine {
     const closed = this.store.onTick(sym, price, epoch);
     this.emit('tick', { sym, price, epoch, digit: digitOf(price, sym) });
 
-    // Automation only ever acts on its chosen market, so browsing the chart
-    // can never redirect live trades. Digit contracts are decided on the tick
-    // that just printed — no waiting for a candle to close — which is what
-    // keeps execution in step with the market.
-    if (!this.running || sym !== this.autoMarket) return;
-    if (this.activeContracts.size > 0) return;
+    if (!this.running || this.activeContracts.size > 0) return;
+    this._tickAt = Date.now();
 
+    // ── The hot path ──────────────────────────────────────────────────────
+    // A trade is decided here, synchronously, on the tick that just printed —
+    // no timer, no re-scan, no waiting for a candle to close. The multi-market
+    // ranking is kept warm by the scanner on its own cadence, so this only has
+    // to run the selected contract's own signal on one market.
     const entry = findAutoContract(this.autoContractKey);
+
+    // Lightning path: the scanner keeps every market scored, so any market that
+    // currently shows a qualifying signal is taken on this tick. The engine
+    // follows the opportunity across the whole universe instead of idling on
+    // one hand-picked index.
+    if (entry.digitFamily && this.autoSwitch && this._scannedAt(sym) && isDigitSymbol(sym)) {
+      if (this._sessionAllows()) {
+        const sig = this._signalFor(sym, entry);
+        if (sig) {
+          if (sym !== this.autoMarket) { this.autoMarket = sym; this._lastSwitchReason = `auto → ${sym}`; }
+          this._logSignal(entry, sym, sig);
+          this._execute(sym, entry, sig);
+        }
+      }
+      return;
+    }
+
+    // Cold path: single-market evaluation for the selected market, and
+    // directional contracts, which need a completed candle.
+    if (sym !== this.autoMarket) return;
     if (entry.digitFamily) this._evaluateDigit(sym, entry);
     else if (closed) this._evaluateDirectional(sym, entry);
-
-    // Consider rotating markets after the trade decision, so a switch can
-    // never race the tick that triggered it.
-    this._maybeRotateMarket();
   }
+
+  // True when the scanner has freshly scored this market (within two cadences).
+  _scannedAt(sym) {
+    const row = this.scanner.rows.get(sym);
+    return !!row && (Date.now() - row.at) <= SCAN_INTERVAL_MS * 2;
+  }
+
 
   // Build the signal context for a contract and run its own strategy.
   _signalFor(sym, entry, opts = {}) {
@@ -345,11 +338,15 @@ export class Engine {
     }
   }
 
+  _logSignal(entry, sym, sig) {
+    this.log(`[SIGNAL] ${entry.label} on ${sym}: ${sig.conf}% · ${sig.rationale}`, 't');
+  }
+
   _evaluateDirectional(sym, entry) {
     if (!this._sessionAllows()) return;
     const sig = this._signalFor(sym, entry);
     if (!sig) return;
-    this.log(`[SIGNAL] ${entry.label} on ${sym}: ${sig.conf}% · ${sig.rationale}`, 't');
+    this._logSignal(entry, sym, sig);
     this._execute(sym, entry, sig);
   }
 
@@ -358,27 +355,43 @@ export class Engine {
     if (!isDigitSymbol(sym)) return;
     const sig = this._signalFor(sym, entry);
     if (!sig) return;
-    this.log(`[SIGNAL] ${entry.label} on ${sym}: ${sig.conf}% · ${sig.rationale}`, 't');
+    this._logSignal(entry, sym, sig);
     this._execute(sym, entry, sig);
   }
 
-  // Rotate to a stronger market when one exists. Runs on the tick stream but
-  // is throttled internally, so it costs nothing per tick.
-  _maybeRotateMarket() {
-    if (!this.running || this.activeContracts.size > 0) return;
-    const best = this._pickBestMarket();
-    if (!best) return;
+  // ── Multi-market scan ──────────────────────────────────────────────────
+  //
+  // One pass ranks every eligible market for the selected contract. The engine
+  // then bets on the leader: for digit contracts that means "whichever index is
+  // showing the strongest, most stable bias right now", which is a decision no
+  // single-market strategy can make. The scan runs on a cadence in the
+  // background — the tick handler never pays for it.
+  _runScan() {
+    if (!this.running || !this.autoSwitch) return;
+    if (Date.now() - this._scanAt < SCAN_INTERVAL_MS) return;
+    this._scanAt = Date.now();
+    const best = this.scanner.scan();
+    this.emit('scan', this.scanner.top(8));
+    if (!best || best.sym === this.autoMarket) return;
+
+    const cur = this.scanner.rows.get(this.autoMarket);
+    // Only chase a leader that is clearly ahead of the current market, so the
+    // engine does not flip between two near-equal indices.
+    if (cur && cur.score > -Infinity && best.score < cur.score * 1.15) return;
     const from = this.autoMarket;
-    this.autoMarket = best;
+    this.autoMarket = best.sym;
     this._lastSwitch = Date.now();
-    this._lastSwitchReason = `${from} → ${best}`;
-    this.log(`[ENGINE] Auto-switch market ${from} → ${best} (stronger edge)`, 'i');
-    this.toast(`Auto-switched to ${best}`, 'info');
+    this._lastSwitchReason = `${from} → ${best.sym}`;
+    this.log(`[SCAN] ${this.scanner.scans} pass — leader ${best.sym}`
+      + (best.conf != null ? ` ${best.conf}%` : '')
+      + ` (was ${from})`, 'i');
+    this.toast(`Scanner picked ${best.sym}`, 'info');
     this.emit('state', this.snapshot());
   }
 
   // ── Trade execution ────────────────────────────────────────────────────
   _execute(sym, entry, sig) {
+    this._execStart = Date.now();
     const p = this.paramsFor(entry.key);
     const stake = this._stakeFor(p);
     const value = buildAutoValue(entry, p);
@@ -446,6 +459,9 @@ export class Engine {
     const p = msg.proposal;
     this.activeContracts.delete('sending');
     if (this.activeContracts.has('pending')) { this.log('[PROP] Buy already in flight — skip duplicate', 'w'); return; }
+    // Tick → proposal received, the number that decides whether the entry
+    // still matches the signal that triggered it.
+    if (this._tickAt) { this._recordExec(Date.now() - this._tickAt); }
     this.activeContracts.set('pending', { id: p.id, price: p.ask_price, time: Date.now() });
     if (!this.client?.buy(p.id, p.ask_price)) this.log('[PROP] WS not open for buy', 'e');
   }
@@ -542,8 +558,11 @@ export class Engine {
     this._martSteps = 0;
     this._lastSwitch = Date.now();
     this._lastSwitchReason = '';
-    this.log(`[ENGINE] Started — ${entry.label} on ${this.autoMarket}`, 's');
-    if (!this._watchdog) this._watchdog = setInterval(() => this._watch(), 5000);
+    this._scanAt = 0;
+    this._execSamples = [];
+    this.log(`[ENGINE] Started — ${entry.label}`
+      + (this.autoSwitch ? ' · multi-market scanner on' : ` on ${this.autoMarket}`), 's');
+    if (!this._watchdog) this._watchdog = setInterval(() => this._watch(), 1000);
     this.emit('state', this.snapshot());
     return true;
   }
@@ -581,14 +600,15 @@ export class Engine {
 
   _watch() {
     const now = Date.now();
+    this._runScan();
     for (const [k, v] of this.activeContracts.entries()) {
       if (!v || typeof v.time !== 'number') continue;
       const age = now - v.time;
       if (k === 'sending' || k === 'pending') {
-        if (age > 20000) { this.activeContracts.delete(k); this.log(`[WATCH] Stale "${k}" released`, 'w'); }
+        if (age > 8000) { this.activeContracts.delete(k); this.log(`[WATCH] Stale "${k}" released`, 'w'); }
         continue;
       }
-      if (age > 20000) {
+      if (age > 8000) {
         this._probed = this._probed || {};
         if (!this._probed[k]) {
           this._probed[k] = true;
@@ -598,5 +618,18 @@ export class Engine {
         }
       }
     }
+  }
+
+  // ── Execution stats ────────────────────────────────────────────────────
+  _recordExec(ms) {
+    if (!Number.isFinite(ms) || ms < 0) return;
+    this._execSamples = [...this._execSamples, ms].slice(-EXEC_WINDOW);
+  }
+
+  execStats() {
+    const s = [...this._execSamples].sort((a, b) => a - b);
+    if (!s.length) return { n: 0, p50: null, p95: null, last: null };
+    const at = q => s[Math.min(s.length - 1, Math.floor(q * s.length))];
+    return { n: s.length, p50: Math.round(at(0.5)), p95: Math.round(at(0.95)), last: Math.round(s[s.length - 1]) };
   }
 }

@@ -1246,6 +1246,36 @@ body {
 .automate-market__chip:disabled { opacity: 0.3; cursor: not-allowed; }
 .automate-note { font-size: 10.5px; color: var(--text-secondary, #8a8f9c); margin: 6px 0 0; line-height: 1.35; }
 
+/* ── Multi-market scanner board ─────────────────────────────────────── */
+.scanner-board {
+  margin-top: 8px; border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+}
+.scanner-board__head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 10px; font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--text-secondary, #8a8f9c);
+  background: rgba(255, 255, 255, 0.02);
+}
+.scanner-row {
+  display: grid; grid-template-columns: 16px 52px 1fr 46px;
+  align-items: center; gap: 8px; width: 100%;
+  padding: 6px 10px; cursor: pointer; text-align: left;
+  background: transparent; border: 0; border-top: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--text-primary, #e8e9ee); font-size: 11px;
+}
+.scanner-row:hover { background: rgba(255, 255, 255, 0.03); }
+.scanner-row.is-active { background: rgba(255, 68, 79, 0.10); }
+.scanner-row__rank { color: var(--text-secondary, #8a8f9c); font-size: 10px; }
+.scanner-row__sym { font-weight: 600; }
+.scanner-row__bar {
+  height: 5px; border-radius: 3px; overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+}
+.scanner-row__fill { display: block; height: 100%; border-radius: 3px; background: #3fb68b; }
+.scanner-row.is-active .scanner-row__fill { background: var(--coral, #ff444f); }
+.scanner-row__val { text-align: right; font-variant-numeric: tabular-nums; font-size: 10.5px; }
+
 /* ── Per-contract Automate controls ─────────────────────────────────── */
 .automate-run { display: flex; align-items: center; gap: 10px; }
 .automate-run__status { display: flex; align-items: center; gap: 6px; min-width: 0; }
