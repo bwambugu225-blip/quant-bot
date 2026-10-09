@@ -439,4 +439,30 @@ app.deriv.com ships — not a lookalike. Facts worth keeping:
   so those files are served as real static assets in production.
 - `ChartArea.jsx` (the SVG sparkline) is kept as the fallback for when there
   is no market socket yet, not the default chart.
+- The chart-type ids the current Flutter bundle understands are only `line`
+  (the Area/mountain series), `candles`, `hollow`, `ohlc`. The JS README lists
+  older names (`mountain`, `candle`, `colored_line`, `spline`, …) that the
+  renderer's enum no longer has, so passing one makes Flutter throw
+  `No enum value with that name` at init (`B.pF`). The Area chart is
+  `chartType="line"`, not `"mountain"`.
+- `isMobile` is pinned once at mount (not derived from a resize listener):
+  re-keying it remounts the Flutter view, and that teardown/remount cycle is
+  what crashed the chart.
+
+### Login is Deriv OAuth 2.0 (PKCE)
+
+- OAuth 2.0 Authorization Code + PKCE is the primary login. `src/lib/oauth.js`
+  builds the authorize URL (`https://auth.deriv.com/oauth2/auth`), stores the
+  verifier/state in `localStorage`, and exchanges the code at
+  `/oauth2/token` directly from the browser (PKCE needs no client secret; the
+  endpoint returns CORS headers). Endpoints and scope per
+  https://developers.deriv.com/llms/oauth.md.
+- The registered redirect URI is `<origin>/callback.html`; that static file
+  bridges `code`/`state` to the SPA `/callback` route (`SiteShell.jsx`), which
+  verifies state and runs the exchange on the same origin (the PKCE verifier
+  is origin-scoped). `scripts/build-site.sh` copies `callback.html` into the
+  build.
+- A pasted API token stays as an advanced fallback. Both paths end with an
+  access token that authenticates the trading socket; market data needs no
+  login.
 
