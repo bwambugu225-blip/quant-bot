@@ -2,6 +2,7 @@ import React from 'react';
 import { SmartChart, setSmartChartsPublicPath } from '@deriv-com/smartcharts-champion';
 import '@deriv-com/smartcharts-champion/dist/smartcharts.css';
 import ChartArea from './ChartArea.jsx';
+import { toLegacySymbols, toChartTradingTimes } from '../lib/chartSymbols.js';
 
 // Deriv's own charting library (the same one app.deriv.com uses). The host
 // answers its data requests over the public market socket; SmartCharts owns
@@ -40,40 +41,50 @@ export default function SmartChartArea({ client, sym, granularity = 0, prices, u
     return () => clearTimeout(t);
   }, []);
 
+  // Derived once at mount. Re-keying on resize would remount the Flutter view,
+  // which is the exact teardown/remount cycle that crashes SmartCharts.
+  const [isMobile] = React.useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches,
+  );
+
   React.useEffect(() => {
     if (!client) return;
     let cancelled = false;
+    let timer;
     const load = async () => {
+      if (cancelled) return;
       try {
         const [symRes, ttRes] = await Promise.all([
           client.requestOnce({ active_symbols: 'brief' }),
           client.requestOnce({ trading_times: new Date().toISOString().slice(0, 10) }),
         ]);
         if (cancelled) return;
-        const simplified = {};
-        ttRes?.trading_times?.markets?.forEach(market => {
-          market.submarkets?.forEach(sub => {
-            sub.symbols?.forEach(s => {
-              const { open = [], close = [] } = s.times || {};
-              const dateStr = new Date().toISOString().substring(0, 11);
-              const allDay = open.length === 1 && open[0] === '00:00:00' && close[0] === '23:59:59';
-              let isOpen = allDay, openTime = '', closeTime = '';
-              if (!(open.length === 1 && open[0] === '--')) {
-                openTime = `${dateStr}${open[0]}Z`;
-                closeTime = `${dateStr}${close[0]}Z`;
-                isOpen = new Date() >= new Date(openTime) && new Date() < new Date(closeTime);
-              }
-              simplified[s.symbol] = { isOpen, openTime, closeTime };
-            });
-          });
-        });
-        setChartData({ activeSymbols: symRes?.active_symbols || [], tradingTimes: simplified });
+        const activeSymbols = toLegacySymbols(symRes?.active_symbols);
+        const tradingTimes = toChartTradingTimes(ttRes);
+        // The active-symbols payload carries the open/closed flag; fold it in so
+        // every symbol the chart can select has a tradingTimes entry.
+        for (const s of activeSymbols) {
+          if (!tradingTimes[s.symbol]) {
+            tradingTimes[s.symbol] = { isOpen: s.exchange_is_open, openTime: '', closeTime: '' };
+          }
+        }
+        if (activeSymbols.length) setChartData({ activeSymbols, tradingTimes });
       } catch (e) {
-        // Quotes still render without the widget data.
+        // The chart needs the symbol list before it mounts, so retry rather
+        // than leave an empty chart when a request races the socket.
+        timer = setTimeout(load, 700);
       }
     };
-    load();
-    return () => { cancelled = true; };
+    if (client.mws && client.mws.readyState === 1) load();
+    else {
+      const wait = () => {
+        if (cancelled) return;
+        if (client.mws && client.mws.readyState === 1) load();
+        else timer = setTimeout(wait, 400);
+      };
+      wait();
+    }
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [client]);
 
   const getQuotes = React.useCallback(
@@ -150,12 +161,15 @@ export default function SmartChartArea({ client, sym, granularity = 0, prices, u
 
   return (
     <div className="chart-area chart-area--smart">
+      {/* SmartCharts' Area/mountain series is id `line`; the old `mountain`
+          id is no longer in the chart-type enum, and passing it makes the
+          Flutter renderer throw "No enum value with that name". */}
       <SmartChart
         id="dtrader-chart"
         symbol={sym}
         granularity={granularity}
-        chartType="mountain"
-        isMobile={false}
+        chartType="line"
+        isMobile={isMobile}
         enableRouting={false}
         feedCall={{ activeSymbols: false, tradingTimes: false }}
         chartData={chartData || undefined}

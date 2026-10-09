@@ -1732,6 +1732,18 @@ body {
   background: transparent; color: var(--text-secondary, #8a8f9c);
   border-radius: 20px; cursor: pointer; font-size: 13px;
 }
+.login-form__oauth {
+  height: 46px; border: none; border-radius: 23px; cursor: pointer;
+  background: var(--coral, #ff444f); color: #fff; font-size: 15px; font-weight: 700;
+}
+.login-form__oauth--alt {
+  background: transparent; color: var(--text-primary, #fff);
+  border: 1px solid var(--core-color-solid-slate-200, #2a2e39);
+}
+.login-form__advanced-toggle {
+  margin-top: 2px; background: none; border: none; cursor: pointer;
+  color: var(--text-secondary, #8a8f9c); font-size: 12px; text-decoration: underline;
+}
 
 /* ============================ Console ============================= */
 .log-console {
@@ -1785,6 +1797,12 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Kept in the DOM when another tab is open so the SmartCharts Flutter engine
+   (a window singleton) stays alive. `display:none` avoids layout/paint cost. */
+.trade-screen--hidden {
+  display: none;
 }
 
 .trade-screen .chart-area {

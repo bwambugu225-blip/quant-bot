@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Signing you in…</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #181c25; color: #fff;
+    font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { min-height: 100%; display: grid; place-items: center; padding: 24px; }
+  a { color: #ff444f; }
+</style>
+</head>
+<body>
+<div class="wrap"><p id="msg">Completing your Deriv login…</p></div>
+<script>
+  // This is the OAuth redirect URI registered on the Deriv app. The PKCE
+  // verifier and state live in this origin's localStorage, so the exchange must
+  // run here; the SPA then reads the stored session when it loads at /trader.
+  //
+  // Fragments can arrive instead of a query (implicit/error responses), so both
+  // are forwarded to the SPA's /callback route.
+  (function () {
+    var query = (window.location.search || '').replace(/^\?/, '');
+    var fromHash = (window.location.hash || '').replace(/^#/, '');
+    if (fromHash && !/(code|error|state|access_token)=/.test(query)) {
+      query = query ? query + '&' + fromHash : fromHash;
+    }
+    // The SPA serves index.html for /callback (Vercel SPA rewrite), so the
+    // route runs the PKCE exchange against this origin's localStorage.
+    window.location.replace('/callback' + (query ? '?' + query : ''));
+  })();
+</script>
+</body>
+</html>

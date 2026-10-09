@@ -21,10 +21,11 @@ export function EmptyState({ title, body }) {
   );
 }
 
-export function LoginScreen({ onSubmit, onClose }) {
+export function LoginScreen({ onSubmit, onOAuth, onClose }) {
   const [token, setToken] = React.useState('');
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
+  const [advanced, setAdvanced] = React.useState(false);
 
   const submit = async e => {
     e.preventDefault();
@@ -38,27 +39,51 @@ export function LoginScreen({ onSubmit, onClose }) {
     }
   };
 
+  // OAuth is the primary method: the browser leaves for Deriv and comes back
+  // authenticated through /callback.
+  const go = (mode) => {
+    setError('');
+    Promise.resolve(onOAuth?.(mode)).catch(err => setError(err?.message || 'Could not start login'));
+  };
+
   return (
-    <form className="login-form" onSubmit={submit}>
+    <div className="login-form">
       <p className="login-form__hint">
-        Paste a Deriv API token (with Read + Trade scope) to connect your account. Market
-        data streams without logging in; trading requires a token.
+        Log in with your Deriv account to trade. You authorise on Deriv’s own site — this
+        app never sees your password. Market data streams without logging in.
       </p>
-      <input
-        className="login-form__input"
-        type="password"
-        placeholder="Deriv API token"
-        value={token}
-        onChange={e => setToken(e.target.value)}
-        disabled={busy}
-        autoFocus
-      />
-      {error && <div className="login-form__error">{error}</div>}
-      <button className="login-form__submit" type="submit" disabled={busy}>
-        {busy ? 'Connecting…' : 'Log in'}
+      <button className="login-form__oauth" type="button" onClick={() => go('login')}>
+        Log in with Deriv
       </button>
+      <button className="login-form__oauth login-form__oauth--alt" type="button" onClick={() => go('signup')}>
+        Create a Deriv account
+      </button>
+
+      {!advanced && (
+        <button className="login-form__advanced-toggle" type="button" onClick={() => setAdvanced(true)}>
+          Advanced: paste an API token
+        </button>
+      )}
+
+      {advanced && (
+        <form onSubmit={submit}>
+          <input
+            className="login-form__input"
+            type="password"
+            placeholder="Deriv API token (Read + Trade)"
+            value={token}
+            onChange={e => setToken(e.target.value)}
+            disabled={busy}
+          />
+          <button className="login-form__submit" type="submit" disabled={busy}>
+            {busy ? 'Connecting…' : 'Log in with token'}
+          </button>
+        </form>
+      )}
+
+      {error && <div className="login-form__error">{error}</div>}
       <button className="login-form__cancel" type="button" onClick={onClose}>Cancel</button>
-    </form>
+    </div>
   );
 }
 

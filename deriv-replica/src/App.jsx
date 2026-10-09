@@ -29,7 +29,7 @@ const DURATION_BOUNDS = { t: [1, 10], s: [15, 86400], m: [1, 1440], h: [1, 24], 
 const UNIT_LABELS = { t: 'Ticks', s: 'Seconds', m: 'Minutes', h: 'Hours', d: 'Days' };
 
 export default function App() {
-  const { engine, client, state, tick, toast, login, logout, switchAccount } = useEngine();
+  const { engine, client, state, tick, toast, login, loginWithOAuth, logout, switchAccount } = useEngine();
 
   const [tab, setTab] = React.useState('trade');
   const [marketIdx, setMarketIdx] = React.useState(0);
@@ -130,8 +130,12 @@ export default function App() {
         />
 
         <main className="app__main">
-          {tab === 'trade' && (
-            <div className="trade-screen">
+          {/* Always mounted, hidden with CSS off-tab. SmartCharts mounts a
+              single Flutter engine and tears it down when unmounted, so a
+              tab switch that unmounted and remounted it would reuse a disposed
+              engine and crash the chart. Keeping one instance alive matches
+              Deriv's own app. */}
+          <div className={`trade-screen${tab === 'trade' ? '' : ' trade-screen--hidden'}`}>
               <div className="trade-types-row">
                 <TradeTypesBar type={type} onSelect={selectType} onViewAll={() => setTypesSheet(true)} />
               </div>
@@ -170,8 +174,7 @@ export default function App() {
                   </div>
                 </div>
               </div>
-            </div>
-          )}
+          </div>
 
           {tab === 'positions' && (
             <div className="app__scroll">
@@ -364,6 +367,7 @@ export default function App() {
         <Sheet title="Log in to Deriv" onClose={() => setShowLogin(false)}>
           <LoginScreen
             onSubmit={async token => { await login(token); setShowLogin(false); }}
+            onOAuth={mode => loginWithOAuth(mode)}
             onClose={() => setShowLogin(false)}
           />
         </Sheet>

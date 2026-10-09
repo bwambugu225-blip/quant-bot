@@ -3,7 +3,7 @@ import Nav from './Nav.jsx';
 import Footer from './Footer.jsx';
 import HomePage from './HomePage.jsx';
 import { MarketsIndex, MarketPage, PlatformsIndex, PlatformPage, HelpCentre, PaymentMethods, ContentPage, NotFound } from './Pages.jsx';
-import { LoginPage, SignupPage } from './SiteAuth.jsx';
+import { LoginPage, SignupPage, CallbackPage } from './SiteAuth.jsx';
 import { useRoute } from './router.jsx';
 
 function Routes() {
@@ -13,6 +13,8 @@ function Routes() {
   if (p === '/') return <HomePage />;
   if (p === '/login') return <LoginPage />;
   if (p === '/signup') return <SignupPage />;
+  // OAuth redirect target (registered as `<origin>/callback`).
+  if (p === '/callback') return <CallbackPage />;
   if (p === '/help-centre') return <HelpCentre />;
   if (p === '/payment-methods') return <PaymentMethods />;
 

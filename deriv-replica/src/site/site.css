@@ -589,6 +589,12 @@ body.site-body {
 .field .error { font-size: 12.5px; color: var(--red-600); margin-top: 6px; }
 .auth-alt { margin-top: 22px; font-size: 14px; color: var(--ink-2); text-align: center; }
 .auth-alt a { color: var(--brand); font-weight: 700; }
+.auth-alt:first-of-type { margin-top: 14px; }
+.auth-token-toggle {
+  display: block; margin: 18px auto 0; background: none; border: none; cursor: pointer;
+  color: var(--ink-3); font-size: 13px; text-decoration: underline; font-family: inherit;
+}
+.auth-token-toggle:hover { color: var(--ink); }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .checkbox { display: flex; gap: 10px; align-items: flex-start; font-size: 13.5px; color: var(--ink-2); margin: 6px 0 18px; }
 .checkbox input { margin-top: 2px; }

@@ -28,6 +28,11 @@ export class DerivClient {
     this.mws = null;         // public market socket
     this.rid = 0;
     this.token = '';
+    // 'oauth' sends only `Authorization: Bearer`; a Personal Access Token also
+    // needs the `Deriv-App-ID` header (see developers.deriv.com). The app
+    // logs in with OAuth by default and keeps the PAT path as a fallback.
+    this.authMode = 'oauth';
+    this._tokenProvider = null;   // async () => fresh access token, for OAuth refresh
     this.accountId = null;
     this.accountType = 'demo';
     this.balance = 0;
@@ -81,16 +86,37 @@ export class DerivClient {
     this.emit('log', { t: '[MARKET] Manual reconnect', k: 'i' });
   }
 
-  // ── Auth ───────────────────────────────────────────────────────────────
-  async authorize(token) {
+  // Headers for an authenticated REST call. An OAuth access token identifies
+  // the client, so Deriv-App-ID is only added for the PAT fallback. The token
+  // is refreshed through the provider when one is set.
+  async _authHeaders() {
+    let token = this.token;
+    if (this._tokenProvider) {
+      try { const fresh = await this._tokenProvider(); if (fresh) token = fresh; }
+      catch (e) { /* keep the existing token and let the call surface the error */ }
+    }
     this.token = token;
+    const headers = { Authorization: `Bearer ${token}` };
+    if (this.authMode === 'pat') headers['Deriv-App-ID'] = this.appId;
+    return headers;
+  }
+
+  // ── Auth ───────────────────────────────────────────────────────────────
+  // `options.authMode` selects the header set: 'oauth' (bearer only) or 'pat'
+  // (bearer + Deriv-App-ID). `options.tokenProvider` is an async function that
+  // returns a fresh access token; when present it is consulted before every
+  // authenticated REST call so an expired OAuth session refreshes in place.
+  async authorize(token, options = {}) {
+    this.token = token;
+    this.authMode = options.authMode || this.authMode || 'oauth';
+    if (options.tokenProvider !== undefined) this._tokenProvider = options.tokenProvider;
     let accounts = this._oauthAccounts;
     let restError = null;
     try {
       if (!accounts || !accounts.length) {
         const resp = await fetch(REST_ACCOUNTS, {
           method: 'GET',
-          headers: { Authorization: `Bearer ${token}`, 'Deriv-App-ID': this.appId },
+          headers: await this._authHeaders(),
         });
         const body = await resp.json().catch(() => null);
         if (resp.ok) {
@@ -131,13 +157,17 @@ export class DerivClient {
     try {
       const otpResp = await fetch(`${REST_ACCOUNTS}/${account.account}/otp`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Deriv-App-ID': this.appId },
+        headers: await this._authHeaders(),
         body: '{}',
       });
       if (otpResp.ok) {
         const otpData = await otpResp.json();
         const wsUrl = otpData.data?.url || otpData.url;
         if (wsUrl) { this._connectOTP(wsUrl); return; }
+      } else {
+        const otpErr = await otpResp.json().catch(() => null);
+        restError = otpErr?.errors?.[0]?.message || otpErr?.error?.message || `OTP HTTP ${otpResp.status}`;
+        this.emit('log', { t: `[AUTH] OTP rejected: ${restError}`, k: 'w' });
       }
     } catch (e) { this.emit('log', { t: '[AUTH] OTP failed, trying direct WS…', k: 'w' }); }
     this._connectDirect(token);
@@ -156,7 +186,7 @@ export class DerivClient {
     try {
       const otpResp = await fetch(`${REST_ACCOUNTS}/${account.account}/otp`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${this.token}`, 'Deriv-App-ID': this.appId },
+        headers: await this._authHeaders(),
         body: '{}',
       });
       if (otpResp.ok) {
