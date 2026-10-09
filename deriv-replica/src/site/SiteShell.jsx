@@ -4,7 +4,7 @@ import Footer from './Footer.jsx';
 import HomePage from './HomePage.jsx';
 import { MarketsIndex, MarketPage, PlatformsIndex, PlatformPage, HelpCentre, PaymentMethods, ContentPage, NotFound } from './Pages.jsx';
 import { LoginPage, SignupPage } from './SiteAuth.jsx';
-import { RouterProvider, useRoute } from './router.jsx';
+import { useRoute } from './router.jsx';
 
 function Routes() {
   const path = useRoute();
@@ -64,15 +64,17 @@ const CONTENT_KEYS = {
 };
 
 export default function SiteShell() {
+  // RouterProvider lives at the root (main.jsx) so a navigation can swap this
+  // whole shell for the trading app. Do not nest another provider here.
   return (
-    <RouterProvider>
+    <>
       <TitleManager />
       <Nav />
       <main id="main-content">
         <Routes />
       </main>
       <Footer />
-    </RouterProvider>
+    </>
   );
 }
 
