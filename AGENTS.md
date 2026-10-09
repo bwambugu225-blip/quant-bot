@@ -337,3 +337,35 @@ internally and sends `CALL`/`PUT` to Deriv; digit sub-types map to
   the only flexible region); the form dock sits at the bottom. Account
   switching is the header chip → popover (demo ↔ real), which re-requests an
   OTP for the target account.
+
+## deriv.com marketing-site clone
+
+The React build now serves **two applications from one bundle**, chosen in
+`src/main.jsx` by pathname:
+
+- `/` and every marketing path → `src/site/` — a clone of the public
+  **deriv.com** marketing site.
+- `/trader` and deeper → the existing live trading app (`App.jsx`).
+
+`src/site/siteData.js` holds the navigation, footer and page copy transcribed
+from the live site, so the components stay presentational.
+
+- **Design values are the real ones.** `src/site/site.css` was written from
+  `deriv.com`'s own published stylesheet (`/_next/static/chunks/*.css`), not
+  eyeballed: coral brand `#ff444f`, up/buy `#00c390`, down/sell `#e5303b`,
+  the slate ramp through `#181c25`, and the **Inter** type stack (the current
+  site uses Inter, not Ubuntu/IBM Plex — those remain the trading app's stack).
+- The brand logo is Deriv's own SVG, vendored at
+  `src/site/assets/deriv-logo.svg`.
+- `RouterProvider` / `Link` in `src/site/router.jsx` are a small history
+  router; Vite `base` is `/` (absolute asset URLs) so deep client routes like
+  `/markets/forex` resolve assets from the origin root. Vercel's SPA rewrite
+  serves `index.html` for every non-asset path.
+- Login is **functional**: `site/SiteAuth.jsx` authorises a real Deriv API
+  token via `DerivClient.authorize`, stores it in `localStorage` under
+  `deriv_token`, then sends the user to `/trader`, where the trading app
+  restores the same session. Market data needs no login.
+- Pages covered: home, markets index + 7 market detail pages, platforms index
+  + 6 platform pages, help centre, payment methods, login, sign-up, plus a
+  shared content page for legal/about/support/promo paths and a 404.
+
