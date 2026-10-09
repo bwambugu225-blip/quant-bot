@@ -1029,6 +1029,23 @@ body {
   font-weight: 700;
 }
 
+.reports__tabs {
+  margin-bottom: 12px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.reports__tabs::-webkit-scrollbar { display: none; }
+
+.reports__tabs .menu-seg__btn { white-space: nowrap; }
+
+.reports__empty {
+  font-size: 13px;
+  color: var(--text-dim);
+  padding: 16px 2px;
+}
+
 .account-card {
   display: flex;
   align-items: center;

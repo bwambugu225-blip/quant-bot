@@ -161,7 +161,7 @@ export default function App() {
           )}
           {tab === 'reports' && (
             <div className="app__scroll">
-              <Reports reports={state?.reports ?? []} currency={CURRENCY} />
+              <Reports reports={state?.reports ?? []} positions={state?.positions ?? []} currency={CURRENCY} />
             </div>
           )}
           {tab === 'automate' && (

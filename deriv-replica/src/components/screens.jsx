@@ -1,4 +1,5 @@
 import React from 'react';
+import { addComma } from '../lib/format.js';
 import { SYMBOLS, isDigitSymbol } from '../lib/marketStore.js';
 import { AUTO_FAMILIES, DIGIT_PRODUCTS, findAutoContract, contractsForFamily, ACCURACY_LEVELS } from '../lib/autoStrategies.js';
 
@@ -70,32 +71,77 @@ function Stat({ label, value, tone }) {
   );
 }
 
-export function Reports({ reports, currency = 'USD' }) {
-  if (!reports.length) {
-    return (
-      <EmptyState
-        title="No reports yet"
-        body="Your settled contracts will appear here once a trade has been resolved."
-      />
-    );
-  }
+export function Reports({ reports, positions = [], currency = 'USD' }) {
+  const [tab, setTab] = React.useState('open');
+  const tabs = [
+    ['open', 'Open positions'],
+    ['trade', 'Trade history'],
+    ['tx', 'Transactions'],
+  ];
+  const open = positions || [];
+
   return (
     <div className="screen">
       <div className="screen__title">Reports</div>
-      {reports.map(p => (
-        <div key={p.id} className="report-row">
-          <div>
-            <div className="report-row__type">{p.action} · {p.strategy}</div>
-            <div className="report-row__sub">{p.symbol} · {p.time}</div>
+      <div className="menu-seg reports__tabs">
+        {tabs.map(([id, label]) => (
+          <button
+            key={id}
+            className={`menu-seg__btn${tab === id ? ' is-active' : ''}`}
+            onClick={() => setTab(id)}
+            type="button"
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'open' && (
+        open.length ? open.map(p => (
+          <div key={p.id} className="report-row">
+            <div>
+              <div className="report-row__type">{p.sideLabel || p.contractType} · Open</div>
+              <div className="report-row__sub">{p.symbol} · {p.id}</div>
+            </div>
+            <div className="report-row__right">
+              <span className="report-row__stake">{addComma(p.stake, 2)} {currency}</span>
+            </div>
           </div>
-          <div className="report-row__right">
-            <span className="report-row__stake">{Number(p.stake || 0).toFixed(2)} {currency}</span>
-            <span className={`report-row__pnl ${p.profit >= 0 ? 'is-win' : 'is-loss'}`}>
-              {p.profit >= 0 ? '+' : ''}{p.profit.toFixed(2)} {currency}
-            </span>
+        )) : <p className="reports__empty">You have no open positions.</p>
+      )}
+
+      {tab === 'trade' && (
+        reports.length ? reports.map(p => (
+          <div key={p.id} className="report-row">
+            <div>
+              <div className="report-row__type">{p.action} · {p.strategy}</div>
+              <div className="report-row__sub">{p.symbol} · {p.time}</div>
+            </div>
+            <div className="report-row__right">
+              <span className="report-row__stake">{addComma(p.stake, 2)} {currency}</span>
+              <span className={`report-row__pnl ${p.profit >= 0 ? 'is-win' : 'is-loss'}`}>
+                {p.profit >= 0 ? '+' : ''}{p.profit.toFixed(2)} {currency}
+              </span>
+            </div>
           </div>
-        </div>
-      ))}
+        )) : <p className="reports__empty">No trades yet. Your settled contracts will appear here.</p>
+      )}
+
+      {tab === 'tx' && (
+        reports.length ? [...reports].reverse().map(p => (
+          <div key={`tx-${p.id}`} className="report-row">
+            <div>
+              <div className="report-row__type">{p.profit >= 0 ? 'Credit' : 'Debit'}</div>
+              <div className="report-row__sub">{p.symbol} · {p.time}</div>
+            </div>
+            <div className="report-row__right">
+              <span className={`report-row__pnl ${p.profit >= 0 ? 'is-win' : 'is-loss'}`}>
+                {p.profit >= 0 ? '+' : ''}{p.profit.toFixed(2)} {currency}
+              </span>
+            </div>
+          </div>
+        )) : <p className="reports__empty">Your transactions will appear here.</p>
+      )}
     </div>
   );
 }
