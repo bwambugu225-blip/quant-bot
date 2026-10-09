@@ -51,6 +51,10 @@ Dependabot auto-merge workflow only merges when that `test` job is green.
   own regime, accuracy ordering, duration-aware analysis, the multi-market
   scanner, lightning execution, proposal→buy→settle, warm-up, and the session
   guards.
+- `tests/payments.test.mjs`, `tests/account.test.mjs` and `tests/topup.test.mjs`
+  cover the abepayy.com URL builder and the demo top-up path: `DerivClient`
+  against a stubbed `fetch` (the network boundary only) and `Engine.topUpDemo`
+  against a fake client, including the real→demo switch and error surfacing.
 - `.github/dependabot.yml` keeps npm deps and workflow actions current.
   Dependabot PRs run with a read-only token, so
   `.github/workflows/dependabot-auto-merge.yml` reacts to the **CI run
@@ -230,6 +234,27 @@ API (same transport as `bot.html`).
   Trade / Positions / Reports / Menu and the desktop rail is Home / Positions /
   Reports + Help / Language / Theme / Account. Language opens a sheet; Account
   opens the Accounts Centre.
+- The account header's Deposit button and the Accounts Centre rows
+  (Deposit / Withdraw) hand off to **abepayy.com**, the external payment
+  portal — `src/lib/payments.js` builds `https://abepayy.com/deposit|withdraw`
+  (with account/currency/amount query params when known) and opens it in a new
+  tab, falling back to a same-tab navigation if the popup is blocked.
+- The Accounts Centre **Transfer** row recharges the demo account. It calls
+  `engine.topUpDemo()`, which switches to the virtual account first (so a
+  top-up from a real login still lands on the demo wallet) then hits Deriv's
+  REST `POST /trading/v1/options/accounts/{id}/reset-demo-balance`
+  (`DerivClient.topUpDemo`). The response's new balance is folded back into the
+  account list; the top-up needs the OAuth Bearer token (the OTP socket has no
+  equivalent).
+- **Theme switching** is live. `quill-ui`'s `ThemeProvider` owns the `dark` /
+  `light` class on `<html>` (which flips the quill-tokens variables), and
+  `App.jsx` drives it through the provider's own `UseTheme().toggleTheme` so
+  quill components stay in sync; the choice is persisted in `localStorage`
+  (`deriv_theme`) and restored on the next `/trader` load. The left rail's
+  Theme item and the Accounts Centre Theme row both toggle it. SmartCharts
+  reads `settings.theme` only at mount, so `SmartChartArea` keys the chart on
+  the theme to remount it and swap `smartcharts-dark` ↔ `smartcharts-light`
+  without a blank page (`ChartErrorBoundary` still guards the remount).
 - `src/components/screens.jsx` `MenuScreen` is the Accounts Centre: demo/real
   cards with balance + switch, then grouped Trading and Settings rows.
 - `src/components/ChartErrorBoundary.jsx` wraps SmartChart so a chart remount
@@ -448,6 +473,11 @@ app.deriv.com ships — not a lookalike. Facts worth keeping:
 - `isMobile` is pinned once at mount (not derived from a resize listener):
   re-keying it remounts the Flutter view, and that teardown/remount cycle is
   what crashed the chart.
+- `settings.theme` is also read only at mount, so the theme toggle keys the
+  chart on the theme (`key={theme}` in `SmartChartArea`) to remount it and swap
+  `smartcharts-dark` ↔ `smartcharts-light`. The remount is intentional (unlike
+  the `isMobile` case) and verified steady through repeated toggles under the
+  crash-stress harness; `ChartErrorBoundary` still contains any fault.
 
 ### Login is Deriv OAuth 2.0 (PKCE)
 

@@ -198,6 +198,36 @@ export class DerivClient {
     this._connectDirect(this.token);
   }
 
+  // Recharge the virtual account. Deriv exposes this as a REST call
+  // (POST /trading/v1/options/accounts/{id}/reset-demo-balance), so it needs the
+  // OAuth Bearer token — the OTP trading socket has no equivalent. The response
+  // reports the new balance, which we fold back into the account list.
+  async topUpDemo(amount) {
+    if (!this.accountId) throw new Error('Log in to top up your demo account');
+    if (this.accountType !== 'demo') throw new Error('Top-up is only available on a demo account');
+    const body = amount ? { balance: amount } : {};
+    const resp = await fetch(`${REST_ACCOUNTS}/${this.accountId}/reset-demo-balance`, {
+      method: 'POST',
+      headers: { ...(await this._authHeaders()), 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json().catch(() => null);
+    if (!resp.ok) {
+      const msg = data?.errors?.[0]?.message || data?.error?.message || `Top-up failed (HTTP ${resp.status})`;
+      throw new Error(msg);
+    }
+    const next = data?.data?.balance ?? data?.balance;
+    const balance = next != null ? parseFloat(next) : this.balance;
+    this.balance = balance;
+    const accounts = (this._oauthAccounts || []).map(a =>
+      a.account === this.accountId ? { ...a, balance } : a);
+    this._oauthAccounts = accounts;
+    this.emit('accounts', accounts);
+    this.emit('authorized', { accountId: this.accountId, accountType: this.accountType, balance });
+    this.emit('log', { t: `[AUTH] Demo top-up → $${balance}`, k: 's' });
+    return balance;
+  }
+
   _wsAuthorize(token) {
     return new Promise((resolve, reject) => {
       const ws = new WebSocket(`${WS_BASE}?app_id=${this.appId}`);

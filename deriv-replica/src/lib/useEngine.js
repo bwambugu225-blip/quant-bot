@@ -69,7 +69,10 @@ export function useEngine() {
   const switchAccount = useCallback(id => clientRef.current.switchAccount(id), []);
   const setCurrency = useCallback(c => clientRef.current.setCurrency(c), []);
 
-  return { engine: engineRef.current, client: clientRef.current, state, tick, logs, toast, login, loginWithOAuth, logout, reconnectMarket, switchAccount, setCurrency };
+  // Recharge the demo account (switches to it first inside the engine).
+  const topUpDemo = useCallback((amount) => engineRef.current.topUpDemo(amount), []);
+
+  return { engine: engineRef.current, client: clientRef.current, state, tick, logs, toast, login, loginWithOAuth, logout, reconnectMarket, switchAccount, setCurrency, topUpDemo };
 }
 
 // Reconnect a saved session on load. Prefer the OAuth session (Bearer only,

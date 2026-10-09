@@ -190,6 +190,32 @@ export class Engine {
 
   switchAccount(accountId) { return this.client?.switchAccount(accountId); }
 
+  // Recharge the demo account. Switches to the virtual account first (so the
+  // recharge lands on the demo wallet even from a real login), then delegates
+  // to the REST top-up on the client.
+  async topUpDemo(amount) {
+    if (!this.client) throw new Error('Not connected');
+    await this.switchToDemo();
+    const balance = await this.client.topUpDemo(amount);
+    this.emit('state', this.snapshot());
+    return balance;
+  }
+
+  // The demo ("virtual") account covered by the current token, if any.
+  demoAccount() {
+    return (this.accounts || []).find(a => a.account?.startsWith('VR') || a.isDemo);
+  }
+
+  // Switch to the demo account (used before a top-up so the recharge lands on
+  // the virtual wallet). No-op when already on it.
+  async switchToDemo() {
+    if (this.client?.accountType === 'demo') return this.client.accountId;
+    const demo = this.demoAccount();
+    if (!demo) throw new Error('No demo account is available for this login');
+    await this.switchAccount(demo.account);
+    return demo.account;
+  }
+
   _subscribeMarkets() {
     if (!this.client) return;
     const pending = SYMBOLS.filter(s => !this._marketSubscribed.has(s.sym));

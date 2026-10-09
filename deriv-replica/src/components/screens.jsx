@@ -2,6 +2,7 @@ import React from 'react';
 import { addComma } from '../lib/format.js';
 import { SYMBOLS, isDigitSymbol } from '../lib/marketStore.js';
 import { AUTO_FAMILIES, DIGIT_PRODUCTS, findAutoContract, contractsForFamily, ACCURACY_LEVELS } from '../lib/autoStrategies.js';
+import { openPaymentPortal } from '../lib/payments.js';
 
 // Tab screens and the control panels for the live engine. Kept in one module so
 // the simple, stateless screens don't clutter the component tree.
@@ -833,7 +834,7 @@ export function AutomateScreen({ engine, state, onLogin }) {
 }
 
 // Minimal Menu tab: the account essentials plus the usual Deriv menu rows.
-export function MenuScreen({ state, onLogin, onLogout, onSwitch, onToast }) {
+export function MenuScreen({ state, onLogin, onLogout, onSwitch, onToast, onTopUp, onToggleTheme, dark }) {
   const accounts = state?.accounts || [];
   const connected = !!state?.auth;
   const list = accounts.length
@@ -841,6 +842,37 @@ export function MenuScreen({ state, onLogin, onLogout, onSwitch, onToast }) {
     : connected
       ? [{ account: state.accountId, currency: 'USD', balance: state.balance, isDemo: state.accountType !== 'real' }]
       : [];
+
+  const [toppingUp, setToppingUp] = React.useState(false);
+  const isDemo = (list.find(a => a.account === state?.accountId)?.isDemo) ?? (state?.accountType !== 'real');
+
+  const rows = [
+    { label: 'Deposit', sub: 'Add funds via abepayy.com', onClick: () => openPaymentPortal('deposit') },
+    { label: 'Withdraw', sub: 'Move funds out via abepayy.com', onClick: () => openPaymentPortal('withdraw') },
+    {
+      label: 'Transfer',
+      sub: isDemo ? 'Recharge this demo account' : 'Recharge the demo account',
+      onClick: async () => {
+        if (!connected) { onLogin?.(); return; }
+        if (toppingUp) return;
+        setToppingUp(true);
+        try {
+          const balance = await onTopUp?.();
+          onToast?.(`Demo account recharged — ${addComma(balance, 2)} USD`);
+        } catch (e) {
+          onToast?.(e?.message || 'Could not recharge the demo account');
+        } finally {
+          setToppingUp(false);
+        }
+      },
+    },
+  ];
+
+  const settings = [
+    { label: 'Language', sub: 'English', onClick: () => onToast?.('Language is set to English') },
+    { label: 'Theme', sub: dark ? 'Dark' : 'Light', onClick: () => onToggleTheme?.() },
+    { label: 'About us', sub: 'Learn more about Deriv', onClick: () => window.open('https://deriv.com/about', '_blank', 'noopener,noreferrer') },
+  ];
 
   return (
     <div className="screen screen--accounts">
@@ -878,27 +910,25 @@ export function MenuScreen({ state, onLogin, onLogout, onSwitch, onToast }) {
           </div>
 
           <h2 className="accounts__section">Trading</h2>
-          {[
-            ['Deposit', 'Add funds to your account'],
-            ['Withdraw', 'Move funds out of your account'],
-            ['Transfer', 'Move funds between your accounts'],
-          ].map(([label, sub]) => (
-            <button key={label} className="menu-row" onClick={() => onToast(`${label} is disabled in this build`)} type="button">
+          {rows.map(({ label, sub, onClick }) => (
+            <button
+              key={label}
+              className="menu-row"
+              onClick={onClick}
+              disabled={label === 'Transfer' && toppingUp}
+              type="button"
+            >
               <span>
                 <span className="menu-row__title">{label}</span>
-                <span className="menu-row__sub">{sub}</span>
+                <span className="menu-row__sub">{label === 'Transfer' && toppingUp ? 'Recharging…' : sub}</span>
               </span>
               <span className="menu-row__chevron">›</span>
             </button>
           ))}
 
           <h2 className="accounts__section">Settings</h2>
-          {[
-            ['Language', 'English'],
-            ['Theme', 'Dark'],
-            ['About us', 'Learn more about Deriv'],
-          ].map(([label, sub]) => (
-            <button key={label} className="menu-row" onClick={() => onToast(`${label} is disabled in this build`)} type="button">
+          {settings.map(({ label, sub, onClick }) => (
+            <button key={label} className="menu-row" onClick={onClick} type="button">
               <span>
                 <span className="menu-row__title">{label}</span>
                 <span className="menu-row__sub">{sub}</span>

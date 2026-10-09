@@ -24,8 +24,11 @@ function Root() {
   }, [isTrader]);
 
   if (isTrader) {
+    // Restore the saved theme so the trading app opens on the user's choice.
+    let savedTheme = 'dark';
+    try { savedTheme = localStorage.getItem('deriv_theme') || 'dark'; } catch (e) { /* ignore */ }
     return (
-      <ThemeProvider theme="dark">
+      <ThemeProvider theme={savedTheme}>
         <App />
       </ThemeProvider>
     );

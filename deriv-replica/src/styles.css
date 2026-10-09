@@ -2155,3 +2155,25 @@ body {
 .stake-editor__chip.is-active { background: var(--coral); border-color: var(--coral); color: #fff; }
 
 .purchase-button.is-selected { outline: 2px solid #fff; outline-offset: -2px; }
+
+/* ============================ Light theme ============================
+   The quill ThemeProvider puts `dark`/`light` on <html>, which flips the
+   quill-tokens semantic variables (frame-low/mid, textIcon, borders). Those
+   drive the shell; the overrides below correct the few values pinned to a dark
+   literal and the surfaces that must stay white-on-ink (coral/teal buttons,
+   coloured chart chrome). */
+html.light {
+  --border: var(--core-color-solid-slate-200, #ced0d6);
+  --color-nav-border: var(--core-color-solid-slate-200, #ced0d6);
+  --color-nav-item-hover: rgba(0, 0, 0, 0.05);
+}
+html.light body {
+  background: var(--frame-mid, #f6f7f8);
+}
+/* The area chart's loading placeholder assumed a dark tape. */
+html.light .chart-area__loading {
+  background: linear-gradient(120deg, #e9ebf0 30%, #f4f6f9 50%, #e9ebf0 70%);
+  background-size: 200% 100%;
+}
+.menu-row:disabled { opacity: 0.6; cursor: default; }
+

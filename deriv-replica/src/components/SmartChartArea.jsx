@@ -26,7 +26,7 @@ const toTQuote = msg => {
   return null;
 };
 
-export default function SmartChartArea({ client, sym, granularity = 0, prices, up }) {
+export default function SmartChartArea({ client, sym, granularity = 0, prices, up, theme = 'dark' }) {
   const [failed, setFailed] = React.useState(false);
   const [ready, setReady] = React.useState(false);
   const [chartData, setChartData] = React.useState(null);
@@ -166,6 +166,7 @@ export default function SmartChartArea({ client, sym, granularity = 0, prices, u
           Flutter renderer throw "No enum value with that name". */}
       <SmartChart
         id="dtrader-chart"
+        key={theme}
         symbol={sym}
         granularity={granularity}
         chartType="line"
@@ -173,7 +174,7 @@ export default function SmartChartArea({ client, sym, granularity = 0, prices, u
         enableRouting={false}
         feedCall={{ activeSymbols: false, tradingTimes: false }}
         chartData={chartData || undefined}
-        settings={{ theme: 'dark', countdown: false }}
+        settings={{ theme, countdown: false }}
         getQuotes={getQuotes}
         subscribeQuotes={subscribeQuotes}
         unsubscribeQuotes={unsubscribeQuotes}

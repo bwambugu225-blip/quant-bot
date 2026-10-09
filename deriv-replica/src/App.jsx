@@ -17,10 +17,12 @@ import SymbolSheet from './components/SymbolSheet.jsx';
 import Sheet from './components/Sheet.jsx';
 import { MenuScreen, Reports, LoginScreen } from './components/screens.jsx';
 import { LabelPairedPresentationScreenSmRegularIcon } from '@deriv/quill-icons';
+import { UseTheme } from '@deriv-com/quill-ui';
 import { SYMBOLS, pipSize } from './lib/marketStore.js';
 import { TRADE_TYPES, findTradeType, buildProposal, isDigitContract } from './lib/contracts.js';
 import { analyzeDigits } from './lib/digitAnalysis.js';
 import { useEngine } from './lib/useEngine.js';
+import { openPaymentPortal } from './lib/payments.js';
 import { usePayout } from './lib/usePayout.js';
 import { addComma } from './lib/format.js';
 
@@ -29,7 +31,7 @@ const DURATION_BOUNDS = { t: [1, 10], s: [15, 86400], m: [1, 1440], h: [1, 24], 
 const UNIT_LABELS = { t: 'Ticks', s: 'Seconds', m: 'Minutes', h: 'Hours', d: 'Days' };
 
 export default function App() {
-  const { engine, client, state, tick, toast, login, loginWithOAuth, logout, switchAccount } = useEngine();
+  const { engine, client, state, tick, toast, login, loginWithOAuth, logout, switchAccount, topUpDemo } = useEngine();
 
   const [tab, setTab] = React.useState('trade');
   const [marketIdx, setMarketIdx] = React.useState(0);
@@ -41,7 +43,17 @@ export default function App() {
   const [showLogin, setShowLogin] = React.useState(false);
   const [langOpen, setLangOpen] = React.useState(false);
   const [language, setLanguage] = React.useState('EN');
-  const [dark, setDark] = React.useState(true);
+
+  // Theme comes from quill-ui's ThemeProvider: it owns the `dark`/`light` class
+  // on <html>, which flips the quill-tokens variables our own CSS reads. Using
+  // the provider's own toggle keeps its context state (and therefore any quill
+  // component) in sync; we just persist the choice for the next reload.
+  const { theme, toggleTheme: toggleProviderTheme } = UseTheme();
+  const dark = theme !== 'light';
+  const toggleTheme = () => {
+    try { localStorage.setItem('deriv_theme', dark ? 'light' : 'dark'); } catch (e) { /* ignore */ }
+    toggleProviderTheme();
+  };
 
   // Shared form state across every trade type; each type reads the keys it needs.
   const [form, setForm] = React.useState({
@@ -109,7 +121,7 @@ export default function App() {
         setTab={setTab}
         openCount={openCount}
         dark={dark}
-        onToggleTheme={() => setDark(d => !d)}
+        onToggleTheme={toggleTheme}
         onLanguage={() => setLangOpen(true)}
         onLogin={() => setShowLogin(true)}
         connected={!!state?.auth}
@@ -126,7 +138,7 @@ export default function App() {
           onSwitchAccount={id => switchAccount(id)}
           onLogin={() => setShowLogin(true)}
           onAccount={() => setTab('menu')}
-          onDeposit={() => setShowLogin(true)}
+          onDeposit={() => openPaymentPortal('deposit', { accountId: state?.accountId, currency: CURRENCY })}
         />
 
         <main className="app__main">
@@ -149,7 +161,7 @@ export default function App() {
                   </div>
                   {client ? (
                     <ChartErrorBoundary fallback={<ChartArea prices={livePrices} up={up} sym={market.sym} />}>
-                      <SmartChartArea client={client} sym={market.sym} prices={livePrices} up={up} />
+                      <SmartChartArea client={client} sym={market.sym} prices={livePrices} up={up} theme={theme === 'light' ? 'light' : 'dark'} />
                     </ChartErrorBoundary>
                   ) : (
                     <ChartArea prices={livePrices} up={up} sym={market.sym} />
@@ -190,9 +202,12 @@ export default function App() {
             <div className="app__scroll">
               <MenuScreen
                 state={state}
+                dark={dark}
                 onLogin={() => setShowLogin(true)}
                 onLogout={() => { engine.stop(); logout(); }}
                 onSwitch={id => switchAccount(id)}
+                onTopUp={() => topUpDemo()}
+                onToggleTheme={toggleTheme}
                 onToast={m => engine.toast(m, 'info')}
               />
             </div>
