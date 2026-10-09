@@ -114,6 +114,20 @@ export default function App() {
 
   const openCount = state?.positions?.length ?? 0;
 
+  // Per-contract bot button: arm the auto engine on the exact product the
+  // strip shows (its side, digit or equals clause), carry the Trade-tab stake
+  // across, and start. Clicking the bot on the running contract stops it.
+  const handleBot = (typeId) => {
+    if (state?.running && state?.autoTypeId === typeId) { engine.stop(); return; }
+    if (state?.running) engine.stop();
+    const key = engine.autoKeyForType(typeId, { side, digit: form.digit, equals: form.equals });
+    engine.setContract(key);
+    engine.setParams({ stake: form.stake });
+    if (typeId !== type) { setType(typeId); setSide('up'); }
+    if (!state?.auth) { setShowLogin(true); return; }
+    engine.start();
+  };
+
   return (
     <div className={`app app--theme-${dark ? 'dark' : 'light'}`}>
       <Sidebar
@@ -149,7 +163,13 @@ export default function App() {
               Deriv's own app. */}
           <div className={`trade-screen${tab === 'trade' ? '' : ' trade-screen--hidden'}`}>
               <div className="trade-types-row">
-                <TradeTypesBar type={type} onSelect={selectType} onViewAll={() => setTypesSheet(true)} />
+                <TradeTypesBar
+                  type={type}
+                  onSelect={selectType}
+                  onViewAll={() => setTypesSheet(true)}
+                  onBot={handleBot}
+                  botType={state?.running ? state?.autoTypeId : null}
+                />
               </div>
               <div className="trade-grid">
                 <div className="trade-grid__chart">

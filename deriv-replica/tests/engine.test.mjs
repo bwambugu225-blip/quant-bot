@@ -320,6 +320,47 @@ test('stop clears a pending start', () => {
   assert.equal(engine._startPending, false);
 });
 
+// ── per-contract bot button mapping ──────────────────────────────────────
+// The Trade tab's bot button resolves a trade type + side (+ digit/equals) onto
+// a registry key. Every family must resolve to a real contract so the button
+// can never arm the wrong (or a missing) strategy.
+test('autoKeyForType maps every trade type onto a real contract', () => {
+  const { engine } = makeEngine({ contractKey: 'CALL' });
+  const cases = [
+    ['rise_fall', { side: 'up' }, 'CALL'],
+    ['rise_fall', { side: 'down' }, 'PUT'],
+    ['rise_fall', { side: 'up', equals: true }, 'CALLE'],
+    ['rise_fall', { side: 'down', equals: true }, 'PUTE'],
+    ['higher_lower', { side: 'up' }, 'HIGHER'],
+    ['touch', { side: 'down' }, 'NOTOUCH'],
+    ['even_odd', { side: 'up' }, 'DIGITEVEN'],
+    ['over_under', { side: 'up', digit: 3 }, 'DIGITOVER:3'],
+    ['over_under', { side: 'down', digit: 2 }, 'DIGITUNDER:2'],
+    ['matches_differs', { side: 'up', digit: 7 }, 'DIGITMATCH:7'],
+    ['matches_differs', { side: 'down', digit: 4 }, 'DIGITDIFF:4'],
+    ['lookbacks', { side: 'up', highLow: true }, 'LBHIGHLOW'],
+    ['highs_lows', { side: 'down' }, 'TICKLOW'],
+    ['accumulators', { side: 'up' }, 'ACCU'],
+    ['multipliers', { side: 'down' }, 'MULTDOWN'],
+  ];
+  for (const [typeId, opts, expected] of cases) {
+    assert.equal(engine.autoKeyForType(typeId, opts), expected, `${typeId} ${JSON.stringify(opts)}`);
+    assert.ok(AUTO_CONTRACTS[engine.autoKeyForType(typeId, opts)], `${typeId} mapped to an unregistered key`);
+  }
+});
+
+test('autoKeyForType resolves a registry entry for every trade type', () => {
+  const { engine } = makeEngine({ contractKey: 'CALL' });
+  const typeIds = ['rise_fall', 'higher_lower', 'touch', 'matches_differs', 'even_odd',
+    'over_under', 'accumulators', 'multipliers', 'turbos', 'vanillas', 'stays_goes',
+    'ends_between', 'runs', 'asians', 'resets', 'highs_lows', 'lookbacks', 'lookbacks_highlow'];
+  for (const typeId of typeIds) {
+    const key = engine.autoKeyForType(typeId, { side: 'up', digit: 5 });
+    assert.ok(AUTO_CONTRACTS[key], `${typeId} did not resolve to a registry entry`);
+    assert.equal(AUTO_CONTRACTS[key].typeId, typeId, `${typeId} resolved to the wrong family`);
+  }
+});
+
 // ── directional routing ──────────────────────────────────────────────────
 test('a directional contract builds a CALL/RISE proposal with the chosen duration', () => {
   const { engine, client } = makeEngine({ contractKey: 'CALL' });

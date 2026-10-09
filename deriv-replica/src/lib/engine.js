@@ -6,7 +6,7 @@
 // changes the strategy, not just the label.
 import { MarketStore, SYMBOLS, isDigitSymbol, digitOf, decimalsFor } from './marketStore.js';
 import { buildProposal } from './contracts.js';
-import { findAutoContract, buildAutoValue, accuracyParams, shapeProposal, findEntryByTypeSide, categoryForType } from './autoStrategies.js';
+import { findAutoContract, buildAutoValue, accuracyParams, shapeProposal, findEntryByTypeSide, categoryForType, AUTO_CONTRACTS } from './autoStrategies.js';
 import { MarketScanner, SCAN_INTERVAL_MS } from './marketScanner.js';
 import {
   evaluateUniversal, confirmCandidate, UNIVERSAL_MIN_CONF,
@@ -231,6 +231,29 @@ export class Engine {
     return this.contractParams[key];
   }
 
+  // Resolve the registry key the auto engine should run for a Trade-tab trade
+  // type, honouring the side/digit/equals the user has configured. Every
+  // contract family has at least one entry, so the dropdown bot button can
+  // always arm the exact product on screen.
+  autoKeyForType(typeId, opts = {}) {
+    const side = opts.side === 'down' ? 'down' : 'up';
+    let key = Object.keys(AUTO_CONTRACTS).find(k => {
+      const e = AUTO_CONTRACTS[k];
+      return e.typeId === typeId && e.side === side && !e.digit;
+    });
+    if (typeId === 'matches_differs' || typeId === 'over_under') {
+      const prefix = typeId === 'matches_differs'
+        ? (side === 'up' ? 'DIGITMATCH:' : 'DIGITDIFF:')
+        : (side === 'up' ? 'DIGITOVER:' : 'DIGITUNDER:');
+      key = prefix + (opts.digit ?? 5);
+    } else if (typeId === 'rise_fall' && opts.equals) {
+      key = side === 'up' ? 'CALLE' : 'PUTE';
+    } else if (typeId === 'lookbacks' && opts.highLow) {
+      key = 'LBHIGHLOW';
+    }
+    return findAutoContract(key) ? key : this.autoContractKey;
+  }
+
   setContract(key) {
     if (!findAutoContract(key)) return;
     this.autoContractKey = key;
@@ -299,6 +322,8 @@ export class Engine {
       autoMarket: this.autoMarket,
       autoContractKey: this.autoContractKey,
       autoContractLabel: e.label,
+      autoTypeId: e.typeId,
+      autoSide: e.side,
       params: this.paramsFor(this.autoContractKey),
       autoSwitch: this.autoSwitch,
       scan: this.scanner.top(8),

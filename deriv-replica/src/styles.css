@@ -1841,7 +1841,7 @@ body {
   .trade-grid__params {
     display: flex;
     flex-direction: column;
-    overflow-y: auto;
+    overflow: hidden;
     border-left: 1px solid var(--border);
     background: var(--frame-low);
   }
@@ -1861,14 +1861,51 @@ body {
 /* ========================= Trade-types bar =========================== */
 .tt-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   padding: 6px 12px 2px;
-  overflow-x: auto;
-  scrollbar-width: none;
   flex-shrink: 0;
 }
 
-.tt-bar::-webkit-scrollbar { display: none; }
+.tt-item {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 0;
+  flex: none;
+}
+
+.tt-bot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 32px;
+  margin-left: -1px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 16px 16px 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.tt-bot:hover { color: var(--coral); border-color: var(--coral); }
+
+.tt-bot.is-on {
+  background: var(--coral);
+  border-color: var(--coral);
+  color: #fff;
+}
+
+.tt-item .tt-chip {
+  border-radius: 16px 0 0 16px;
+}
+
+.tt-item:not(.is-active) .tt-chip {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
 
 .tt-chip {
   flex: none;
@@ -1950,6 +1987,8 @@ body {
 }
 
 .digit-cell.is-hot .digit-cell__bar { background: var(--buy); }
+.digit-cell.is-cold .digit-cell__bar { background: var(--sell); }
+.digit-cell.is-cold .digit-cell__digit { color: var(--sell); }
 .digit-cell.is-now .digit-cell__digit { background: var(--coral); color: #fff; border-color: var(--coral); }
 
 .digit-cell__digit {

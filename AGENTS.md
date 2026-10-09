@@ -313,6 +313,24 @@ facts drive the shell:
 Fonts follow the current Deriv stack: Inter for the trading app, Ubuntu +
 IBM Plex for the marketing site.
 
+**Everything fits, nothing scrolls.** The trade screen is a fixed, non-scrolling
+column: `.trade-screen` is `overflow: hidden`, `.trade-grid__params` is
+`overflow: hidden` on desktop (the form is short enough that it never needs to
+scroll), and the product strip wraps (`flex-wrap: wrap`) instead of scrolling
+sideways. The chart is the only flexible region, so it absorbs whatever height
+is left at any viewport. Pages without a chart (Positions / Reports / Menu)
+keep their own `.app__scroll` as the one intentional exception, because their
+content is unbounded.
+
+### Digit analysis: the cold digit is red
+
+`DigitAnalysis` marks three digits in the frequency distribution: the hottest
+(`.is-hot`, teal bar), the current last digit (`.is-now`, coral chip) and the
+least-appearing / coldest (`.is-cold`, red bar + red digit). The red bar is the
+"least appearing digit" signal — on a fair stream it is noise, but it is the one
+the eye wants when scanning the panel. Hot and cold only render distinctly when
+they differ.
+
 ### Automate tab: defaults over knobs
 
 The Automate tab exposes only the two decisions that change the outcome — stake
@@ -349,6 +367,24 @@ work. All three levels stay silent on a 60% digit stream and fire on a 75%+ one.
   one tick instead of stalling the engine.
 - `engine.execStats()` reports the rolling p50/p95 of tick → proposal-received,
   surfaced in the Market panel, so latency is measured rather than asserted.
+
+### Trade-tab bot buttons (arm any contract from the strip)
+
+The Trade tab's product strip (`TradeTypesBar`) is the mobile AppV2 strip —
+popular trade types laid out as wrapped pills (no horizontal scroll), plus
+"View all" for the full catalogue. Each pill carries its own small robot
+button, so **every contract family can be armed for auto-trading without
+leaving the Trade tab**. The bottom nav carries no Automate surface (faithful
+to AppV2), so this strip is where automation lives.
+
+- `engine.autoKeyForType(typeId, { side, digit, equals, highLow })` maps a
+  trade type onto the exact registry key (e.g. Over/Under + side down +
+  digit 2 → `DIGITUNDER:2`; Rise/Fall + equals → `CALLE`/`PUTE`). Every family
+  resolves to a real entry, covered by a test in `tests/engine.test.mjs`.
+- The bot click carries the Trade-tab stake across (`setParams({ stake })`),
+  starts the engine, and pins the running contract so the button shows as
+  active (`.tt-bot.is-on`). Clicking the active contract's bot stops the run.
+- Unauthenticated, the click opens the login sheet instead of starting.
 
 ### Multi-market scanner
 

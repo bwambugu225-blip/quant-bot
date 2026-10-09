@@ -27,7 +27,7 @@ export default function DigitAnalysis({ analysis, compact = false }) {
 
       <div className="digit-analysis__dist">
         {freq.map((f, d) => (
-          <div key={d} className={`digit-cell${d === now ? ' is-now' : ''}${d === hottest ? ' is-hot' : ''}`}>
+          <div key={d} className={`digit-cell${d === now ? ' is-now' : ''}${d === hottest && hottest !== coldest ? ' is-hot' : ''}${d === coldest && hottest !== coldest ? ' is-cold' : ''}`}>
             <span className="digit-cell__bar" style={{ height: `${Math.max(6, (f / maxF) * 100)}%` }} />
             <span className="digit-cell__digit">{d}</span>
             <span className="digit-cell__pct">{((f / n) * 100).toFixed(1)}</span>
