@@ -136,6 +136,8 @@ body.site-body {
 .button.coral_primary:hover { background: var(--brand-hover); }
 .button.white_secondary { background: #fff; color: var(--ink); border-color: var(--line); }
 .button.white_secondary:hover { border-color: var(--slate-300); }
+.button.white_outline { background: transparent; color: var(--slate-50); border-color: rgba(255, 255, 255, 0.45); }
+.button.white_outline:hover { background: rgba(255, 255, 255, 0.08); border-color: var(--slate-50); }
 .button.black_secondary { background: var(--slate-1100); color: #fff; }
 .button.black_secondary:hover { background: var(--slate-1000); }
 .button.coral_secondary { background: #fff; color: var(--brand); border-color: var(--brand); }
@@ -161,10 +163,11 @@ body.site-body {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: #fff;
+  background: var(--slate-1200);
+  color: var(--slate-50);
   border-bottom: 1px solid transparent;
 }
-.site-nav.is-scrolled { border-bottom-color: var(--line); box-shadow: var(--shadow-sm); }
+.site-nav.is-scrolled { border-bottom-color: rgba(255, 255, 255, 0.08); box-shadow: var(--shadow-md); }
 .navbar__bar {
   height: var(--nav-h);
   display: flex;
@@ -181,7 +184,7 @@ body.site-body {
   display: flex;
   align-items: center;
   gap: 4px;
-  background: var(--slate-75);
+  background: var(--slate-1100);
   border-radius: var(--radius-pill);
   padding: 6px 8px;
 }
@@ -194,22 +197,22 @@ body.site-body {
   font-family: inherit;
   font-size: 14px;
   font-weight: 600;
-  color: var(--ink);
+  color: var(--slate-50);
   background: transparent;
   border: 0;
   padding: 10px 14px;
   border-radius: var(--radius-pill);
   cursor: pointer;
 }
-.navbar__nav-item:hover { background: var(--slate-100); }
-.navbar__nav-item[aria-expanded='true'] { background: var(--slate-100); }
+.navbar__nav-item:hover { background: var(--slate-1000); }
+.navbar__nav-item[aria-expanded='true'] { background: var(--slate-1000); }
 .navbar__nav-item__chevron { transition: transform 0.18s ease; }
 .navbar__nav-item[aria-expanded='true'] .navbar__nav-item__chevron { transform: rotate(180deg); }
 .navbar__lang-wrapper { position: relative; }
 .navbar__lang-btn img { width: 18px; height: 18px; }
 
-.navbar__pill-actions { display: flex; align-items: center; gap: 8px; margin-left: 4px; }
-.navbar__pill-actions .button { padding: 11px 18px; }
+/* deriv.com keeps Log in / Open account at the top-right, not inside the pill. */
+.navbar__pill-actions { display: none; }
 .navbar__actions { display: flex; align-items: center; gap: 10px; }
 .navbar__actions .button { padding: 12px 20px; }
 .navbar__mobile-actions { display: none; align-items: center; gap: 10px; }
@@ -285,14 +288,14 @@ body.site-body {
 .navbar__drawer nav details a { font-size: 15px; font-weight: 500; padding: 9px 0 9px 16px; border: 0; color: var(--ink-2); }
 .navbar__drawer-actions { display: grid; gap: 10px; margin-top: 28px; }
 
-/* -------------------------------------------------------------------- hero */
+/* ---------------------------------------------------- hero (dark, deriv.com) */
 .hero {
   position: relative;
   overflow: hidden;
+  color: var(--slate-50);
   background:
-    radial-gradient(1200px 480px at 78% -10%, #ffd9dc 0%, rgba(255,217,220,0) 60%),
-    linear-gradient(180deg, #fff6f6 0%, #ffffff 100%);
-  border-bottom: 1px solid var(--line-2);
+    radial-gradient(1200px 520px at 78% -20%, rgba(255, 68, 79, 0.22) 0%, rgba(255, 68, 79, 0) 62%),
+    linear-gradient(180deg, #181c25 0%, #20242f 100%);
 }
 .hero__inner {
   max-width: var(--container);
@@ -303,7 +306,7 @@ body.site-body {
   align-items: center;
   gap: 48px;
 }
-.hero__subtitle { margin: 0 0 6px; font-size: 22px; font-weight: 600; color: var(--ink-2); }
+.hero__subtitle { margin: 0 0 6px; font-size: 22px; font-weight: 600; color: var(--slate-300); }
 .hero__title {
   margin: 0 0 18px;
   font-size: clamp(40px, 5.4vw, 68px);
@@ -312,9 +315,9 @@ body.site-body {
   letter-spacing: -0.02em;
 }
 .hero__title span { display: block; }
-.hero__description { margin: 0 0 30px; font-size: 18px; line-height: 1.5; color: var(--ink-2); max-width: 460px; }
+.hero__description { margin: 0 0 30px; font-size: 18px; line-height: 1.5; color: var(--slate-200); max-width: 460px; }
 .hero__buttons { display: flex; gap: 14px; flex-wrap: wrap; }
-.hero__support { margin-top: 18px; font-size: 14px; color: var(--ink-3); }
+.hero__support { margin-top: 18px; font-size: 14px; color: var(--slate-400); }
 
 .hero__visual {
   position: relative;
@@ -366,7 +369,7 @@ body.site-body {
 .tp-star { width: 22px; height: 22px; background: var(--slate-300); display: grid; place-items: center; }
 .tp-star.filled { background: var(--trustpilot); }
 .tp-star svg { width: 14px; height: 14px; fill: #fff; }
-.hero__trustpilot-text { font-size: 14px; color: var(--ink-2); }
+.hero__trustpilot-text { font-size: 14px; color: var(--slate-200); }
 .hero__trustpilot-text b { font-size: 16px; }
 
 /* --------------------------------------------------------------- sections */

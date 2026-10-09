@@ -110,7 +110,7 @@ export default function Nav() {
                 </div>
               </div>
               <div className="navbar__pill-actions">
-                <Link to="/login" className="button black_secondary">
+                <Link to="/login" className="button white_outline">
                   <span className="label">Log in</span>
                 </Link>
                 <Link to="/signup" className="button coral_primary">
@@ -121,7 +121,7 @@ export default function Nav() {
           </div>
 
           <div className="navbar__actions">
-            <Link to="/login" className="button white_secondary navbar__actions-login">
+            <Link to="/login" className="button white_outline navbar__actions-login">
               <span className="label">Log in</span>
             </Link>
             <Link to="/signup" className="button coral_primary">
@@ -130,7 +130,7 @@ export default function Nav() {
           </div>
 
           <div className="navbar__mobile-actions">
-            <Link to="/login" className="button white_secondary">
+            <Link to="/login" className="button white_outline">
               <span className="label">Log in</span>
             </Link>
             <button className="navbar__mobile-trigger" aria-label="Open navigation menu" onClick={() => setDrawer(true)}>

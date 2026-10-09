@@ -4,6 +4,7 @@ import TradeTypesBar from './components/TradeTypesBar.jsx';
 import MarketSelector from './components/MarketSelector.jsx';
 import ChartArea from './components/ChartArea.jsx';
 import SmartChartArea from './components/SmartChartArea.jsx';
+import ChartErrorBoundary from './components/ChartErrorBoundary.jsx';
 import DigitAnalysis from './components/DigitAnalysis.jsx';
 import TradeForm from './components/TradeForm.jsx';
 import DurationSheet from './components/DurationSheet.jsx';
@@ -14,7 +15,7 @@ import Sidebar from './components/Sidebar.jsx';
 import Positions from './components/Positions.jsx';
 import SymbolSheet from './components/SymbolSheet.jsx';
 import Sheet from './components/Sheet.jsx';
-import { AutomateScreen, MenuScreen, Reports, LoginScreen } from './components/screens.jsx';
+import { MenuScreen, Reports, LoginScreen } from './components/screens.jsx';
 import { LabelPairedPresentationScreenSmRegularIcon } from '@deriv/quill-icons';
 import { SYMBOLS, pipSize } from './lib/marketStore.js';
 import { TRADE_TYPES, findTradeType, buildProposal, isDigitContract } from './lib/contracts.js';
@@ -38,6 +39,8 @@ export default function App() {
   const [typesSheet, setTypesSheet] = React.useState(false);
   const [guide, setGuide] = React.useState(false);
   const [showLogin, setShowLogin] = React.useState(false);
+  const [langOpen, setLangOpen] = React.useState(false);
+  const [language, setLanguage] = React.useState('EN');
   const [dark, setDark] = React.useState(true);
 
   // Shared form state across every trade type; each type reads the keys it needs.
@@ -107,6 +110,7 @@ export default function App() {
         openCount={openCount}
         dark={dark}
         onToggleTheme={() => setDark(d => !d)}
+        onLanguage={() => setLangOpen(true)}
         onLogin={() => setShowLogin(true)}
         connected={!!state?.auth}
       />
@@ -140,7 +144,9 @@ export default function App() {
                     </button>
                   </div>
                   {client ? (
-                    <SmartChartArea client={client} sym={market.sym} prices={livePrices} up={up} />
+                    <ChartErrorBoundary fallback={<ChartArea prices={livePrices} up={up} sym={market.sym} />}>
+                      <SmartChartArea client={client} sym={market.sym} prices={livePrices} up={up} />
+                    </ChartErrorBoundary>
                   ) : (
                     <ChartArea prices={livePrices} up={up} sym={market.sym} />
                   )}
@@ -175,11 +181,6 @@ export default function App() {
           {tab === 'reports' && (
             <div className="app__scroll">
               <Reports reports={state?.reports ?? []} positions={state?.positions ?? []} currency={CURRENCY} />
-            </div>
-          )}
-          {tab === 'automate' && (
-            <div className="app__scroll">
-              <AutomateScreen engine={engine} state={state} onLogin={() => setShowLogin(true)} />
             </div>
           )}
           {tab === 'menu' && (
@@ -334,6 +335,27 @@ export default function App() {
                 <dt>Stake</dt><dd>{addComma(form.stake, 2)} {CURRENCY}</dd>
               </div>
             </dl>
+          </div>
+        </Sheet>
+      )}
+
+      {langOpen && (
+        <Sheet title="Language" onClose={() => setLangOpen(false)}>
+          <div className="lang-list">
+            {[['EN', 'English'], ['PT', 'Português'], ['ES', 'Español'], ['FR', 'Français'], ['DE', 'Deutsch']].map(([code, name]) => (
+              <button
+                key={code}
+                className={`menu-row${language === code ? ' is-active' : ''}`}
+                onClick={() => { setLanguage(code); setLangOpen(false); }}
+                type="button"
+              >
+                <span>
+                  <span className="menu-row__title">{name}</span>
+                  <span className="menu-row__sub">{code}</span>
+                </span>
+                <span className="menu-row__chevron">{language === code ? '●' : '›'}</span>
+              </button>
+            ))}
           </div>
         </Sheet>
       )}

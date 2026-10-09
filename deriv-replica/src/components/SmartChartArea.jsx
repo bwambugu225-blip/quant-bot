@@ -159,8 +159,6 @@ export default function SmartChartArea({ client, sym, granularity = 0, prices, u
         enableRouting={false}
         feedCall={{ activeSymbols: false, tradingTimes: false }}
         chartData={chartData || undefined}
-        chartControlsWidgets={null}
-        topWidgets={() => <span />}
         settings={{ theme: 'dark', countdown: false }}
         getQuotes={getQuotes}
         subscribeQuotes={subscribeQuotes}

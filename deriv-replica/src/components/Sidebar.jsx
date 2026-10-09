@@ -34,7 +34,7 @@ function Item({ icon, label, active, badge, onClick }) {
   );
 }
 
-export default function Sidebar({ tab, setTab, openCount, dark, onToggleTheme, onLogin, connected }) {
+export default function Sidebar({ tab, setTab, openCount, dark, onToggleTheme, onLogin, onLanguage, connected }) {
   const icon = (Regular, Fill, active) =>
     active ? <Fill fill="var(--color-nav-item-active)" iconSize="sm" /> : <Regular fill="var(--color-text-primary)" iconSize="sm" />;
 
@@ -48,7 +48,8 @@ export default function Sidebar({ tab, setTab, openCount, dark, onToggleTheme, o
         <div className="sidebar__nav-main">
           <Item
             label="Home"
-            icon={<LegacyHomeNewIcon iconSize="sm" fill="var(--color-text-primary)" />}
+            active={tab === 'trade'}
+            icon={<LegacyHomeNewIcon iconSize="sm" fill={tab === 'trade' ? 'var(--color-nav-item-active)' : 'var(--color-text-primary)'} />}
             onClick={() => setTab('trade')}
           />
           <Item
@@ -74,7 +75,7 @@ export default function Sidebar({ tab, setTab, openCount, dark, onToggleTheme, o
           <Item
             label="Language"
             icon={icon(StandaloneGlobeRegularIcon, StandaloneGlobeFillIcon, false)}
-            onClick={() => window.open('https://deriv.com', '_blank', 'noopener,noreferrer')}
+            onClick={onLanguage}
           />
           <Item
             label="Theme"

@@ -48,7 +48,7 @@ export function Hero() {
                 <Link to="/signup" className="button coral_primary button--lg">
                   <span className="label">Open account</span>
                 </Link>
-                <Link to="/markets/derived-indices" className="button white_secondary button--lg">
+                <Link to="/markets/derived-indices" className="button white_outline button--lg">
                   <span className="label">Explore markets</span>
                 </Link>
               </div>

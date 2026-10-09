@@ -29,6 +29,14 @@
   box-sizing: border-box;
 }
 
+/* Deriv sets a 10px root font size (62.5% of 16px) so the `rem` values inside
+   quill-tokens/quill-ui/SmartCharts and Deriv's own layout resolve to their
+   intended pixel sizes. Without it every `rem` is 1.6x too large, which is why
+   the sidebar, buttons and type looked oversized. */
+html {
+  font-size: 62.5%;
+}
+
 html,
 body,
 #root {
@@ -40,6 +48,7 @@ body {
   background: var(--core-color-solid-slate-1400, #0e0e0e);
   color: var(--text);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 1.6rem;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -1121,6 +1130,75 @@ body {
   color: var(--text-dim);
   font-size: 20px;
 }
+
+.menu-row--danger .menu-row__title { color: var(--color-status-danger, #e5303b); }
+
+/* Accounts Centre — demo/real cards with balance, switch action and grouped
+   trading/settings rows, mirroring Deriv's account manager. */
+.screen--accounts { padding-bottom: 32px; }
+.accounts__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 16px;
+}
+.accounts__title { font-size: 20px; font-weight: 700; margin: 0; }
+.accounts__id {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--frame-low);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 9px;
+}
+.accounts__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.acct-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--frame-mid);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.acct-card.is-active { border-color: var(--color-nav-item-active, #ff444f); }
+.acct-card__top { display: flex; align-items: center; justify-content: space-between; }
+.acct-card__badge {
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+.acct-card__badge--demo { background: rgba(255, 68, 79, 0.14); color: #ff444f; }
+.acct-card__badge--real { background: rgba(75, 180, 179, 0.16); color: #4bb4b3; }
+.acct-card__active { font-size: 11px; color: var(--text-dim); }
+.acct-card__id { font-size: 12px; color: var(--text-dim); }
+.acct-card__balance { font-size: 22px; font-weight: 700; }
+.acct-card__balance span { font-size: 13px; font-weight: 600; color: var(--text-dim); }
+.acct-card__switch { margin-top: 4px; align-self: flex-start; }
+.accounts__section {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 20px 0 6px;
+}
+.screen__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 48px 16px;
+}
+.lang-list { display: flex; flex-direction: column; }
 
 /* =============================== Sheets ============================= */
 .sheet-backdrop {

@@ -7,8 +7,6 @@ import {
   StandaloneClockThreeFillIcon,
   StandaloneFileRegularIcon,
   StandaloneFileFillIcon,
-  StandaloneGearRegularIcon,
-  StandaloneGearFillIcon,
   LabelPairedGrid2LgRegularIcon,
 } from '@deriv/quill-icons';
 
@@ -44,12 +42,6 @@ export default function BottomNav({ tab, setTab, openCount }) {
         label="Reports"
         icon={<StandaloneFileRegularIcon fill="currentColor" iconSize="sm" />}
         activeIcon={<StandaloneFileFillIcon fill="currentColor" iconSize="sm" />}
-      />
-      <BottomAction
-        value="automate"
-        label="Automate"
-        icon={<StandaloneGearRegularIcon fill="currentColor" iconSize="sm" />}
-        activeIcon={<StandaloneGearFillIcon fill="currentColor" iconSize="sm" />}
       />
       <BottomAction
         value="menu"

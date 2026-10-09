@@ -810,78 +810,96 @@ export function AutomateScreen({ engine, state, onLogin }) {
 // Minimal Menu tab: the account essentials plus the usual Deriv menu rows.
 export function MenuScreen({ state, onLogin, onLogout, onSwitch, onToast }) {
   const accounts = state?.accounts || [];
-  return (
-    <div className="screen">
-      <div className="screen__title">Menu</div>
+  const connected = !!state?.auth;
+  const list = accounts.length
+    ? accounts
+    : connected
+      ? [{ account: state.accountId, currency: 'USD', balance: state.balance, isDemo: state.accountType !== 'real' }]
+      : [];
 
-      <div className="account-card">
-        <div>
-          <div className="account-card__type">
-            {state?.auth
-              ? `${state.accountId} · ${state.accountType === 'real' ? 'Real' : 'Demo'}`
-              : 'Not connected'}
-          </div>
-          <div className="account-card__balance">
-            {(state?.balance ?? 0).toFixed(2)} USD
-          </div>
-        </div>
+  return (
+    <div className="screen screen--accounts">
+      <div className="accounts__head">
+        <h1 className="accounts__title">Accounts Centre</h1>
+        {connected && <span className="accounts__id">{state.accountId}</span>}
       </div>
 
-      {accounts.length > 1 && (
+      {connected ? (
         <>
-          <div className="screen__section-title">Switch account</div>
-          {accounts.map(a => {
-            const isDemo = a.account.startsWith('VR') || a.isDemo;
-            const active = a.account === state?.accountId;
-            return (
-              <button
-                key={a.account}
-                className={`menu-row${active ? ' is-active' : ''}`}
-                onClick={() => !active && onSwitch(a.account)}
-                type="button"
-              >
-                <span>
-                  <span className="menu-row__title">{isDemo ? 'Demo' : 'Real'} · {a.account}</span>
-                  <span className="menu-row__sub">{(a.balance ?? 0).toFixed(2)} {a.currency || 'USD'}</span>
-                </span>
-                <span className="menu-row__chevron">{active ? '●' : '›'}</span>
-              </button>
-            );
-          })}
+          <div className="accounts__grid">
+            {list.map(a => {
+              const isDemo = a.account.startsWith('VR') || a.isDemo;
+              const active = a.account === state?.accountId;
+              return (
+                <div className={`acct-card${active ? ' is-active' : ''}`} key={a.account}>
+                  <div className="acct-card__top">
+                    <span className={`acct-card__badge acct-card__badge--${isDemo ? 'demo' : 'real'}`}>
+                      {isDemo ? 'Demo' : 'Real'}
+                    </span>
+                    {active && <span className="acct-card__active">Active</span>}
+                  </div>
+                  <div className="acct-card__id">{a.account}</div>
+                  <div className="acct-card__balance">
+                    {(a.balance ?? 0).toFixed(2)} <span>{a.currency || 'USD'}</span>
+                  </div>
+                  {!active && (
+                    <button className="button coral_secondary acct-card__switch" onClick={() => onSwitch(a.account)} type="button">
+                      Switch
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <h2 className="accounts__section">Trading</h2>
+          {[
+            ['Deposit', 'Add funds to your account'],
+            ['Withdraw', 'Move funds out of your account'],
+            ['Transfer', 'Move funds between your accounts'],
+          ].map(([label, sub]) => (
+            <button key={label} className="menu-row" onClick={() => onToast(`${label} is disabled in this build`)} type="button">
+              <span>
+                <span className="menu-row__title">{label}</span>
+                <span className="menu-row__sub">{sub}</span>
+              </span>
+              <span className="menu-row__chevron">›</span>
+            </button>
+          ))}
+
+          <h2 className="accounts__section">Settings</h2>
+          {[
+            ['Language', 'English'],
+            ['Theme', 'Dark'],
+            ['About us', 'Learn more about Deriv'],
+          ].map(([label, sub]) => (
+            <button key={label} className="menu-row" onClick={() => onToast(`${label} is disabled in this build`)} type="button">
+              <span>
+                <span className="menu-row__title">{label}</span>
+                <span className="menu-row__sub">{sub}</span>
+              </span>
+              <span className="menu-row__chevron">›</span>
+            </button>
+          ))}
+
+          <button className="menu-row menu-row--danger" onClick={onLogout} type="button">
+            <span>
+              <span className="menu-row__title">Log out</span>
+              <span className="menu-row__sub">Close the Deriv connection</span>
+            </span>
+            <span className="menu-row__chevron">›</span>
+          </button>
         </>
-      )}
-
-      {[
-        ['Deposit', 'Add funds to your account'],
-        ['Withdrawal', 'Withdraw available funds'],
-        ['Language', 'English'],
-        ['About us', 'Learn more about Deriv'],
-      ].map(([label, sub]) => (
-        <button key={label} className="menu-row" onClick={() => onToast(`${label} is disabled in this build`)} type="button">
-          <span>
-            <span className="menu-row__title">{label}</span>
-            <span className="menu-row__sub">{sub}</span>
-          </span>
-          <span className="menu-row__chevron">›</span>
-        </button>
-      ))}
-
-      {state?.auth ? (
-        <button className="menu-row" onClick={onLogout} type="button">
-          <span>
-            <span className="menu-row__title">Log out</span>
-            <span className="menu-row__sub">Close the Deriv connection</span>
-          </span>
-          <span className="menu-row__chevron">›</span>
-        </button>
       ) : (
-        <button className="menu-row" onClick={onLogin} type="button">
-          <span>
-            <span className="menu-row__title">Log in</span>
-            <span className="menu-row__sub">Connect with a Deriv API token</span>
-          </span>
-          <span className="menu-row__chevron">›</span>
-        </button>
+        <div className="screen__empty">
+          <p className="screen__empty-title">Log in to manage your accounts</p>
+          <p className="screen__empty-body">
+            Connect with a Deriv API token (Read + Trade scope) to view balances, switch accounts, and trade.
+          </p>
+          <button className="button coral_primary" onClick={onLogin} type="button">
+            Log in
+          </button>
+        </div>
       )}
 
       <div className="screen__footnote">Interface replica · not affiliated with Deriv</div>
