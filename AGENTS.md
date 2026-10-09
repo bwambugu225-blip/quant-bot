@@ -394,3 +394,28 @@ from the live site, so the components stay presentational.
   + 6 platform pages, help centre, payment methods, login, sign-up, plus a
   shared content page for legal/about/support/promo paths and a 404.
 
+### The trade chart is Deriv's real SmartCharts
+
+The chart on `/trader` is `@deriv-com/smartcharts-champion` — the same library
+app.deriv.com ships — not a lookalike. Facts worth keeping:
+
+- SmartCharts owns rendering but not the feed. The host answers its
+  `ticks_history` history and stream (via `DerivClient.requestHistory` /
+  `forgetHistory`, routed over the public socket and keyed by `req_id` in
+  `_histCbs`) and hands over `active_symbols` + `trading_times` as the
+  `chartData` prop so its own symbol and trading-time widgets work.
+- It reads `chartData` only at mount, so `SmartChartArea` waits for that data
+  (6s timeout) before mounting the chart instead of feeding it afterwards.
+- The Flutter chart bundle is copied by a small `closeBundle` walker in
+  `vite.config.js` to `dist/smartcharts`, preserving the exact layout the
+  library asks for: the chunks and `sprite-*.svg` at the public-path root,
+  `chart/**` (entrypoint, `canvaskit/`) under `/smartcharts/chart`, and
+  Flutter `assets/**` at `/smartcharts/assets`. A glob-copy plugin flattened
+  these into `node_modules/...` paths and broke runtime loading, which is why
+  the walker exists. `setSmartChartsPublicPath('/smartcharts/')` points the
+  library at it.
+- `vercel.json`'s SPA rewrite excludes `smartcharts/` (as well as `assets/`)
+  so those files are served as real static assets in production.
+- `ChartArea.jsx` (the SVG sparkline) is kept as the fallback for when there
+  is no market socket yet, not the default chart.
+
