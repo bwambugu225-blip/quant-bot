@@ -127,29 +127,37 @@ export default function App() {
         <main className="app__main">
           {tab === 'trade' && (
             <div className="trade-screen">
-              <TradeTypesBar type={type} onSelect={selectType} onViewAll={() => setTypesSheet(true)} />
-              <div className="home__row">
-                <MarketSelector display={market.name} sym={market.sym} price={spot} up={up} onOpen={() => setSheet('symbol')} />
-                <button className="trade__guide" onClick={() => setGuide(true)} type="button" aria-label="Guide">
-                  <LabelPairedPresentationScreenSmRegularIcon fill="currentColor" iconSize="sm" />
-                </button>
+              <div className="trade-types-row">
+                <TradeTypesBar type={type} onSelect={selectType} onViewAll={() => setTypesSheet(true)} />
               </div>
-              <ChartArea prices={livePrices} up={up} sym={market.sym} />
-              {isDigit && (
-                <DigitAnalysis analysis={digitAnalysis} />
-              )}
-              <div className="trade-form-wrap">
-                <TradeForm
-                  type={type}
-                  side={side}
-                  value={form}
-                  set={set}
-                  onSheet={setSheet}
-                  payout={payout}
-                  currency={CURRENCY}
-                  canTrade={!!state?.auth}
-                  onTrade={onTrade}
-                />
+              <div className="trade-grid">
+                <div className="trade-grid__chart">
+                  <div className="home__row">
+                    <MarketSelector display={market.name} sym={market.sym} price={spot} up={up} onOpen={() => setSheet('symbol')} />
+                    <button className="trade__guide" onClick={() => setGuide(true)} type="button" aria-label="Guide">
+                      <LabelPairedPresentationScreenSmRegularIcon fill="currentColor" iconSize="sm" />
+                    </button>
+                  </div>
+                  <ChartArea prices={livePrices} up={up} sym={market.sym} />
+                  {isDigit && (
+                    <DigitAnalysis analysis={digitAnalysis} />
+                  )}
+                </div>
+                <div className="trade-grid__params">
+                  <div className="trade-form-wrap">
+                    <TradeForm
+                      type={type}
+                      side={side}
+                      value={form}
+                      set={set}
+                      onSheet={setSheet}
+                      payout={payout}
+                      currency={CURRENCY}
+                      canTrade={!!state?.auth}
+                      onTrade={onTrade}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           )}

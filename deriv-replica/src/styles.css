@@ -189,7 +189,7 @@ body {
   }
 }
 
-/* Desktop: AppV2 has no bottom bar, so drop ours above the breakpoint. */
+/* Desktop: AppV2 has no bottom bar; its sidebar rail takes over navigation. */
 @media (min-width: 768px) {
   .app-bottom-nav {
     display: none;
@@ -1690,6 +1690,53 @@ body {
   flex: 1 1 auto;
   min-height: 44px;
   margin: 4px 12px 0;
+}
+
+.trade-grid {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.trade-grid__chart {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.trade-grid__params {
+  flex-shrink: 0;
+}
+
+/* Desktop: AppV2 grids the chart beside a 28rem parameters column
+   (trade.scss: grid-template-columns 1fr minmax(0, 28rem)). */
+@media (min-width: 768px) {
+  .trade-grid {
+    display: grid;
+    grid-template-columns: 1fr minmax(0, 28rem);
+  }
+
+  .trade-grid__params {
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    border-left: 1px solid var(--border);
+    background: var(--frame-low);
+  }
+
+  .trade-grid__params .trade-form-wrap {
+    border-radius: 0;
+    box-shadow: none;
+    border-top: none;
+    padding: 12px 16px;
+  }
+
+  .trade-screen .chart-area {
+    margin: 8px 16px;
+  }
 }
 
 /* ========================= Trade-types bar =========================== */
