@@ -215,6 +215,27 @@ at that point. React-patch/minor stays automatic.
 `deriv-replica/` is not a static mock: it is wired to the real Deriv WebSocket
 API (same transport as `bot.html`).
 
+### Matching the real Deriv look
+
+- `index.html` sets no `maximum-scale`/`user-scalable`, so pinch-zoom works as it
+  does on deriv.com.
+- `src/styles.css` sets `html { font-size: 62.5% }` (10px root). The Deriv
+  packages (`@deriv-com/quill-tokens`, `quill-ui`, SmartCharts) size in `rem`
+  against Deriv's 62.5% root; with a 16px root the left rail and chart controls
+  render oversized. The rail is correct at 72px once the root is 10px.
+- The marketing nav (`src/site/Nav.jsx`, `.site-nav`) and hero use Deriv's dark
+  slate (`#181c25` nav, dark hero). Log in / Open account sit at the top-right
+  as outline buttons (`.button.white_outline`); they are not in the centre pill.
+- The trader deliberately has **no Automate/bot surface**: the bottom nav is
+  Trade / Positions / Reports / Menu and the desktop rail is Home / Positions /
+  Reports + Help / Language / Theme / Account. Language opens a sheet; Account
+  opens the Accounts Centre.
+- `src/components/screens.jsx` `MenuScreen` is the Accounts Centre: demo/real
+  cards with balance + switch, then grouped Trading and Settings rows.
+- `src/components/ChartErrorBoundary.jsx` wraps SmartChart so a chart remount
+  (e.g. on a theme toggle) degrades to the lightweight `ChartArea` instead of
+  blanking the whole app.
+
 - `src/lib/derivClient.js` — Deriv API client (current transport, per
   https://developers.deriv.com/llms.txt). Public market data connects to
   `wss://api.derivws.com/trading/v1/options/ws/public` (no app id, no auth);
