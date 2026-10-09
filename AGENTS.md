@@ -242,6 +242,31 @@ API (same transport as `bot.html`).
   (live prices without login) and restores a saved token from `localStorage`
   to reconnect on reload.
 
+### AppV2 desktop shell (sidebar, chart + params grid)
+
+The trading app is a faithful copy of Deriv's AppV2, whose layout is published
+in `deriv-com/dtrader-template` (`packages/trader/src/AppV2/`). Two structural
+facts drive the shell:
+
+- **Desktop is a left icon rail, not a bottom bar.** AppV2 renders
+  `AppV2/Components/Layout/Sidebar` (`sidebar.scss`) only when `!isMobile`. The
+  rail is `7.2rem` wide, `--color-nav-bg` background, with a 6.4rem brand header,
+  a separator, then Home / Positions / Reports and a bottom utility group of
+  Help / Language / Theme / Account — each item 7.2rem tall with a 4rem icon
+  box. `src/components/Sidebar.jsx` mirrors this. The bottom navigation and the
+  top account header are mobile-only (`trade-desktop.tsx` puts `AccountHeader`
+  inline in the desktop `trade__header`, but the rail carries the brand), so
+  below `768px` the rail hides and the bottom nav returns.
+- **Desktop grids the chart beside the parameters.** `trade-desktop.tsx` uses
+  `trade.scss`'s `grid-template-columns: 1fr minmax(0, 28rem)`: chart left,
+  params column right. `App.jsx` mirrors that with `.trade-grid` /
+  `.trade-grid__chart` / `.trade-grid__params`; mobile stacks the dock under
+  the chart. The market selector lives inside the chart column, and the round
+  `32px` Guide button sits next to it.
+
+Fonts follow the current Deriv stack: Inter for the trading app, Ubuntu +
+IBM Plex for the marketing site.
+
 ### Automate tab: defaults over knobs
 
 The Automate tab exposes only the two decisions that change the outcome — stake
