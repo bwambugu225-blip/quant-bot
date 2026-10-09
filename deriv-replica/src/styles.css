@@ -13,6 +13,16 @@
   --text-dim: var(--component-textIcon-normal-default, #b7b7b7);
   --text-disabled: var(--component-textIcon-normal-disabled, #6e6e6e);
   --nav-height: 56px;
+  /* Nav tokens mirroring Deriv's AppV2 sidebar variables. */
+  --color-nav-bg: var(--semantic-color-slate-solid-surface-frame-mid, #20242f);
+  --color-nav-border: var(--semantic-color-monochrome-border-normal-mid, #2a2e39);
+  --color-nav-item-active: var(--coral);
+  --color-nav-item-hover: rgba(255, 255, 255, 0.06);
+  --color-text-primary: var(--component-textIcon-normal-prominent, #ffffff);
+  --color-text-secondary: var(--component-textIcon-normal-default, #b7b7b7);
+  --color-status-danger: var(--semantic-color-status-danger, #ec3f3f);
+  --color-text-white: #ffffff;
+  --sidebar-width: 7.2rem;
 }
 
 * {
@@ -29,21 +39,31 @@ body,
 body {
   background: var(--core-color-solid-slate-1400, #0e0e0e);
   color: var(--text);
-  font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Phone-width column so the mobile layout stays faithful on desktop preview. */
+/* Deriv Trader AppV2 shell. Desktop is a left icon rail plus the content
+   column; below 768px the rail collapses and the bottom navigation returns,
+   keeping the phone column faithful. */
 .app {
   position: relative;
   display: flex;
-  flex-direction: column;
-  max-width: 430px;
+  flex-direction: row;
+  width: 100%;
   height: 100vh;
   margin: 0 auto;
   background: var(--frame-low);
   overflow: hidden;
-  box-shadow: 0 0 0 1px var(--border);
+}
+
+.app__content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .app__main {
@@ -52,6 +72,128 @@ body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* Desktop left rail (AppV2/Components/Layout/Sidebar). */
+.sidebar {
+  height: 100vh;
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-nav-bg);
+  border-right: 1px solid var(--color-nav-border);
+  backface-visibility: hidden;
+}
+
+.sidebar__header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 6.4rem;
+  padding: 1.6rem;
+}
+
+.sidebar__separator {
+  height: 1px;
+  margin: 0 0.8rem 0.8rem;
+  background-color: var(--color-nav-border);
+}
+
+.sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  padding: 0 0 1.6rem;
+  justify-content: space-between;
+}
+
+.sidebar__nav-main,
+.sidebar__nav-utility {
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 7.2rem;
+  margin: 0 0.8rem;
+  padding: 0.8rem 0;
+  border: none;
+  border-radius: 0.8rem;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.sidebar__item-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 4rem;
+  width: 4rem;
+  border-radius: 0.8rem;
+}
+
+.sidebar__item:hover .sidebar__item-icon {
+  background-color: var(--color-nav-item-hover);
+}
+
+.sidebar__item--active .sidebar__item-label {
+  color: var(--color-nav-item-active);
+}
+
+.sidebar__item-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+.sidebar__item-badge {
+  position: absolute;
+  top: 0.4rem;
+  right: 0;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9.6rem;
+  background-color: var(--color-status-danger);
+  color: var(--color-text-white);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* Mobile: hide the rail, centre the phone column, show the bottom nav. */
+@media (max-width: 767px) {
+  .sidebar {
+    display: none;
+  }
+
+  .app__content {
+    max-width: 430px;
+    margin: 0 auto;
+    box-shadow: 0 0 0 1px var(--border);
+  }
+}
+
+/* Desktop: AppV2 has no bottom bar, so drop ours above the breakpoint. */
+@media (min-width: 768px) {
+  .app-bottom-nav {
+    display: none;
+  }
 }
 
 .app__scroll {
@@ -152,13 +294,82 @@ body {
 /* =========================== Market selector ========================= */
 .home__row {
   padding: 4px 16px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* AppV2 Guide button: a round 3.2rem button sitting next to the market
+   selector on the Trade tab. */
+.trade__guide {
+  flex-shrink: 0;
+  height: 3.2rem;
+  width: 3.2rem;
+  border-radius: 1.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  background-color: var(--semantic-color-monochrome-surface-normal-lowest, rgba(255, 255, 255, 0.08));
+  color: var(--text);
+}
+
+.trade__guide:hover {
+  background-color: rgba(255, 255, 255, 0.14);
+}
+
+.guide {
+  padding: 4px 4px 12px;
+}
+
+.guide__title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.guide__body {
+  margin: 0 0 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.guide__facts {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.guide__fact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--frame-mid);
+  font-size: 13px;
+}
+
+.guide__fact dt {
+  color: var(--text-dim);
+}
+
+.guide__fact dd {
+  margin: 0;
+  font-weight: 600;
 }
 
 .market-selector {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   border: none;
   background: transparent;
   padding: 6px 0;

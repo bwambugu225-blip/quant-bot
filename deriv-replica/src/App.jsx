@@ -9,18 +9,22 @@ import DurationSheet from './components/DurationSheet.jsx';
 import NumberSheet from './components/NumberSheet.jsx';
 import BarrierSheet from './components/BarrierSheet.jsx';
 import BottomNav from './components/BottomNav.jsx';
+import Sidebar from './components/Sidebar.jsx';
 import Positions from './components/Positions.jsx';
 import SymbolSheet from './components/SymbolSheet.jsx';
 import Sheet from './components/Sheet.jsx';
 import { AutomateScreen, MenuScreen, Reports, LoginScreen } from './components/screens.jsx';
+import { LabelPairedPresentationScreenSmRegularIcon } from '@deriv/quill-icons';
 import { SYMBOLS, pipSize } from './lib/marketStore.js';
 import { TRADE_TYPES, findTradeType, buildProposal, isDigitContract } from './lib/contracts.js';
 import { analyzeDigits } from './lib/digitAnalysis.js';
 import { useEngine } from './lib/useEngine.js';
 import { usePayout } from './lib/usePayout.js';
+import { addComma } from './lib/format.js';
 
 const CURRENCY = 'USD';
 const DURATION_BOUNDS = { t: [1, 10], s: [15, 86400], m: [1, 1440], h: [1, 24], d: [1, 365] };
+const UNIT_LABELS = { t: 'Ticks', s: 'Seconds', m: 'Minutes', h: 'Hours', d: 'Days' };
 
 export default function App() {
   const { engine, client, state, tick, toast, login, logout, switchAccount } = useEngine();
@@ -31,7 +35,9 @@ export default function App() {
   const [side, setSide] = React.useState('up');
   const [sheet, setSheet] = React.useState(null);
   const [typesSheet, setTypesSheet] = React.useState(false);
+  const [guide, setGuide] = React.useState(false);
   const [showLogin, setShowLogin] = React.useState(false);
+  const [dark, setDark] = React.useState(true);
 
   // Shared form state across every trade type; each type reads the keys it needs.
   const [form, setForm] = React.useState({
@@ -93,76 +99,91 @@ export default function App() {
   const openCount = state?.positions?.length ?? 0;
 
   return (
-    <div className="app">
-      <Header
-        balance={state?.balance ?? 0}
-        currency={CURRENCY}
-        accountType={state?.accountType}
-        connected={state?.auth}
-        accounts={state?.accounts ?? []}
-        accountId={state?.accountId}
-        onSwitchAccount={id => switchAccount(id)}
+    <div className={`app app--theme-${dark ? 'dark' : 'light'}`}>
+      <Sidebar
+        tab={tab}
+        setTab={setTab}
+        openCount={openCount}
+        dark={dark}
+        onToggleTheme={() => setDark(d => !d)}
         onLogin={() => setShowLogin(true)}
-        onAccount={() => setTab('menu')}
-        onDeposit={() => setShowLogin(true)}
+        connected={!!state?.auth}
       />
 
-      <main className="app__main">
-        {tab === 'trade' && (
-          <div className="trade-screen">
-            <TradeTypesBar type={type} onSelect={selectType} onViewAll={() => setTypesSheet(true)} />
-            <div className="home__row">
-              <MarketSelector display={market.name} sym={market.sym} price={spot} up={up} onOpen={() => setSheet('symbol')} />
+      <div className="app__content">
+        <Header
+          balance={state?.balance ?? 0}
+          currency={CURRENCY}
+          accountType={state?.accountType}
+          connected={state?.auth}
+          accounts={state?.accounts ?? []}
+          accountId={state?.accountId}
+          onSwitchAccount={id => switchAccount(id)}
+          onLogin={() => setShowLogin(true)}
+          onAccount={() => setTab('menu')}
+          onDeposit={() => setShowLogin(true)}
+        />
+
+        <main className="app__main">
+          {tab === 'trade' && (
+            <div className="trade-screen">
+              <TradeTypesBar type={type} onSelect={selectType} onViewAll={() => setTypesSheet(true)} />
+              <div className="home__row">
+                <MarketSelector display={market.name} sym={market.sym} price={spot} up={up} onOpen={() => setSheet('symbol')} />
+                <button className="trade__guide" onClick={() => setGuide(true)} type="button" aria-label="Guide">
+                  <LabelPairedPresentationScreenSmRegularIcon fill="currentColor" iconSize="sm" />
+                </button>
+              </div>
+              <ChartArea prices={livePrices} up={up} sym={market.sym} />
+              {isDigit && (
+                <DigitAnalysis analysis={digitAnalysis} />
+              )}
+              <div className="trade-form-wrap">
+                <TradeForm
+                  type={type}
+                  side={side}
+                  value={form}
+                  set={set}
+                  onSheet={setSheet}
+                  payout={payout}
+                  currency={CURRENCY}
+                  canTrade={!!state?.auth}
+                  onTrade={onTrade}
+                />
+              </div>
             </div>
-            <ChartArea prices={livePrices} up={up} sym={market.sym} />
-            {isDigit && (
-              <DigitAnalysis analysis={digitAnalysis} />
-            )}
-            <div className="trade-form-wrap">
-              <TradeForm
-                type={type}
-                side={side}
-                value={form}
-                set={set}
-                onSheet={setSheet}
-                payout={payout}
-                currency={CURRENCY}
-                canTrade={!!state?.auth}
-                onTrade={onTrade}
+          )}
+
+          {tab === 'positions' && (
+            <div className="app__scroll">
+              <Positions positions={state?.positions ?? []} currency={CURRENCY} />
+            </div>
+          )}
+          {tab === 'reports' && (
+            <div className="app__scroll">
+              <Reports reports={state?.reports ?? []} currency={CURRENCY} />
+            </div>
+          )}
+          {tab === 'automate' && (
+            <div className="app__scroll">
+              <AutomateScreen engine={engine} state={state} onLogin={() => setShowLogin(true)} />
+            </div>
+          )}
+          {tab === 'menu' && (
+            <div className="app__scroll">
+              <MenuScreen
+                state={state}
+                onLogin={() => setShowLogin(true)}
+                onLogout={() => { engine.stop(); logout(); }}
+                onSwitch={id => switchAccount(id)}
+                onToast={m => engine.toast(m, 'info')}
               />
             </div>
-          </div>
-        )}
+          )}
+        </main>
 
-        {tab === 'positions' && (
-          <div className="app__scroll">
-            <Positions positions={state?.positions ?? []} currency={CURRENCY} />
-          </div>
-        )}
-        {tab === 'reports' && (
-          <div className="app__scroll">
-            <Reports reports={state?.reports ?? []} currency={CURRENCY} />
-          </div>
-        )}
-        {tab === 'automate' && (
-          <div className="app__scroll">
-            <AutomateScreen engine={engine} state={state} onLogin={() => setShowLogin(true)} />
-          </div>
-        )}
-        {tab === 'menu' && (
-          <div className="app__scroll">
-            <MenuScreen
-              state={state}
-              onLogin={() => setShowLogin(true)}
-              onLogout={() => { engine.stop(); logout(); }}
-              onSwitch={id => switchAccount(id)}
-              onToast={m => engine.toast(m, 'info')}
-            />
-          </div>
-        )}
-      </main>
-
-      <BottomNav tab={tab} setTab={setTab} openCount={openCount} />
+        <BottomNav tab={tab} setTab={setTab} openCount={openCount} />
+      </div>
 
       {sheet === 'symbol' && (
         <SymbolSheet symbols={SYMBOLS} current={marketIdx} onSelect={i => { setMarketIdx(i); engine.selectedMarket = SYMBOLS[i].sym; setSheet(null); }} onClose={() => setSheet(null)} />
@@ -280,6 +301,26 @@ export default function App() {
                 <span className="types-sheet__cat">{t.category.replace('_', ' ')}</span>
               </button>
             ))}
+          </div>
+        </Sheet>
+      )}
+
+      {guide && (
+        <Sheet title="Guide" onClose={() => setGuide(false)}>
+          <div className="guide">
+            <h3 className="guide__title">{tradeType.label}</h3>
+            <p className="guide__body">{tradeType.tooltip}</p>
+            <dl className="guide__facts">
+              <div className="guide__fact">
+                <dt>Market</dt><dd>{market.name}</dd>
+              </div>
+              <div className="guide__fact">
+                <dt>Duration</dt><dd>{form.duration} {(UNIT_LABELS[form.unit] || 'Ticks').toLowerCase()}</dd>
+              </div>
+              <div className="guide__fact">
+                <dt>Stake</dt><dd>{addComma(form.stake, 2)} {CURRENCY}</dd>
+              </div>
+            </dl>
           </div>
         </Sheet>
       )}
