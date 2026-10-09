@@ -305,6 +305,9 @@ export class DerivClient {
       const cb = this._cfCbs[msg.req_id]; delete this._cfCbs[msg.req_id]; cb(msg); return;
     }
     if (msg.req_id && this._payoutCbs && this._payoutCbs[msg.req_id]) { this._resolvePayout(msg); return; }
+    // Chart history streams keep the same req_id, so the callback stays
+    // registered for the life of the subscription (forget stops it upstream).
+    if (msg.req_id && this._histCbs && this._histCbs[msg.req_id]) { this._histCbs[msg.req_id](msg); return; }
     this.emit('message', msg, source);
   }
 
@@ -345,6 +348,44 @@ export class DerivClient {
       proposal: 1, amount: 1, basis: 'stake', currency: 'USD', ...fields, req_id: id,
     });
     return id;
+  }
+
+  // ── Chart history / streaming (public socket) ──────────────────────────
+  // SmartCharts owns rendering; the host just answers its data requests. These
+  // two methods route a ticks_history respond/stream to the requesting chart
+  // callback and a forget to stop it, so the chart can drive the public feed.
+  _chartSocket() {
+    return (this.mws && this.mws.readyState === WebSocket.OPEN)
+      ? this.mws
+      : (this.ws && this.ws.readyState === WebSocket.OPEN ? this.ws : null);
+  }
+
+  requestHistory(fields, cb, subscribe = false) {
+    const socket = this._chartSocket();
+    if (!socket) return null;
+    const id = this.nextId();
+    this._histCbs = this._histCbs || {};
+    this._histCbs[id] = cb;
+    this._sendOn(socket, { ...fields, req_id: id, ...(subscribe ? { subscribe: 1 } : {}) });
+    return id;
+  }
+
+  forgetHistory(subscriptionId) {
+    const socket = this._chartSocket();
+    if (socket && subscriptionId) this._sendOn(socket, { forget: subscriptionId });
+  }
+
+  // One-shot request (active_symbols / trading_times etc.) resolved to a
+  // Promise. Reuses the history callback map, so responses never touch the
+  // engine's own message router.
+  requestOnce(fields) {
+    return new Promise((resolve, reject) => {
+      const id = this.requestHistory(fields, msg => {
+        if (msg.error) reject(new Error(msg.error.message));
+        else resolve(msg);
+      });
+      if (id == null) reject(new Error('no socket'));
+    });
   }
 
   _resolvePayout(msg) {

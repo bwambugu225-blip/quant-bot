@@ -4,7 +4,7 @@
   "outputDirectory": "public_out",
   "rewrites": [
     { "source": "/callback.html", "destination": "/callback.html" },
-    { "source": "/((?!assets/).*)", "destination": "/index.html" }
+    { "source": "/((?!assets/|smartcharts/).*)", "destination": "/index.html" }
   ],
   "headers": [
     {

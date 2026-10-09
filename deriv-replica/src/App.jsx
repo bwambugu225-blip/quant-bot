@@ -3,6 +3,7 @@ import Header from './components/Header.jsx';
 import TradeTypesBar from './components/TradeTypesBar.jsx';
 import MarketSelector from './components/MarketSelector.jsx';
 import ChartArea from './components/ChartArea.jsx';
+import SmartChartArea from './components/SmartChartArea.jsx';
 import DigitAnalysis from './components/DigitAnalysis.jsx';
 import TradeForm from './components/TradeForm.jsx';
 import DurationSheet from './components/DurationSheet.jsx';
@@ -138,7 +139,11 @@ export default function App() {
                       <LabelPairedPresentationScreenSmRegularIcon fill="currentColor" iconSize="sm" />
                     </button>
                   </div>
-                  <ChartArea prices={livePrices} up={up} sym={market.sym} />
+                  {client ? (
+                    <SmartChartArea client={client} sym={market.sym} prices={livePrices} up={up} />
+                  ) : (
+                    <ChartArea prices={livePrices} up={up} sym={market.sym} />
+                  )}
                   {isDigit && (
                     <DigitAnalysis analysis={digitAnalysis} />
                   )}

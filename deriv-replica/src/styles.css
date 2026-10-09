@@ -475,6 +475,29 @@ body {
   display: block;
 }
 
+/* SmartCharts (Deriv's own charting library) fills the same slot. The library
+   measures its container, so the wrapper must have a real height. */
+.chart-area--smart {
+  position: relative;
+}
+.chart-area--smart > div,
+.chart-area--smart .smartcharts,
+.chart-area--smart .cq-root {
+  width: 100%;
+  height: 100%;
+}
+.chart-area__loading {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, #10131a 30%, #161b25 50%, #10131a 70%);
+  background-size: 200% 100%;
+  animation: chart-loading 1.4s ease-in-out infinite;
+}
+@keyframes chart-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* ======================== Trade parameters dock ====================== */
 .trade-params-dock-wrap {
   flex-shrink: 0;
