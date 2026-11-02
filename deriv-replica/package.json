@@ -10,9 +10,9 @@
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
-    "@deriv-com/quill-ui": "^1.24.12",
+    "@deriv-com/quill-ui": "^1.24.15",
     "@deriv-com/smartcharts-champion": "^2.2.0",
-    "@deriv/quill-icons": "^2.14.9",
+    "@deriv/quill-icons": "^2.14.10",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
