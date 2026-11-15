@@ -248,6 +248,26 @@ input, select { font-family: inherit; font-variant-numeric: tabular-nums; }
 .ind-card__val { font-family: var(--mono); font-size: 13.5px; font-weight: 600; margin-top: 2px; }
 .ind-card__sub { font-family: var(--mono); font-size: 9.5px; color: var(--text-mute); margin-top: 1px; }
 
+/* segmented group switcher above the indicator grid */
+.segbar { display: flex; gap: 2px; margin-bottom: 9px; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 2px; }
+.segbar .tf { flex: 1; padding: 4px 4px; text-align: center; font-family: var(--sans); font-size: 10.5px; letter-spacing: .2px; }
+
+/* the compact signal readout */
+.signal { display: flex; flex-direction: column; gap: 9px; padding: 2px 0 4px; }
+.signal__top { display: flex; align-items: baseline; gap: 9px; }
+.signal__bias { font-size: 20px; font-weight: 600; letter-spacing: -.2px; text-transform: capitalize; }
+.signal__bias.is-up { color: var(--up); }
+.signal__bias.is-down { color: var(--down); }
+.signal__meta { font-family: var(--mono); font-size: 10.5px; color: var(--text-mute); }
+.signal__bar { height: 4px; background: var(--bg-3); border-radius: 2px; overflow: hidden; }
+.signal__fill { height: 100%; background: var(--text-mute); border-radius: 2px; transition: width .3s ease; }
+.signal__fill.is-up { background: var(--up); }
+.signal__fill.is-down { background: var(--down); }
+.signal__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.mini { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; background: var(--bg-1); padding: 6px 9px; }
+.mini__k { font-size: 9.5px; color: var(--text-mute); text-transform: uppercase; letter-spacing: .6px; }
+.mini__v { font-family: var(--mono); font-size: 12px; font-weight: 600; text-transform: capitalize; }
+
 /* ── rows (key/value lists) ────────────────────────────────────────────── */
 .rows { display: flex; flex-direction: column; }
 .row { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px solid var(--line); font-size: 11.5px; }

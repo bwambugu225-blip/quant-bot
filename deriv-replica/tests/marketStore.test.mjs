@@ -92,3 +92,40 @@ test('openPrice is the first imported price, the reference for a session change'
   assert.equal(store.openPrice('R_100'), 100.1);
   assert.equal(store.lastPrice('R_100'), 102.3);
 });
+
+test('candles() returns a fresh reference so React re-renders a live chart', () => {
+  const store = new MarketStore();
+  store.onHistory('R_100', [0, 1, 2], [100.1, 101.2, 102.3]);
+  const a = store.candles('R_100', '5s');
+  const b = store.candles('R_100', '5s');
+  assert.notEqual(a, b, 'each call returns a new array');
+  assert.deepEqual(a, b, 'with the same contents');
+
+  // The in-progress candle is cloned, so mutating it in place on the next tick
+  // cannot retroactively change an array a component already rendered.
+  const held = store.candles('R_100', '5s');
+  const heldLast = held[held.length - 1];
+  const heldClose = heldLast.close;
+  store.onTick('R_100', 105, 2);
+  assert.equal(heldLast.close, heldClose, 'the held snapshot is not mutated in place');
+  assert.notEqual(heldLast.close, 105, 'the held last candle keeps its old close');
+  const fresh = store.candles('R_100', '5s');
+  assert.equal(fresh[fresh.length - 1].close, 105, 'the fresh read carries the new close');
+});
+
+test('a live tick folds into the forming candle and opens a new one on the boundary', () => {
+  const store = new MarketStore();
+  store.onHistory('R_100', [0, 1, 2], [100, 101, 102]);
+  const before = store.candles('R_100', '5s').length;
+  // Same 5s bucket (epoch 0..4): extends the last candle.
+  store.onTick('R_100', 104, 3);
+  let arr = store.candles('R_100', '5s');
+  assert.equal(arr.length, before, 'no new candle inside the bucket');
+  assert.equal(arr[arr.length - 1].close, 104);
+  assert.equal(arr[arr.length - 1].high, 104);
+  // Next bucket (epoch 5): a new candle opens.
+  store.onTick('R_100', 103, 5);
+  arr = store.candles('R_100', '5s');
+  assert.equal(arr.length, before + 1, 'a new candle opened on the boundary');
+  assert.equal(arr[arr.length - 1].open, 103);
+});

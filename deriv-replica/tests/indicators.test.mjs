@@ -6,6 +6,9 @@ import {
   aroon, cci, williamsR, rocSeries, momentumSeries, obvSeries, mfiSeries, vwapSeries,
   ichimoku, superTrendSeries, keltnerSeries, donchianSeries, stochRsiSeries,
   indicatorSnapshot, calcKelly, heikenAshi, isPinbar, isStrong,
+  demaSeries, temaSeries, hmaSeries, trixSeries, alligatorSeries, awesomeSeries,
+  cmfSeries, klingerSeries, fisherSeries, vortexSeries, dpoSeries, eomSeries,
+  forceIndexSeries, ultimateSeries, pivotPoints, volumeProfile,
 } from '../src/lib/indicators.js';
 import { candles } from './helpers.mjs';
 
@@ -122,6 +125,47 @@ test('the indicator snapshot exposes 20+ named readings', () => {
   for (const k of ['rsi', 'macd', 'bb', 'atr', 'adx', 'stoch', 'williamsR', 'cci', 'aroon', 'ichimoku', 'superTrend', 'vwap', 'obv', 'mfi', 'donchian', 'keltner', 'stochRsi']) {
     assert.ok(k in snap, `snapshot missing ${k}`);
   }
+});
+
+test('the extended indicators produce finite readings', () => {
+  const snap = indicatorSnapshot(C);
+  const scalars = ['dema', 'tema', 'hma', 'trix', 'awesome', 'cmf', 'fisher', 'dpo', 'eom', 'forceIndex', 'ultimate'];
+  for (const k of scalars) {
+    assert.ok(snap[k] != null && Number.isFinite(snap[k]), `${k} is a finite reading, got ${snap[k]}`);
+  }
+  for (const k of ['alligator', 'klinger', 'vortex', 'pivots']) {
+    assert.ok(snap[k] && typeof snap[k] === 'object', `${k} is an object`);
+  }
+  assert.ok(snap.vortex.plus > 0 && snap.vortex.minus > 0, 'vortex arms are positive');
+  assert.ok(snap.pivots.p != null && snap.pivots.r1 > snap.pivots.p && snap.pivots.s1 < snap.pivots.p, 'pivot ladder is ordered');
+});
+
+test('DEMA/TEMA lead a plain EMA through a step', () => {
+  const step = Array.from({ length: 120 }, (_, i) => (i >= 30 ? 120 : 100));
+  // Mid-transition, the double/triple averages track the new level sooner.
+  const i = 36;
+  const e = emaSeries(step, 10)[i];
+  const d = demaSeries(step, 10)[i];
+  const t = temaSeries(step, 10)[i];
+  assert.ok(d > e, `DEMA ${d} > EMA ${e}`);
+  assert.ok(t > d, `TEMA ${t} > DEMA ${d}`);
+  // All three settle onto the step, never below it.
+  assert.ok(Math.abs(emaSeries(step, 10).at(-1) - 120) < 1e-6, 'EMA converges to the step');
+  assert.ok(Math.abs(temaSeries(step, 10).at(-1) - 120) < 1e-3, 'TEMA converges to the step');
+});
+
+test('the volume profile buckets the window and finds a point of control', () => {
+  const prof = volumeProfile(C, 12);
+  assert.equal(prof.bins.length, 12);
+  assert.ok(prof.poc >= prof.low && prof.poc <= prof.high);
+  assert.ok(prof.bins.every(b => b.pct >= 0 && b.pct <= 1));
+  assert.ok(prof.bins.some(b => b.volume > 0));
+});
+
+test('the Fisher transform stays inside its transformable range', () => {
+  const f = fisherSeries(C, 10).filter(v => v != null);
+  assert.ok(f.length > 0);
+  assert.ok(f.every(v => Number.isFinite(v) && Math.abs(v) < 10), 'fisher values are bounded');
 });
 
 test('kelly fraction is bounded', () => {

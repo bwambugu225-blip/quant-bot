@@ -34,8 +34,43 @@ export function digitStats(digits) {
   };
 }
 
-// Candle-level market structure: range, realised volatility, mean body, bar
-// balance, the longest up/down run and the linear-trend slope.
+// A compact, human-readable read of the tape from an indicator snapshot: the
+// blended trend bias, the ADX regime, the volatility state and a couple of
+// momentum/level reads. This is the "what does the tape look like right now"
+// line — every field is derived from the snapshot, so it never disagrees with
+// the cards below it. It reports a lean, never a prediction.
+export function marketReadout(snap, price) {
+  if (!snap) return null;
+  const votes = [];
+  if (snap.emaFast != null && snap.emaSlow != null) votes.push(Math.sign(snap.emaFast - snap.emaSlow));
+  if (snap.macd?.macd != null) votes.push(Math.sign(snap.macd.macd));
+  if (snap.superTrend?.dir != null) votes.push(Math.sign(snap.superTrend.dir));
+  if (snap.vortex?.plus != null && snap.vortex?.minus != null) votes.push(Math.sign(snap.vortex.plus - snap.vortex.minus));
+  if (snap.aroon?.up != null && snap.aroon?.down != null) votes.push(Math.sign(snap.aroon.up - snap.aroon.down));
+  if (snap.alligator?.lips != null && snap.alligator?.jaw != null) votes.push(Math.sign(snap.alligator.lips - snap.alligator.jaw));
+  if (snap.awesome != null) votes.push(Math.sign(snap.awesome));
+  const score = votes.reduce((a, b) => a + b, 0);
+  const bias = score > 0 ? 'bullish' : score < 0 ? 'bearish' : 'neutral';
+  const strength = votes.length ? Math.round((Math.abs(score) / votes.length) * 100) : 0;
+
+  const adx = snap.adx?.adx ?? null;
+  const regime = adx == null ? '—' : adx >= 25 ? 'trending' : adx >= 18 ? 'developing' : 'ranging';
+
+  // Volatility state: ATR relative to its own recent price level.
+  const atrPct = snap.atr != null && price ? (snap.atr / price) * 100 : null;
+  const vol = atrPct == null ? '—' : atrPct > 0.06 ? 'high' : atrPct > 0.03 ? 'normal' : 'low';
+
+  // Momentum read from RSI, and where price sits against the mean and the band.
+  const rsi = snap.rsi ?? null;
+  const momentum = rsi == null ? '—' : rsi >= 60 ? 'strong' : rsi >= 52 ? 'firm' : rsi <= 40 ? 'weak' : rsi <= 48 ? 'soft' : 'flat';
+  const aboveMean = price != null && snap.bb?.mid != null ? price >= snap.bb.mid : null;
+  const bbPos = price != null && snap.bb?.upper != null && snap.bb?.lower != null && snap.bb.upper !== snap.bb.lower
+    ? Math.max(0, Math.min(1, (price - snap.bb.lower) / (snap.bb.upper - snap.bb.lower)))
+    : null;
+
+  return { bias, strength, regime, vol, atrPct, momentum, rsi, aboveMean, bbPos, votes: votes.length };
+}
+
 export function marketStats(candles) {
   const cl = candles.map(c => c.close);
   const n = candles.length;

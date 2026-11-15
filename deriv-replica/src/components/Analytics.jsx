@@ -1,52 +1,127 @@
 import React from 'react';
 import Panel from './Panel.jsx';
 import { indicatorSnapshot } from '../lib/indicators.js';
-import { digitStats, marketStats } from '../lib/analytics.js';
+import { digitStats, marketStats, marketReadout } from '../lib/analytics.js';
 
-const f = (v, d = 2) => (v == null || Number.isNaN(v) ? '—' : (+v).toFixed(d));
+// Format a reading. `-0` and `-0.00` are normalised to `0` so a rounding
+// artefact never renders as a negative zero.
+const f = (v, d = 2) => {
+  if (v == null || Number.isNaN(v)) return '—';
+  const n = (+v).toFixed(d);
+  return Number(n) === 0 ? (0).toFixed(d) : n;
+};
 const sign = v => (v == null ? '' : v > 0 ? 'is-up' : v < 0 ? 'is-down' : '');
 
-// The analytics column: an indicator matrix over the selected timeframe, a digit
-// distribution for the synthetic indices, and market-structure stats. Every
-// number is derived from the imported tape — nothing here is decorative.
+// The indicator groups. Each card is one reading; the segmented control above
+// the grid shows one group at a time so the column stays scannable instead of
+// dumping every number at once.
+const GROUPS = [
+  { id: 'trend', label: 'Trend' },
+  { id: 'momentum', label: 'Momentum' },
+  { id: 'volatility', label: 'Volatility' },
+  { id: 'volume', label: 'Volume' },
+  { id: 'levels', label: 'Levels' },
+];
+
+function cardsFor(group, s, price) {
+  const above = (v) => (price != null && v != null ? (price >= v ? 'is-up' : 'is-down') : '');
+  if (group === 'trend') {
+    return [
+      { name: 'EMA 9', value: f(s.emaFast, 4), cls: above(s.emaFast), sub: 'fast' },
+      { name: 'EMA 21', value: f(s.emaSlow, 4), cls: above(s.emaSlow), sub: 'slow' },
+      { name: 'SMA 20', value: f(s.sma, 4), cls: above(s.sma), sub: 'mean' },
+      { name: 'Hull MA', value: f(s.hma, 4), cls: above(s.hma), sub: 'low lag' },
+      { name: 'DEMA', value: f(s.dema, 4), cls: above(s.dema), sub: 'double' },
+      { name: 'TEMA', value: f(s.tema, 4), cls: above(s.tema), sub: 'triple' },
+      { name: 'SuperTrend', value: s.superTrend?.dir === 1 ? 'BULL' : 'BEAR', cls: s.superTrend?.dir === 1 ? 'is-up' : 'is-down', sub: f(s.superTrend?.value, 4) },
+      { name: 'Vortex', value: f(s.vortex?.plus, 3), cls: s.vortex?.plus > s.vortex?.minus ? 'is-up' : 'is-down', sub: `VI− ${f(s.vortex?.minus, 3)}` },
+      { name: 'Aroon', value: f(s.aroon?.up, 0), cls: s.aroon?.up > s.aroon?.down ? 'is-up' : 'is-down', sub: `Down ${f(s.aroon?.down, 0)}` },
+      { name: 'Alligator', value: f(s.alligator?.lips, 4), cls: s.alligator?.lips > s.alligator?.jaw ? 'is-up' : 'is-down', sub: `Jaw ${f(s.alligator?.jaw, 4)}` },
+    ];
+  }
+  if (group === 'momentum') {
+    return [
+      { name: 'RSI 14', value: f(s.rsi, 1), cls: s.rsi > 70 ? 'is-down' : s.rsi < 30 ? 'is-up' : '', sub: s.rsi > 70 ? 'overbought' : s.rsi < 30 ? 'oversold' : 'neutral' },
+      { name: 'MACD', value: f(s.macd?.macd, 4), cls: sign(s.macd?.hist), sub: `hist ${f(s.macd?.hist, 4)}` },
+      { name: 'Stoch %K', value: f(s.stoch?.k, 1), cls: s.stoch?.k > 80 ? 'is-down' : s.stoch?.k < 20 ? 'is-up' : '', sub: `D ${f(s.stoch?.d, 1)}` },
+      { name: 'Stoch RSI', value: f(s.stochRsi, 1), sub: '14 / 3' },
+      { name: 'CCI 20', value: f(s.cci, 1), cls: s.cci > 100 ? 'is-down' : s.cci < -100 ? 'is-up' : '', sub: 'commodity' },
+      { name: 'Williams %R', value: f(s.williamsR, 1), cls: s.williamsR > -20 ? 'is-down' : s.williamsR < -80 ? 'is-up' : '', sub: 'momentum' },
+      { name: 'ROC 12', value: `${f(s.roc, 3)}%`, cls: sign(s.roc), sub: 'rate of change' },
+      { name: 'Fisher', value: f(s.fisher, 3), cls: sign(s.fisher), sub: 'turn' },
+      { name: 'Awesome Osc', value: f(s.awesome, 4), cls: sign(s.awesome), sub: '5 / 34' },
+      { name: 'Ultimate Osc', value: f(s.ultimate, 1), cls: s.ultimate > 70 ? 'is-down' : s.ultimate < 30 ? 'is-up' : '', sub: '7 / 14 / 28' },
+      { name: 'TRIX', value: f(s.trix, 4), cls: sign(s.trix), sub: '15 period' },
+      { name: 'DPO', value: f(s.dpo, 4), cls: sign(s.dpo), sub: 'detrended' },
+    ];
+  }
+  if (group === 'volatility') {
+    return [
+      { name: 'ATR 14', value: f(s.atr, 4), sub: 'absolute' },
+      { name: 'ATR %', value: price ? `${f((s.atr / price) * 100, 3)}%` : '—', sub: 'of price' },
+      { name: 'ADX 14', value: f(s.adx?.adx, 1), sub: s.adx ? `${s.adx.trend} · ${s.adx.adx >= 25 ? 'trending' : 'ranging'}` : '—' },
+      { name: 'Bollinger', value: f(s.bb?.mid, 4), sub: `${f(s.bb?.lower, 2)}–${f(s.bb?.upper, 2)}` },
+      { name: 'Bandwidth', value: s.bb?.mid ? `${f(((s.bb.upper - s.bb.lower) / s.bb.mid) * 100, 3)}%` : '—', sub: 'BB width' },
+      { name: 'Keltner', value: f(s.keltner?.mid, 4), sub: `${f(s.keltner?.lower, 2)}–${f(s.keltner?.upper, 2)}` },
+      { name: 'Donchian', value: f(s.donchian?.mid, 4), sub: `${f(s.donchian?.lower, 2)}–${f(s.donchian?.upper, 2)}` },
+    ];
+  }
+  if (group === 'volume') {
+    return [
+      { name: 'MFI 14', value: f(s.mfi, 1), sub: 'money flow' },
+      { name: 'OBV', value: f(s.obv, 0), sub: 'on-balance vol' },
+      { name: 'Chaikin MF', value: f(s.cmf, 3), cls: sign(s.cmf), sub: '20 period' },
+      { name: 'Klinger', value: f(s.klinger?.kvo, 0), cls: sign(s.klinger?.kvo), sub: `signal ${f(s.klinger?.signal, 0)}` },
+      { name: 'Force Index', value: f(s.forceIndex, 1), cls: sign(s.forceIndex), sub: '13 period' },
+      { name: 'Ease of Move', value: f(s.eom, 3), cls: sign(s.eom), sub: '14 period' },
+    ];
+  }
+  // levels
+  return [
+    { name: 'VWAP', value: f(s.vwap, 4), cls: price != null && s.vwap != null ? (price >= s.vwap ? 'is-up' : 'is-down') : '', sub: price != null && s.vwap != null ? (price >= s.vwap ? 'above' : 'below') : '20 period' },
+    { name: 'Pivot P', value: f(s.pivots?.p, 4), sub: 'classic' },
+    { name: 'Resistance R1', value: f(s.pivots?.r1, 4), cls: 'is-down', sub: `R2 ${f(s.pivots?.r2, 2)}` },
+    { name: 'Support S1', value: f(s.pivots?.s1, 4), cls: 'is-up', sub: `S2 ${f(s.pivots?.s2, 2)}` },
+    { name: 'Ichimoku', value: f(s.ichimoku?.tenkan, 4), cls: price != null && s.ichimoku?.tenkan != null ? (price >= s.ichimoku.tenkan ? 'is-up' : 'is-down') : '', sub: `Kijun ${f(s.ichimoku?.kijun, 4)}` },
+    { name: 'Volume POC', value: f(s.volumeProfile?.poc, 4), sub: 'point of control' },
+  ];
+}
+
+// The analytics column: a compact signal readout, a grouped indicator matrix
+// over the selected timeframe, a digit distribution for the synthetic indices,
+// and market-structure stats. Every number is derived from the imported tape.
 export default function Analytics({ candles, digits, sym, price }) {
-  const snap = React.useMemo(() => (candles.length > 20 ? indicatorSnapshot(candles) : null), [candles]);
+  const [group, setGroup] = React.useState('trend');
+  const snap = React.useMemo(() => (candles.length > 30 ? indicatorSnapshot(candles) : null), [candles]);
+  const read = React.useMemo(() => marketReadout(snap, price), [snap, price]);
   const dstats = React.useMemo(() => (digits.length > 30 ? digitStats(digits) : null), [digits]);
-  const mstats = React.useMemo(() => (candles.length > 20 ? marketStats(candles) : null), [candles]);
+  const mstats = React.useMemo(() => (candles.length > 30 ? marketStats(candles) : null), [candles]);
+
+  const cards = snap ? cardsFor(group, snap, price) : [];
 
   return (
     <div className="dock__scroll">
-      <Panel title="Indicators" count={snap ? '20+' : '—'}>
+      <Panel title="Signal" count={read ? `${read.votes} inputs` : '—'} defaultOpen>
+        {!read ? <div className="empty">Importing history…</div> : <SignalHeader read={read} />}
+      </Panel>
+
+      <Panel title="Indicators" count={snap ? '40+' : '—'} defaultOpen>
         {!snap ? <div className="empty">Importing history…</div> : (
-          <div className="ind-grid">
-            <Card name="RSI 14" value={f(snap.rsi, 1)} cls={snap.rsi > 70 ? 'is-down' : snap.rsi < 30 ? 'is-up' : ''} sub={snap.rsi > 70 ? 'overbought' : snap.rsi < 30 ? 'oversold' : 'neutral'} />
-            <Card name="Stoch %K" value={f(snap.stoch.k, 1)} cls={snap.stoch.k > 80 ? 'is-down' : snap.stoch.k < 20 ? 'is-up' : ''} sub={`D ${f(snap.stoch.d, 1)}`} />
-            <Card name="MACD" value={f(snap.macd.macd, 4)} cls={sign(snap.macd.hist)} sub={`hist ${f(snap.macd.hist, 4)}`} />
-            <Card name="ADX 14" value={f(snap.adx?.adx, 1)} sub={snap.adx ? `${snap.adx.trend} · ${snap.adx.adx > 25 ? 'trending' : 'ranging'}` : '—'} />
-            <Card name="ATR 14" value={f(snap.atr, 4)} sub="volatility" />
-            <Card name="CCI 20" value={f(snap.cci, 1)} cls={snap.cci > 100 ? 'is-down' : snap.cci < -100 ? 'is-up' : ''} sub="commodity" />
-            <Card name="Williams %R" value={f(snap.williamsR, 1)} cls={snap.williamsR > -20 ? 'is-down' : snap.williamsR < -80 ? 'is-up' : ''} sub="momentum" />
-            <Card name="MFI 14" value={f(snap.mfi, 1)} sub="money flow" />
-            <Card name="ROC 12" value={f(snap.roc, 3) + '%'} cls={sign(snap.roc)} sub="rate of change" />
-            <Card name="Momentum" value={f(snap.momentum, 4)} cls={sign(snap.momentum)} sub="10 period" />
-            <Card name="Stoch RSI" value={f(snap.stochRsi, 1)} sub="14 / 3" />
-            <Card name="VWAP" value={f(snap.vwap, 4)} sub={snap.vwap != null && price != null ? (price > snap.vwap ? 'above' : 'below') : '20 period'} />
-            <Card name="Aroon Up" value={f(snap.aroon.up, 0)} cls={snap.aroon.up > snap.aroon.down ? 'is-up' : 'is-down'} sub={`Down ${f(snap.aroon.down, 0)}`} />
-            <Card name="SuperTrend" value={snap.superTrend.dir === 1 ? 'BULL' : 'BEAR'} cls={snap.superTrend.dir === 1 ? 'is-up' : 'is-down'} sub={f(snap.superTrend.value, 4)} />
-            <Card name="EMA 9" value={f(snap.emaFast, 4)} cls={price > snap.emaFast ? 'is-up' : 'is-down'} sub="fast" />
-            <Card name="EMA 21" value={f(snap.emaSlow, 4)} cls={price > snap.emaSlow ? 'is-up' : 'is-down'} sub="slow" />
-            <Card name="SMA 20" value={f(snap.sma, 4)} sub="trend" />
-            <Card name="Bollinger" value={f(snap.bb.mid, 4)} sub={`${f(snap.bb.lower, 2)}–${f(snap.bb.upper, 2)}`} />
-            <Card name="Keltner" value={f(snap.keltner.mid, 4)} sub={`${f(snap.keltner.lower, 2)}–${f(snap.keltner.upper, 2)}`} />
-            <Card name="Donchian" value={f(snap.donchian.mid, 4)} sub={`${f(snap.donchian.lower, 2)}–${f(snap.donchian.upper, 2)}`} />
-            <Card name="Ichimoku" value={f(snap.ichimoku.tenkan, 4)} sub={`Kijun ${f(snap.ichimoku.kijun, 4)}`} />
-            <Card name="OBV" value={f(snap.obv, 0)} sub="on-balance vol" />
-          </div>
+          <>
+            <div className="segbar">
+              {GROUPS.map(g => (
+                <button key={g.id} className={`tf${group === g.id ? ' is-active' : ''}`} onClick={() => setGroup(g.id)} type="button">{g.label}</button>
+              ))}
+            </div>
+            <div className="ind-grid">
+              {cards.map(c => <Card key={c.name} {...c} />)}
+            </div>
+          </>
         )}
       </Panel>
 
       {dstats && (
-        <Panel title="Digit Distribution" count={`${dstats.total} ticks`}>
+        <Panel title="Digit Distribution" count={`${dstats.total} ticks`} defaultOpen={false}>
           <div className="digits">
             {dstats.dist.map((pct, d) => (
               <div className="digit" key={d}>
@@ -67,7 +142,7 @@ export default function Analytics({ candles, digits, sym, price }) {
       )}
 
       {mstats && (
-        <Panel title="Market Structure" count={sym}>
+        <Panel title="Market Structure" count={sym} defaultOpen={false}>
           <div className="rows">
             <Row k="Bars analysed" v={mstats.bars} />
             <Row k="Period range" v={`${f(mstats.rangeLow, 4)}–${f(mstats.rangeHigh, 4)}`} />
@@ -80,6 +155,36 @@ export default function Analytics({ candles, digits, sym, price }) {
           </div>
         </Panel>
       )}
+    </div>
+  );
+}
+
+// The one-line read: which way the tape leans, how strongly, and the two
+// conditions that qualify it (regime and volatility).
+function SignalHeader({ read }) {
+  const cls = read.bias === 'bullish' ? 'is-up' : read.bias === 'bearish' ? 'is-down' : '';
+  return (
+    <div className="signal">
+      <div className="signal__top">
+        <span className={`signal__bias ${cls}`}>{read.bias}</span>
+        <span className="signal__meta">{read.strength}% agreement</span>
+      </div>
+      <div className="signal__bar"><div className={`signal__fill ${cls}`} style={{ width: `${read.strength}%` }} /></div>
+      <div className="signal__grid">
+        <Mini k="Regime" v={read.regime} />
+        <Mini k="Volatility" v={read.vol} />
+        <Mini k="Momentum" v={read.momentum} />
+        <Mini k="RSI" v={read.rsi != null ? read.rsi.toFixed(1) : '—'} />
+      </div>
+    </div>
+  );
+}
+
+function Mini({ k, v }) {
+  return (
+    <div className="mini">
+      <span className="mini__k">{k}</span>
+      <span className="mini__v">{v}</span>
     </div>
   );
 }

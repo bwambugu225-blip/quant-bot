@@ -1,11 +1,11 @@
 import React from 'react';
-import { emaSeries, smaSeries, bollingerSeries, rsiSeries, macdSeries, closes } from '../lib/indicators.js';
+import { emaSeries, smaSeries, bollingerSeries, rsiSeries, macdSeries, closes, superTrendSeries, vwapSeries } from '../lib/indicators.js';
 
 // A dependency-free SVG chart: candles or line, with optional EMA/SMA/Bollinger
-// overlays, a volume histogram and an RSI/MACD sub-pane. It renders from the
-// same candles the engine trades, so what is drawn is what the strategy sees.
-// A crosshair tracks the pointer and reads out the hovered bar's OHLC.
-const OVERLAY_COLORS = { ema9: '#4c86e0', ema21: '#c8a250', sma50: '#8b7fd4', bb: '#3d4756' };
+// /SuperTrend/VWAP overlays, a volume histogram and an RSI/MACD sub-pane. It
+// renders from the same candles the engine trades, so what is drawn is what the
+// strategy sees. A crosshair tracks the pointer and reads out the hovered bar.
+const OVERLAY_COLORS = { ema9: '#4c86e0', ema21: '#c8a250', sma50: '#8b7fd4', bb: '#3d4756', st: '#2bb673', vwap: '#d99a3a' };
 
 function useSize(ref) {
   const [size, setSize] = React.useState({ w: 800, h: 420 });
@@ -52,6 +52,8 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
     const ema9 = overlays.includes('ema9') ? emaSeries(cl, 9) : null;
     const ema21 = overlays.includes('ema21') ? emaSeries(cl, 21) : null;
     const sma50 = overlays.includes('sma50') ? smaSeries(cl, 50) : null;
+    const st = overlays.includes('st') ? superTrendSeries(view, 10, 3) : null;
+    const vwap = overlays.includes('vwap') ? vwapSeries(view, 20) : null;
 
     const pathOf = (series) => {
       let d = '';
@@ -82,7 +84,9 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
       paneGeom = { pPath, sPath, hist, mid, top, height: paneH, bandLo, bandHi };
     }
 
-    return { padL, padR, padT, padB, plotW, mainH, lo, hi, x, y, ema9, ema21, sma50, bb, pathOf, paneGeom, volY };
+    const stLine = st ? st.dir.map((d, i) => (d == null ? null : d === 1 ? st.dn[i] : st.up[i])) : null;
+
+    return { padL, padR, padT, padB, plotW, mainH, lo, hi, x, y, ema9, ema21, sma50, bb, pathOf, paneGeom, volY, st, stLine, vwap };
   }, [view, w, h, overlays, pane]);
 
   const last = view[view.length - 1];
@@ -155,6 +159,8 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
           {geom.ema9 && <path d={geom.pathOf(geom.ema9)} fill="none" stroke={OVERLAY_COLORS.ema9} strokeWidth="1.3" />}
           {geom.ema21 && <path d={geom.pathOf(geom.ema21)} fill="none" stroke={OVERLAY_COLORS.ema21} strokeWidth="1.3" />}
           {geom.sma50 && <path d={geom.pathOf(geom.sma50)} fill="none" stroke={OVERLAY_COLORS.sma50} strokeWidth="1.3" />}
+          {geom.stLine && <path d={geom.pathOf(geom.stLine)} fill="none" stroke={OVERLAY_COLORS.st} strokeWidth="1.4" opacity="0.9" />}
+          {geom.vwap && <path d={geom.pathOf(geom.vwap)} fill="none" stroke={OVERLAY_COLORS.vwap} strokeWidth="1.2" strokeDasharray="5 3" />}
 
           {priceY != null && <>
             <line x1={geom.padL} x2={w - geom.padR} y1={priceY} y2={priceY} stroke={up ? 'var(--up)' : 'var(--down)'} strokeWidth="1" strokeDasharray="2 3" opacity="0.75" />
@@ -199,6 +205,8 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
         {overlays.includes('ema21') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.ema21 }} />EMA 21</div>}
         {overlays.includes('sma50') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.sma50 }} />SMA 50</div>}
         {overlays.includes('bb') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.bb }} />BB 20/2</div>}
+        {overlays.includes('st') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.st }} />SuperTrend</div>}
+        {overlays.includes('vwap') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.vwap }} />VWAP</div>}
       </div>
       <div className="chart-note">{view.length} candles · {pane === 'rsi' ? 'RSI 14' : pane === 'macd' ? 'MACD 12/26/9' : 'no sub-pane'} · vol overlay</div>
       <div className="chart-hint">hover to inspect</div>

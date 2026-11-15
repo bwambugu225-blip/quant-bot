@@ -76,6 +76,28 @@ export const INDICATORS = {
   obv: { label: 'OBV', params: [], outputs: ['value'], series: c => ({ value: TA.obvSeries(c) }) },
   mfi: { label: 'MFI', params: [num('period', 'Period', 14)], outputs: ['value'], series: (c, p) => ({ value: TA.mfiSeries(c, p.period) }) },
   volume: { label: 'Volume', params: [], outputs: ['value'], series: c => ({ value: TA.volumes(c) }) },
+  dema: { label: 'DEMA', params: [num('period', 'Period', 20)], outputs: ['value'], series: (c, p) => ({ value: TA.demaSeries(TA.closes(c), p.period) }) },
+  tema: { label: 'TEMA', params: [num('period', 'Period', 20)], outputs: ['value'], series: (c, p) => ({ value: TA.temaSeries(TA.closes(c), p.period) }) },
+  hma: { label: 'Hull MA', params: [num('period', 'Period', 20)], outputs: ['value'], series: (c, p) => ({ value: TA.hmaSeries(TA.closes(c), p.period) }) },
+  trix: { label: 'TRIX', params: [num('period', 'Period', 15)], outputs: ['value'], series: (c, p) => ({ value: TA.trixSeries(TA.closes(c), p.period) }) },
+  alligator: {
+    label: 'Alligator', params: [num('jaw', 'Jaw', 13), num('teeth', 'Teeth', 8), num('lips', 'Lips', 5)],
+    outputs: ['jaw', 'teeth', 'lips'],
+    series: (c, p) => TA.alligatorSeries(c, p.jaw, p.teeth, p.lips),
+  },
+  awesome: { label: 'Awesome Osc', params: [], outputs: ['value'], series: c => ({ value: TA.awesomeSeries(c) }) },
+  cmf: { label: 'Chaikin MF', params: [num('period', 'Period', 20)], outputs: ['value'], series: (c, p) => ({ value: TA.cmfSeries(c, p.period) }) },
+  klinger: {
+    label: 'Klinger Osc', params: [num('fast', 'Fast', 34), num('slow', 'Slow', 55), num('signal', 'Signal', 13)],
+    outputs: ['kvo', 'signal'],
+    series: (c, p) => TA.klingerSeries(c, p.fast, p.slow, p.signal),
+  },
+  fisher: { label: 'Fisher', params: [num('period', 'Period', 10)], outputs: ['value'], series: (c, p) => ({ value: TA.fisherSeries(c, p.period) }) },
+  vortex: { label: 'Vortex', params: [num('period', 'Period', 14)], outputs: ['plus', 'minus'], series: (c, p) => TA.vortexSeries(c, p.period) },
+  dpo: { label: 'DPO', params: [num('period', 'Period', 20)], outputs: ['value'], series: (c, p) => ({ value: TA.dpoSeries(c, p.period) }) },
+  eom: { label: 'Ease of Move', params: [num('period', 'Period', 14)], outputs: ['value'], series: (c, p) => ({ value: TA.eomSeries(c, p.period) }) },
+  forceIndex: { label: 'Force Index', params: [num('period', 'Period', 13)], outputs: ['value'], series: (c, p) => ({ value: TA.forceIndexSeries(c, p.period) }) },
+  ultimate: { label: 'Ultimate Osc', params: [], outputs: ['value'], series: c => ({ value: TA.ultimateSeries(c) }) },
 };
 
 export const OPERATORS = [

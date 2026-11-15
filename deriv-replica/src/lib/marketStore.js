@@ -149,10 +149,17 @@ export class MarketStore {
     return p;
   }
 
+  // Returns a fresh array each call so React sees a new reference when a tick
+  // has folded into the buffer. The in-progress (last) candle is cloned too,
+  // because onTick mutates it in place — without the clone React would keep
+  // rendering the frozen object it first saw.
   candles(sym, tf) {
     const s = this.symbols[sym];
     if (!s) return [];
-    return s.candles[tf || this.selectedTf] || [];
+    const arr = s.candles[tf || this.selectedTf] || [];
+    const out = arr.slice();
+    if (out.length) out[out.length - 1] = { ...out[out.length - 1] };
+    return out;
   }
 
   ticks(sym) {

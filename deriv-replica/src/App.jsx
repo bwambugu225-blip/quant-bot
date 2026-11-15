@@ -18,9 +18,11 @@ import { addComma } from './lib/format.js';
 
 const PANES = [['rsi', 'RSI'], ['macd', 'MACD'], ['none', 'None']];
 const OVERLAY_SETS = [
-  { id: 'ema', label: 'EMA 9/21', overlays: ['ema9', 'ema21'] },
-  { id: 'ema+bb', label: 'EMA + BB', overlays: ['ema9', 'ema21', 'bb'] },
-  { id: 'sma', label: 'SMA 50', overlays: ['sma50'] },
+  { id: 'trend', label: 'EMA 9/21', overlays: ['ema9', 'ema21'] },
+  { id: 'trend+bb', label: 'EMA + BB', overlays: ['ema9', 'ema21', 'bb'] },
+  { id: 'st', label: 'SuperTrend', overlays: ['st'] },
+  { id: 'vwap', label: 'VWAP', overlays: ['vwap'] },
+  { id: 'all', label: 'All overlays', overlays: ['ema9', 'ema21', 'bb', 'st', 'vwap'] },
   { id: 'none', label: 'None', overlays: [] },
 ];
 const NAV = [
@@ -36,7 +38,7 @@ export default function App() {
 
   const [view, setView] = React.useState('trade');          // trade | builder | positions | reports | logs
   const [chartMode, setChartMode] = React.useState('candles');
-  const [overlaySet, setOverlaySet] = React.useState('ema+bb');
+  const [overlaySet, setOverlaySet] = React.useState('trend+bb');
   const [pane, setPane] = React.useState('rsi');
   const [symOpen, setSymOpen] = React.useState(false);
   const [loginOpen, setLoginOpen] = React.useState(false);

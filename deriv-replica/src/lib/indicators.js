@@ -24,6 +24,13 @@ export function min(arr) { let m = Infinity; for (let i = 0; i < arr.length; i++
 export function sum(arr) { let s = 0; for (let i = 0; i < arr.length; i++) s += arr[i]; return s; }
 export function mean(arr) { return arr.length ? sum(arr) / arr.length : null; }
 
+// Last defined value of a series — the snapshot uses this for every indicator
+// that returns a plain aligned array.
+export function lastOf(series) {
+  for (let i = series.length - 1; i >= 0; i--) if (series[i] != null) return series[i];
+  return null;
+}
+
 export function stdev(arr, p) {
   const slice = p ? arr.slice(-p) : arr;
   if (slice.length < 2) return null;
@@ -460,6 +467,248 @@ export function superTrendSeries(c, p = 10, mult = 3) {
   return { up, dn, dir };
 }
 
+// ── extended indicator library ─────────────────────────────────────────────
+// Every function below returns an aligned series (index i = value through
+// candle i, null while warming up), matching the rest of the library.
+
+// Double / triple exponential moving averages — faster trend reads than a plain
+// EMA at the same period.
+export function demaSeries(arr, p = 20) {
+  const e1 = emaSeries(arr, p);
+  const e2 = emaSeries(e1.map(v => (v == null ? 0 : v)), p);
+  return arr.map((_, i) => (e1[i] != null && e2[i] != null ? 2 * e1[i] - e2[i] : null));
+}
+
+export function temaSeries(arr, p = 20) {
+  const e1 = emaSeries(arr, p);
+  const e2 = emaSeries(e1.map(v => (v == null ? 0 : v)), p);
+  const e3 = emaSeries(e2.map(v => (v == null ? 0 : v)), p);
+  return arr.map((_, i) => (e1[i] != null && e2[i] != null && e3[i] != null ? 3 * e1[i] - 3 * e2[i] + e3[i] : null));
+}
+
+// Hull moving average — a low-lag smoothing built from two WMAs.
+export function hmaSeries(arr, p = 20) {
+  const half = Math.max(1, Math.round(p / 2));
+  const root = Math.max(1, Math.round(Math.sqrt(p)));
+  const wHalf = wmaSeries(arr, half);
+  const wFull = wmaSeries(arr, p);
+  const raw = arr.map((_, i) => (wHalf[i] != null && wFull[i] != null ? 2 * wHalf[i] - wFull[i] : null));
+  const seed = raw.map(v => (v == null ? 0 : v));
+  const out = wmaSeries(seed, root);
+  return arr.map((_, i) => (raw[i] == null ? null : out[i]));
+}
+
+// TRIX — the rate of change of a triple-smoothed EMA. Crossings of zero mark
+// trend reversals with very little noise.
+export function trixSeries(arr, p = 15) {
+  const e1 = emaSeries(arr, p);
+  const e2 = emaSeries(e1.map(v => (v == null ? 0 : v)), p);
+  const e3 = emaSeries(e2.map(v => (v == null ? 0 : v)), p);
+  const out = new Array(arr.length).fill(null);
+  for (let i = 1; i < arr.length; i++) {
+    if (e3[i] != null && e3[i - 1]) out[i] = ((e3[i] - e3[i - 1]) / e3[i - 1]) * 100;
+  }
+  return out;
+}
+
+// Williams %R is defined earlier; Williams Alligator uses three shifted SMAs.
+export function alligatorSeries(c, jaw = 13, teeth = 8, lips = 5) {
+  const cl = closes(c);
+  const shift = (s, n) => s.map((_, i) => (i - n >= 0 ? s[i - n] : null));
+  return {
+    jaw: shift(smaSeries(cl, jaw), 8),
+    teeth: shift(smaSeries(cl, teeth), 5),
+    lips: shift(smaSeries(cl, lips), 3),
+  };
+}
+
+// Awesome Oscillator — the 5/34 SMA of the median price, a momentum histogram.
+export function awesomeSeries(c) {
+  const med = c.map(k => (k.high + k.low) / 2);
+  const f = smaSeries(med, 5);
+  const s = smaSeries(med, 34);
+  return med.map((_, i) => (f[i] != null && s[i] != null ? f[i] - s[i] : null));
+}
+
+// Chaikin Money Flow — the money-flow volume over a window, signed by where the
+// close sits inside each bar's range.
+export function cmfSeries(c, p = 20) {
+  const out = new Array(c.length).fill(null);
+  for (let i = p - 1; i < c.length; i++) {
+    let mfv = 0, vol = 0;
+    for (let j = i - p + 1; j <= i; j++) {
+      const k = c[j];
+      const range = (k.high - k.low) || 1e-9;
+      const v = k.volume ?? k.ticks ?? 1;
+      mfv += (((k.close - k.low) - (k.high - k.close)) / range) * v;
+      vol += v;
+    }
+    out[i] = vol ? mfv / vol : null;
+  }
+  return out;
+}
+
+// Klinger Volume Oscillator — the EMA(34) − EMA(55) of a volume force, with a
+// 13-period signal line.
+export function klingerSeries(c, fast = 34, slow = 55, signal = 13) {
+  const vf = new Array(c.length).fill(null);
+  let prevTrend = 0, prevDm = 0;
+  for (let i = 0; i < c.length; i++) {
+    const k = c[i];
+    const trend = k.high + k.low + k.close;
+    const dm = k.high - k.low;
+    if (i === 0) { prevTrend = trend; prevDm = dm; vf[i] = 0; continue; }
+    const cm = prevTrend === trend ? prevDm + dm
+      : trend > prevTrend ? prevDm + dm
+      : dm;
+    const v = k.volume ?? k.ticks ?? 1;
+    vf[i] = v * Math.abs(2 * dm / ((k.high - k.low) || 1e-9) - 1) * (trend > prevTrend ? 1 : -1) * cm;
+    prevTrend = trend; prevDm = dm;
+  }
+  const ef = emaSeries(vf, fast);
+  const es = emaSeries(vf, slow);
+  const kvo = vf.map((_, i) => (ef[i] != null && es[i] != null ? ef[i] - es[i] : null));
+  const sig = emaSeries(kvo.map(v => (v == null ? 0 : v)), signal);
+  return { kvo, signal: sig };
+}
+
+// Fisher Transform — sharpens turning points by mapping a normalised price to a
+// Gaussian-like range.
+export function fisherSeries(c, p = 10) {
+  const med = c.map(k => (k.high + k.low) / 2);
+  const out = new Array(c.length).fill(null);
+  let value = 0;
+  for (let i = p - 1; i < c.length; i++) {
+    let hi = -Infinity, lo = Infinity;
+    for (let j = i - p + 1; j <= i; j++) { hi = Math.max(hi, med[j]); lo = Math.min(lo, med[j]); }
+    const range = (hi - lo) || 1e-9;
+    const x = 2 * ((med[i] - lo) / range - 0.5);
+    value = 0.33 * x + 0.67 * value;
+    value = Math.max(-0.999, Math.min(0.999, value));
+    out[i] = 0.5 * Math.log((1 + value) / (1 - value));
+  }
+  return out;
+}
+
+// Vortex Indicator — the positive and negative trend strength; VI+ above VI−
+// is an uptrend.
+export function vortexSeries(c, p = 14) {
+  const vmP = new Array(c.length).fill(null);
+  const vmN = new Array(c.length).fill(null);
+  const tr = trueRangeSeries(c);
+  const vip = new Array(c.length).fill(null);
+  const vin = new Array(c.length).fill(null);
+  for (let i = 0; i < c.length; i++) {
+    if (i === 0) continue;
+    vmP[i] = Math.abs(c[i].high - c[i - 1].low);
+    vmN[i] = Math.abs(c[i].low - c[i - 1].high);
+  }
+  for (let i = p; i < c.length; i++) {
+    let sp = 0, sn = 0, st = 0;
+    for (let j = i - p + 1; j <= i; j++) { sp += vmP[j]; sn += vmN[j]; st += tr[j]; }
+    vip[i] = st ? sp / st : null;
+    vin[i] = st ? sn / st : null;
+  }
+  return { plus: vip, minus: vin };
+}
+
+// Detrended Price Oscillator — price minus its own shifted SMA, which removes
+// the trend and leaves the cycle.
+export function dpoSeries(c, p = 20) {
+  const cl = closes(c);
+  const s = smaSeries(cl, p);
+  const shift = Math.floor(p / 2) + 1;
+  return cl.map((v, i) => (s[i - shift] != null ? v - s[i - shift] : null));
+}
+
+// Ease of Movement — how far price travels per unit of volume.
+export function eomSeries(c, p = 14) {
+  const out = new Array(c.length).fill(null);
+  const raw = new Array(c.length).fill(null);
+  for (let i = 1; i < c.length; i++) {
+    const k = c[i], pk = c[i - 1];
+    const midMove = ((k.high + k.low) / 2) - ((pk.high + pk.low) / 2);
+    const boxRatio = ((k.volume ?? k.ticks ?? 1) / 1e4) / ((k.high - k.low) || 1e-9);
+    raw[i] = boxRatio ? midMove / boxRatio : 0;
+  }
+  const seed = raw.map(v => (v == null ? 0 : v));
+  const s = smaSeries(seed, p);
+  return raw.map((v, i) => (v == null ? null : s[i]));
+}
+
+// Elder's Force Index — volume-weighted price change.
+export function forceIndexSeries(c, p = 13) {
+  const raw = new Array(c.length).fill(null);
+  for (let i = 1; i < c.length; i++) {
+    const v = c[i].volume ?? c[i].ticks ?? 1;
+    raw[i] = (c[i].close - c[i - 1].close) * v;
+  }
+  const seed = raw.map(v => (v == null ? 0 : v));
+  const s = emaSeries(seed, p);
+  return raw.map((v, i) => (v == null ? null : s[i]));
+}
+
+// Ultimate Oscillator — a weighted blend of three timeframes that is less prone
+// to false divergences than a single-period oscillator.
+export function ultimateSeries(c, p1 = 7, p2 = 14, p3 = 28) {
+  const bp = new Array(c.length).fill(null);
+  const tr = trueRangeSeries(c);
+  for (let i = 1; i < c.length; i++) {
+    bp[i] = c[i].close - Math.min(c[i].low, c[i - 1].close);
+  }
+  const sum = (arr, i, p) => {
+    let s = 0;
+    for (let j = i - p + 1; j <= i; j++) { if (arr[j] == null) return null; s += arr[j]; }
+    return s;
+  };
+  const out = new Array(c.length).fill(null);
+  for (let i = p3; i < c.length; i++) {
+    const a1 = sum(bp, i, p1), b1 = sum(tr, i, p1);
+    const a2 = sum(bp, i, p2), b2 = sum(tr, i, p2);
+    const a3 = sum(bp, i, p3), b3 = sum(tr, i, p3);
+    if (!b1 || !b2 || !b3) continue;
+    out[i] = 100 * ((4 * (a1 / b1)) + (2 * (a2 / b2)) + (a3 / b3)) / 7;
+  }
+  return out;
+}
+
+// Pivot points (classic) from the previous completed bar — the levels traders
+// watch. The forming bar is skipped: mid-bar it is not yet a real HLC, and its
+// O=H=L=C early in a bucket would collapse every level onto the pivot.
+export function pivotPoints(c) {
+  const k = c.length >= 2 ? c[c.length - 2] : c[c.length - 1];
+  if (!k) return null;
+  const p = (k.high + k.low + k.close) / 3;
+  const r1 = 2 * p - k.low;
+  const s1 = 2 * p - k.high;
+  const r2 = p + (k.high - k.low);
+  const s2 = p - (k.high - k.low);
+  return { p, r1, r2, s1, s2 };
+}
+
+// Volume profile: the price levels that traded the most, as a coarse histogram
+// over the visible window. Buckets are (high − low) / bins wide.
+export function volumeProfile(c, bins = 12) {
+  if (!c.length) return { bins: [], poc: null };
+  let hi = -Infinity, lo = Infinity;
+  c.forEach(k => { hi = Math.max(hi, k.high); lo = Math.min(lo, k.low); });
+  const width = ((hi - lo) || 1) / bins;
+  const hist = new Array(bins).fill(0);
+  c.forEach(k => {
+    const v = k.volume ?? k.ticks ?? 1;
+    const b = Math.min(bins - 1, Math.max(0, Math.floor((((k.high + k.low) / 2) - lo) / width)));
+    hist[b] += v;
+  });
+  const max = Math.max(...hist);
+  let pocIdx = 0;
+  hist.forEach((v, i) => { if (v > hist[pocIdx]) pocIdx = i; });
+  return {
+    bins: hist.map((v, i) => ({ from: lo + i * width, to: lo + (i + 1) * width, volume: v, pct: max ? v / max : 0 })),
+    poc: lo + (pocIdx + 0.5) * width,
+    low: lo, high: hi, max,
+  };
+}
+
 // ── convenience: the full snapshot used by the analytics panel ─────────────
 // Returns the latest value of every indicator the terminal exposes. Missing
 // inputs yield null rather than throwing, so a short tape still renders.
@@ -490,6 +739,22 @@ export function indicatorSnapshot(c, params = {}) {
     donchian: (() => { const s = donchianSeries(c, 20); const i = c.length - 1; return { upper: s.upper[i], lower: s.lower[i], mid: s.mid[i] }; })(),
     keltner: (() => { const s = keltnerSeries(c); const i = c.length - 1; return { mid: s.mid[i], upper: s.upper[i], lower: s.lower[i] }; })(),
     stochRsi: (() => { const s = stochRsiSeries(cl); return s[s.length - 1] ?? null; })(),
+    dema: lastOf(demaSeries(cl, 20)),
+    tema: lastOf(temaSeries(cl, 20)),
+    hma: lastOf(hmaSeries(cl, 20)),
+    trix: lastOf(trixSeries(cl, 15)),
+    alligator: (() => { const s = alligatorSeries(c); const i = c.length - 1; return { jaw: s.jaw[i], teeth: s.teeth[i], lips: s.lips[i] }; })(),
+    awesome: lastOf(awesomeSeries(c)),
+    cmf: lastOf(cmfSeries(c, 20)),
+    klinger: (() => { const s = klingerSeries(c); const i = c.length - 1; return { kvo: s.kvo[i], signal: s.signal[i] }; })(),
+    fisher: lastOf(fisherSeries(c, 10)),
+    vortex: (() => { const s = vortexSeries(c, 14); const i = c.length - 1; return { plus: s.plus[i], minus: s.minus[i] }; })(),
+    dpo: lastOf(dpoSeries(c, 20)),
+    eom: lastOf(eomSeries(c, 14)),
+    forceIndex: lastOf(forceIndexSeries(c, 13)),
+    ultimate: lastOf(ultimateSeries(c)),
+    pivots: pivotPoints(c),
+    volumeProfile: volumeProfile(c, 12),
   };
 }
 

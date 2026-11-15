@@ -1,7 +1,7 @@
 # Quant Terminal
 
 A self-contained quantitative trading terminal: institutional dark-theme
-charting, a 20+ indicator library, a visual strategy builder with a backtest
+charting, a 40+ indicator library, a visual strategy builder with a backtest
 engine, live analytics, a trade dock and a session report — wired to the real
 Deriv WebSocket/OAuth connection layer for live execution.
 
@@ -14,11 +14,19 @@ shows is computed from the tape it imported; nothing is pre-baked.
   login required for market data) and **aggregates them into candles** for
   every timeframe in the ladder: `5s 10s 15s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m
   10m 11m 12m 13m 14m 15m` (19 timeframes).
-- **20+ indicators**, each a real series (so the builder, the chart and the
-  backtester all read the same values): SMA, EMA, WMA, RSI, MACD, Bollinger
-  Bands, Keltner Channel, Donchian Channel, ATR, ADX/DI, Stochastic, Stoch RSI,
-  Williams %R, CCI, Rate of Change, Momentum, Aroon, Ichimoku, SuperTrend, VWAP,
-  OBV, MFI, Volume, plus raw price fields (open/high/low/close/hl2/hlc3/ohlc4).
+- **40+ indicators**, each a real series (so the builder, the chart and the
+  backtester all read the same values): SMA, EMA, WMA, DEMA, TEMA, Hull MA, RSI,
+  MACD, Bollinger Bands, Keltner Channel, Donchian Channel, ATR, ADX/DI,
+  Stochastic, Stoch RSI, Williams %R, CCI, Rate of Change, Momentum, Aroon,
+  Ichimoku, SuperTrend, VWAP, OBV, MFI, Volume, TRIX, Williams Alligator,
+  Awesome Oscillator, Chaikin Money Flow, Klinger Oscillator, Fisher Transform,
+  Vortex, Detrended Price Oscillator, Ease of Movement, Elder's Force Index,
+  Ultimate Oscillator, classic pivot points, a volume profile (point of
+  control), plus raw price fields (open/high/low/close/hl2/hlc3/ohlc4).
+  The Analytics panel groups them into Trend / Momentum / Volatility / Volume /
+  Levels so the column stays scannable, and leads with a one-line **Signal**
+  read: the blended trend bias, its agreement, the ADX regime, the volatility
+  state and the momentum read.
 - **Strategy builder**: a visual DSL — nested AND/OR groups of comparisons over
   indicators, price and constants, with operators `>`, `≥`, `<`, `≤`,
   `crosses above`, `crosses below`, `is rising`, `is falling`, `is within % of`.
@@ -28,6 +36,11 @@ shows is computed from the tape it imported; nothing is pre-baked.
 - **Backtest engine**: close-to-close simulation over the imported candles with
   win rate, net P&L, profit factor, expectancy, max drawdown, an estimated
   Sharpe and end equity, plus the full trade list.
+- **Live chart**: the last candle updates in place on every tick and a new one
+  opens on the timeframe boundary — the store hands out a fresh, cloned array
+  each read so React re-renders the forming bar instead of a frozen snapshot.
+  Overlays (EMA 9/21, Bollinger, SuperTrend, VWAP), a volume histogram and an
+  RSI/MACD sub-pane sit over SVG candles/line with a crosshair readout.
 - **Live analytics**: digit distribution with χ² bias test, entropy, hot/cold
   digits, even/odd split, current streak, and a market-structure panel (trend,
   ATR, volatility, swings).
@@ -54,7 +67,7 @@ src/
     StatusBar.jsx       feed health, latency, session P&L
     icons.jsx           inline stroked rail icons
     StrategyBuilder.jsx visual DSL editor + backtest panel
-    Analytics.jsx       digit distribution + market structure
+    Analytics.jsx       signal readout + grouped indicators + digit/structure stats
     TradeDock.jsx       manual trade form + automation toggle
     Tables.jsx          positions + reports + logs tables
     Panel.jsx, Modals.jsx
@@ -127,9 +140,13 @@ boundary (`send`/`buy`) is faked; the store, indicators, strategy builder,
 backtester and engine routing are the real code.
 
 - `marketStore.test.mjs` — the timeframe ladder, tick→candle aggregation,
-  1000-tick import, live extension, digit derivation, pip-size digits.
-- `indicators.test.mjs` — every indicator's numeric behaviour and the 20+
-  reading snapshot.
+  1000-tick import, live extension, digit derivation, pip-size digits, and the
+  fresh-reference contract that keeps the chart live (a held snapshot is never
+  mutated in place).
+- `indicators.test.mjs` — every indicator's numeric behaviour, the extended
+  series (DEMA/TEMA/Hull/TRIX/Alligator/Awesome/CMF/Klinger/Fisher/Vortex/DPO/
+  EOM/Force/Ultimate, pivots and the volume profile) and the 40+ reading
+  snapshot.
 - `strategyBuilder.test.mjs` — the indicator registry, operand resolution
   (price/const/indicator, output selectors, lag), AND/OR nesting, crossOver,
   rising/falling, validation, templates and compilation.

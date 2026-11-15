@@ -5,7 +5,7 @@
 A single application: **Quant Terminal** in `deriv-replica/` — a self-contained
 quantitative trading terminal (institutional dark theme) that imports 1000 ticks
 per market, aggregates them into candles across a 19-timeframe ladder, computes
-20+ indicators, runs a visual strategy builder and a backtester, shows live
+40+ indicators, runs a visual strategy builder and a backtester, shows live
 analytics, places trades, and reports the session. The connection layer is the
 real Deriv WebSocket + OAuth API; the chart and UI are our own, with no Deriv UI
 packages.
@@ -81,12 +81,27 @@ returns the same pip size for display.
 
 `indicators.js` returns **series** for every indicator (aligned to the candle
 array, `null` before warm-up), so the chart, the builder and the backtester all
-read identical values. The library: SMA, EMA, WMA, RSI, MACD, Bollinger Bands,
-Keltner Channel, Donchian Channel, ATR, ADX/DI, Stochastic, Stoch RSI, Williams
-%R, CCI, Rate of Change, Momentum, Aroon, Ichimoku, SuperTrend, VWAP, OBV, MFI,
-Volume. Helpers: `heikenAshi`, `isPinbar`, `isStrong`, `calcKelly`, and
-`indicatorSnapshot(candles)` which returns 20+ named scalar readings for the
-analytics panel.
+read identical values. The library: SMA, EMA, WMA, DEMA, TEMA, Hull MA, RSI,
+MACD, Bollinger Bands, Keltner Channel, Donchian Channel, ATR, ADX/DI,
+Stochastic, Stoch RSI, Williams %R, CCI, Rate of Change, Momentum, Aroon,
+Ichimoku, SuperTrend, VWAP, OBV, MFI, Volume, TRIX, Williams Alligator, Awesome
+Oscillator, Chaikin Money Flow, Klinger Oscillator, Fisher Transform, Vortex,
+Detrended Price Oscillator, Ease of Movement, Elder's Force Index, Ultimate
+Oscillator, `pivotPoints` and `volumeProfile`. Helpers: `heikenAshi`,
+`isPinbar`, `isStrong`, `calcKelly`, `lastOf`, and `indicatorSnapshot(candles)`
+which returns 40+ named scalar readings for the analytics panel.
+
+Two contracts worth keeping:
+
+- Every new indicator is a `*Series` returning an aligned array; the snapshot
+  reads the last defined value with `lastOf`. Register it in
+  `strategyBuilder.js`'s `INDICATORS` (label, params, outputs, series) and it is
+  immediately available in the builder UI — no other change needed.
+- `candles()` in `marketStore.js` returns a **fresh array with the last candle
+  cloned** on every read. The engine reads candles immutably, and React needs a
+  new reference to re-render; returning the internal array (or the live,
+  in-place-mutated last candle) is what froze the chart after mount. Keep the
+  clone.
 
 ## Strategy builder
 
@@ -195,9 +210,15 @@ scope. Market data needs no login.
 - `styles.css` is one flat institutional dark palette — page `#0a0c11`, panels
   `#0f1218`, hairline `#1c222b`, up `#2bb673`, down `#e0524f`, accent `#4c86e0`.
   Hairlines and tabular monospace, no gradients or glows. Keep it that way.
-- `Chart.jsx` is self-contained SVG (not canvas): candles/line, EMA/SMA/BB
-  overlays, a volume histogram, an RSI/MACD sub-pane, a price+time axis grid, a
-  last-price tag and a pointer crosshair with an OHLC readout.
+- `Chart.jsx` is self-contained SVG (not canvas): candles/line, EMA/SMA/BB/
+  SuperTrend/VWAP overlays, a volume histogram, an RSI/MACD sub-pane, a
+  price+time axis grid, a last-price tag and a pointer crosshair with an OHLC
+  readout.
+- `Analytics.jsx` leads with a one-line **Signal** read (blended trend bias +
+  agreement, ADX regime, volatility state, momentum) and shows the 40+
+  indicators grouped into Trend / Momentum / Volatility / Volume / Levels behind
+  a segmented control, so only the important readings are on screen at once.
+  Digit distribution and market structure stay as collapsed panels.
 - `icons.jsx` holds the stroked rail icons — the rail carries no emoji.
 
 ## Tests and CI
