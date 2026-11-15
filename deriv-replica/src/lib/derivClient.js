@@ -1,9 +1,9 @@
 // Deriv WebSocket client — the real connection layer.
 //
-// Reproduces the original bot.html transport: a single authenticated trading
-// socket (WS) for balance/proposals/buys/contracts, plus an optional public
-// market socket (MWS) for unauthenticated tick history. Auth follows the same
-// ladder: REST accounts → WS authorize → OTP URL → direct WS with token.
+// A single authenticated trading socket (WS) for balance/proposals/buys/
+// contracts, plus an optional public market socket (MWS) for unauthenticated
+// tick history. Auth follows the ladder: REST accounts → WS authorize → OTP URL
+// → direct WS with token.
 
 // Deriv API gateways (current model — see https://developers.deriv.com/llms.txt):
 //   • public market data: wss://api.derivws.com/trading/v1/options/ws/public
@@ -329,7 +329,7 @@ export class DerivClient {
 
   subscribeMarket(symbols, socket = 'both') {
     const msg = sym => ({
-      ticks_history: sym, end: 'latest', count: 1100, style: 'ticks', subscribe: 1,
+      ticks_history: sym, end: 'latest', count: 1000, style: 'ticks', subscribe: 1,
     });
     if ((socket === 'both' || socket === 'ws') && this.ws && this.ws.readyState === WebSocket.OPEN) {
       symbols.forEach(s => this.send(msg(typeof s === 'string' ? s : s.sym)));
@@ -337,7 +337,7 @@ export class DerivClient {
     if ((socket === 'both' || socket === 'mws') && this.mws && this.mws.readyState === WebSocket.OPEN) {
       symbols.forEach(s => this._sendOn(this.mws, msg(typeof s === 'string' ? s : s.sym)));
     }
-    this.emit('log', { t: `[SUB] ${symbols.length} markets · 1100 ticks`, k: 'i' });
+    this.emit('log', { t: `[SUB] ${symbols.length} markets · 1000 ticks`, k: 'i' });
   }
 
   send(obj) {
@@ -410,10 +410,9 @@ export class DerivClient {
     return id;
   }
 
-  // ── Chart history / streaming (public socket) ──────────────────────────
-  // SmartCharts owns rendering; the host just answers its data requests. These
-  // two methods route a ticks_history respond/stream to the requesting chart
-  // callback and a forget to stop it, so the chart can drive the public feed.
+  // ── Tick history / streaming (public socket) ───────────────────────────
+  // Route a ticks_history respond/stream to the requesting callback (the
+  // market store's 1000-tick import) and a forget to stop it.
   _chartSocket() {
     return (this.mws && this.mws.readyState === WebSocket.OPEN)
       ? this.mws

@@ -1,63 +1,133 @@
-# Deriv Trader replica
+# Quant Terminal
 
-A pixel-faithful rebuild of the Deriv Trader (AppV2) interface, built with
-Deriv's own open-source packages so the design language is not approximated but
-imported.
+A self-contained quantitative trading terminal: institutional dark-theme
+charting, a 20+ indicator library, a visual strategy builder with a backtest
+engine, live analytics, a trade dock and a session report — wired to the real
+Deriv WebSocket/OAuth connection layer for live execution.
 
-Not affiliated with Deriv. Interface replica for demonstration only.
-
-## Why this is a true replica
-
-Instead of hand-picking hex codes, this project depends on Deriv's published
-design system:
-
-| Package | Role |
-| --- | --- |
-| `@deriv-com/quill-tokens` | The Quill design tokens (colour, radius, spacing, typography). Imported wholesale as `quill.css`. |
-| `@deriv-com/quill-ui` | Deriv's own React component library (Button, Tag, ToggleSwitch, Navigation, ThemeProvider…). |
-| `@deriv/quill-icons` | Deriv's official icon set, including the real `TradeTypesUpsAndDowns*` and `TradeTypesDigits*` icons. |
-
-Everything visual therefore resolves to the same custom properties that power
-`app.deriv.com`: `--core-color-solid-coral-700` (#ff444f), the slate ramp
-through `--core-color-solid-slate-1200` (#181c25), the Ubuntu / IBM Plex Sans /
-IBM Plex Mono type stack, and the Quill radius scale.
-
-Trade colours match `packages/shared/src/styles/constants/colors.scss` from the
-Deriv Trader template: buy `#4bb4b3` (`$color-success`), sell `#ec3f3f`
-(`$color-danger`).
+It is a charting and execution tool, not a signal service. Every reading it
+shows is computed from the tape it imported; nothing is pre-baked.
 
 ## What it does
 
-- Live-simulated volatility indices (R_10 … R_100) with a rolling tick chart
-- Rise/Fall and Digits trade types using Deriv's real contract names
-- Digit distribution histogram (last-digit frequencies over the recent window)
-- Stake stepper, duration chips, live payout, purchase buttons
-- Positions list with won/lost settlement, account and settings screens
+- **Imports 1000 ticks** per market over the public Deriv market socket (no
+  login required for market data) and **aggregates them into candles** for
+  every timeframe in the ladder: `5s 10s 15s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m
+  10m 11m 12m 13m 14m 15m` (19 timeframes).
+- **20+ indicators**, each a real series (so the builder, the chart and the
+  backtester all read the same values): SMA, EMA, WMA, RSI, MACD, Bollinger
+  Bands, Keltner Channel, Donchian Channel, ATR, ADX/DI, Stochastic, Stoch RSI,
+  Williams %R, CCI, Rate of Change, Momentum, Aroon, Ichimoku, SuperTrend, VWAP,
+  OBV, MFI, Volume, plus raw price fields (open/high/low/close/hl2/hlc3/ohlc4).
+- **Strategy builder**: a visual DSL — nested AND/OR groups of comparisons over
+  indicators, price and constants, with operators `>`, `≥`, `<`, `≤`,
+  `crosses above`, `crosses below`, `is rising`, `is falling`, `is within % of`.
+  Separate long/short entry trees, a contract + duration, and a risk block
+  (stake, take-profit, stop-loss, max trades, max consecutive losses,
+  martingale multiplier/steps). Save/load strategies to `localStorage`.
+- **Backtest engine**: close-to-close simulation over the imported candles with
+  win rate, net P&L, profit factor, expectancy, max drawdown, an estimated
+  Sharpe and end equity, plus the full trade list.
+- **Live analytics**: digit distribution with χ² bias test, entropy, hot/cold
+  digits, even/odd split, current streak, and a market-structure panel (trend,
+  ATR, volatility, swings).
+- **Trade dock**: manual placement of any catalogue contract (Rise/Fall,
+  Higher/Lower, Touch/No Touch, Matches/Differs, Even/Odd, Over/Under,
+  Stays/Goes, Ends Between/Outside, Asians, Resets, High/Low Tick, Lookbacks)
+  and the automation toggle that runs the built strategy live.
+- **Reporting**: session win/loss bookkeeping, net P&L, and a per-trade report
+  table.
 
-## Run
-
-```bash
-npm install
-npm run dev      # http://localhost:12000
-npm run build    # emits ./dist
-npm run preview  # serve the built output
-```
-
-## Layout
+## Architecture
 
 ```
 src/
-  App.jsx                 app shell + trade state machine
-  main.jsx                Quill ThemeProvider bootstrap
-  styles.css              AppV2 shell layout on top of the Quill tokens
-  lib/market.js           tick synthesis, digit distribution, payouts
+  main.jsx              boot; completes the OAuth PKCE exchange on /callback
+  App.jsx               shell: nav, header, screens
   components/
-    Header.jsx            brand, account chip, balance, Deposit
-    Chart.jsx             tick-line chart
-    SymbolSheet.jsx       underlying-asset bottom sheet
-    TradePanel.jsx        Rise/Fall + Digits, duration, stake
-    PurchaseButtons.jsx   buy/sell / single-contract buttons
-    BottomNav.jsx         Home, Positions, My account, Settings
-    Positions.jsx         open and settled contracts
-    Settings.jsx          preferences
+    Chart.jsx           self-contained canvas candles + overlays + panes
+    StrategyBuilder.jsx visual DSL editor + backtest panel
+    Analytics.jsx       digit distribution + market structure
+    TradeDock.jsx       manual trade form + automation toggle
+    Tables.jsx          positions + reports tables
+    Panel.jsx, Modals.jsx
+  lib/
+    derivClient.js      Deriv API client (public market WS + authed trading WS)
+    oauth.js            OAuth 2.0 PKCE (authorize URL, token exchange, refresh)
+    symbols.js          symbol catalogue + per-symbol pip size
+    marketStore.js      1000-tick import, candle aggregation for all timeframes
+    indicators.js       the indicator library (series-returning)
+    strategyBuilder.js  indicator registry, operators, DSL eval, compiler
+    backtest.js         close-to-close backtester
+    contracts.js        trade-type catalogue + proposal builder
+    engine.js           execution: proposals, buys, contract lifecycle, risk
+    analytics.js        digit stats + market stats
+    useEngine.js        React binding
+    usePayout.js        live payout quoting
 ```
+
+The chart is self-contained (canvas), so the app has **no Deriv UI
+dependencies** — only `react`, `react-dom` and Vite. The connection layer is
+retained unchanged: the public market socket for ticks/history and the
+authenticated trading socket for balance, proposals, buys and contracts.
+
+## Connection layer (retained)
+
+- **Market data** needs no login. `DerivClient.connectMarket()` opens
+  `wss://api.derivws.com/trading/v1/options/ws/public`; `requestHistory` seeds
+  1000 ticks per subscribed symbol and `tick` streams keep them live.
+- **Trading** uses the OAuth-issued OTP URL: REST accounts (Bearer +
+  `Deriv-App-ID`) → WS `authorize` → `POST /trading/v1/options/accounts/{id}/otp`
+  → direct WS. Account switching (demo ↔ real) re-requests an OTP.
+- **Login** is Deriv OAuth 2.0 Authorization Code + PKCE. `src/lib/oauth.js`
+  builds the authorize URL, stores the verifier/state, and exchanges the code
+  at `/oauth2/token` from the browser. The redirect lands on `/callback.html`,
+  which bridges to the SPA `/callback` route where `main.jsx` runs the
+  exchange. A pasted API token remains as an advanced fallback.
+- Proposals are shaped to each market's own `contracts_for` catalogue (with a
+  TTL cache), so a contract the market does not list is skipped, never proposed
+  blind; barriers snap to the published ladder.
+
+## Commands
+
+```bash
+cd deriv-replica
+npm install
+npm run dev       # vite dev server on port 12000
+npm run build     # emits ./dist
+npm run preview   # serve the build on port 12000
+npm test          # node --test tests/*.test.mjs
+```
+
+Run `npm test` before pushing — CI (`.github/workflows/ci.yml`) runs the same
+command, and the Dependabot auto-merge workflow only merges when the `test` job
+is green.
+
+## Tests
+
+`tests/` uses Node's built-in test runner (no extra dependency). `tests/helpers.mjs`
+builds deterministic tick tapes and a fake WebSocket client — only the socket
+boundary (`send`/`buy`) is faked; the store, indicators, strategy builder,
+backtester and engine routing are the real code.
+
+- `marketStore.test.mjs` — the timeframe ladder, tick→candle aggregation,
+  1000-tick import, live extension, digit derivation, pip-size digits.
+- `indicators.test.mjs` — every indicator's numeric behaviour and the 20+
+  reading snapshot.
+- `strategyBuilder.test.mjs` — the indicator registry, operand resolution
+  (price/const/indicator, output selectors, lag), AND/OR nesting, crossOver,
+  rising/falling, validation, templates and compilation.
+- `backtest.test.mjs` — duration→candle conversion, trade generation on a
+  trending tape, the max-trades cap, martingale escalation, and the
+  consistency of the reported statistics.
+- `engine.test.mjs` — 1000-tick import, warm-up gating, strategy firing through
+  the proposal socket, one-entry-per-candle, manual placement field mapping,
+  buy→settle bookkeeping, loss caps, take-profit stop and exec latency stats.
+
+## Deployment
+
+Vercel runs `scripts/build-site.sh` (see `vercel.json`), which builds
+deriv-replica and assembles `public_out/` with the build at the root and
+`callback.html` alongside it. The only rewrite sends non-asset paths to
+`/index.html` (the SPA); `/callback.html` is served as a real static file.
+`vite.config.js` keeps `base: '/'`.

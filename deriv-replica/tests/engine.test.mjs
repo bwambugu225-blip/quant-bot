@@ -1,376 +1,202 @@
-// Engine + strategy tests.
-//
-// These exercise the real decision path — the same _onTick → signal → _execute
-// → proposal chain the browser runs. Only the WebSocket boundary is faked.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { makeEngine, loadTape, tick, tickTape } from './helpers.mjs';
+import { defaultStrategy } from '../src/lib/strategyBuilder.js';
 
-import {
-  AUTO_CONTRACTS, AUTO_FAMILIES, contractsForFamily, accuracyParams, durationProfile, buildAutoValue,
-} from '../src/lib/autoStrategies.js';
-import { buildProposal } from '../src/lib/contracts.js';
-import { SYMBOLS, isDigitSymbol } from '../src/lib/marketStore.js';
-import { makeEngine, tick, ctxFor, digitStream, FakeClient } from './helpers.mjs';
-
-const ALL = AUTO_FAMILIES.flatMap(f => contractsForFamily(f.id));
-
-// ── registry integrity ───────────────────────────────────────────────────
-test('every contract is well formed', () => {
-  assert.equal(ALL.length, 70, 'contract count changed — update expectations');
-  for (const c of ALL) {
-    assert.equal(typeof c.signal, 'function', `${c.key} has no signal fn`);
-    assert.ok(AUTO_CONTRACTS[c.key], `${c.key} not registered`);
-    assert.ok(c.label && c.winNote, `${c.key} missing label/winNote`);
-  }
+test('importing a tape fills the store and the snapshot reports 1000 ticks', () => {
+  const { engine } = makeEngine();
+  engine.setSymbol('R_100');
+  loadTape(engine, 'R_100', tickTape(1000, 1));
+  assert.equal(engine.store.tickCount('R_100'), 1000);
+  assert.equal(engine.snapshot().ticks, 1000);
+  assert.ok(engine.store.candles('R_100', '1m').length > 0);
 });
 
-// ── strategies fire in their own regime ──────────────────────────────────
-test('all 70 contracts produce a signal in their matching regime (Max accuracy)', () => {
-  const dead = [];
-  for (const c of ALL) {
-    let fired = false;
-    for (let seed = 1; seed <= 12 && !fired; seed++) {
-      const params = { stake: 1, ...accuracyParams('max'), ...c.defaults };
-      // High/Low Tick carries the predicted slot as a parameter (the UI's
-      // segmented control); sweep it the way a user would.
-      const slots = c.inputs.includes('selectedTick') ? [1, 2, 3, 4, 5] : [undefined];
-      for (const st of slots) {
-        const ctx = { ...ctxFor(c, seed), params: st == null ? params : { ...params, selectedTick: st } };
-        const sig = c.signal(ctx);
-        if (sig && sig.conf != null) { fired = true; break; }
-      }
-    }
-    if (!fired) dead.push(c.key);
-  }
-  assert.deepEqual(dead, [], `contracts that never fire: ${dead.join(', ')}`);
-});
-
-test('Only Ups and Only Downs never both fire on one tape', () => {
-  const t = ctxFor(AUTO_CONTRACTS.RUNHIGH, 1);
-  const params = { stake: 1, ...accuracyParams('max'), ...AUTO_CONTRACTS.RUNHIGH.defaults };
-  const up = AUTO_CONTRACTS.RUNHIGH.signal({ ...t, params });
-  const down = AUTO_CONTRACTS.RUNLOW.signal({ ...t, params });
-  assert.ok(!(up && down), 'Only Ups and Only Downs both fired on one tape');
-});
-
-// High/Low Tick requires the live price tape, not just candles.
-test('High/Low Tick reads the live tick tape and refuses without one', () => {
-  const entry = AUTO_CONTRACTS.TICKHIGH;
-  const base = { stake: 1, ...accuracyParams('max'), ...entry.defaults };
-  const prices = ctxFor(entry, 1).prices;
-  // The drift on this tape favours slot 1; sweep the parameter as the UI does.
-  let fired = null;
-  for (let st = 1; st <= 5 && !fired; st++) {
-    fired = entry.signal({ candles: [], digits: [], prices, params: { ...base, selectedTick: st } });
-  }
-  assert.ok(fired && fired.conf != null, 'High Tick did not fire on a drifting tape');
-  const without = entry.signal({ candles: [], digits: [], prices: [], params: base });
-  assert.equal(without, null, 'High Tick fired with no tick tape');
-});
-
-// The new products must build the exact proposal fields Deriv expects.
-test('new contract families build the correct proposal fields', () => {
-  const base = { duration: 5, unit: 't', stake: 1 };
-
-  const stays = buildProposal('stays_goes', 'up', { ...base, barrier: '+1.51', barrier2: '-1.51' }, 'R_10');
-  assert.equal(stays.contract_type, 'RANGE');
-  assert.equal(stays.barrier, '+1.51');
-  assert.equal(stays.barrier2, '-1.51');
-
-  const goes = buildProposal('stays_goes', 'down', { ...base, barrier: '+1.51', barrier2: '-1.51' }, 'R_10');
-  assert.equal(goes.contract_type, 'UPORDOWN');
-
-  const endsIn = buildProposal('ends_between', 'up', { ...base, barrier: '+1.51', barrier2: '-1.51' }, 'R_10');
-  assert.equal(endsIn.contract_type, 'EXPIRYRANGE');
-  const endsOut = buildProposal('ends_between', 'down', { ...base, barrier: '+1.51', barrier2: '-1.51' }, 'R_10');
-  assert.equal(endsOut.contract_type, 'EXPIRYMISS');
-
-  assert.equal(buildProposal('runs', 'up', base, 'R_100').contract_type, 'RUNHIGH');
-  assert.equal(buildProposal('runs', 'down', base, 'R_100').contract_type, 'RUNLOW');
-  assert.equal(buildProposal('asians', 'up', base, 'R_100').contract_type, 'ASIANU');
-  assert.equal(buildProposal('asians', 'down', base, 'R_100').contract_type, 'ASIAND');
-  assert.equal(buildProposal('resets', 'up', base, 'R_100').contract_type, 'RESETCALL');
-  assert.equal(buildProposal('resets', 'down', base, 'R_100').contract_type, 'RESETPUT');
-
-  // High/Low Tick: duration is the fixed five-tick window, selected_tick is 1–5.
-  const high = buildProposal('highs_lows', 'up', { stake: 1, selectedTick: 5 }, 'R_100');
-  assert.equal(high.contract_type, 'TICKHIGH');
-  assert.equal(high.selected_tick, 5);
-  assert.equal(high.duration, undefined, 'tick-extreme products take no duration');
-  const clamped = buildProposal('highs_lows', 'down', { stake: 1, selectedTick: 9 }, 'R_100');
-  assert.equal(clamped.contract_type, 'TICKLOW');
-  assert.equal(clamped.selected_tick, 5, 'selected_tick clamps to the 5-tick window');
-
-  // Lookbacks: multiplier payout, close-low / high-close / high-low.
-  const cl = buildProposal('lookbacks', 'up', { ...base, multiplier: 10 }, 'R_100');
-  assert.equal(cl.contract_type, 'LBFLOATCALL');
-  assert.equal(cl.multiplier, 10);
-  assert.equal(buildProposal('lookbacks', 'down', { ...base, multiplier: 10 }, 'R_100').contract_type, 'LBFLOATPUT');
-  assert.equal(buildProposal('lookbacks_highlow', 'up', { ...base, multiplier: 10 }, 'R_100').contract_type, 'LBHIGHLOW');
-});
-
-// ── accuracy presets are ordered and honest ──────────────────────────────
-test('accuracy levels are ordered Max <= High <= Balanced on a marginal stream', () => {
-  const digits = digitStream(d => d > 3, 0.62, 600, 11);
-  const counts = ['max', 'high', 'balanced'].map(lvl => {
-    let n = 0;
-    for (let k = 0; k < 40; k++) {
-      const slice = digits.slice(k, k + 500);
-      const params = { stake: 1, ...accuracyParams(lvl), ...AUTO_CONTRACTS['DIGITOVER:3'].defaults };
-      if (AUTO_CONTRACTS['DIGITOVER:3'].signal({ digits: slice, candles: [], params })) n++;
-    }
-    return n;
-  });
-  assert.ok(counts[0] <= counts[1], `Max(${counts[0]}) must not fire more than High(${counts[1]})`);
-  assert.ok(counts[1] <= counts[2], `High(${counts[1]}) must not fire more than Balanced(${counts[2]})`);
-});
-
-test('Max accuracy stays silent on a noisy 55% digit stream', () => {
-  const digits = digitStream(d => d > 3, 0.55, 600, 21);
-  const params = { stake: 1, ...accuracyParams('max'), ...AUTO_CONTRACTS['DIGITOVER:3'].defaults };
-  const sig = AUTO_CONTRACTS['DIGITOVER:3'].signal({ digits, candles: [], params });
-  assert.equal(sig, null, 'Max must not fire on noise');
-});
-
-// ── duration-aware analysis ──────────────────────────────────────────────
-test('duration scales the analysis window and the evidence bar', () => {
-  const short = durationProfile({ duration: 1, unit: 't' });
-  const long = durationProfile({ duration: 1, unit: 'm' });
-  assert.equal(short.windowScale, 1, '1 tick must not scale the window');
-  assert.ok(long.windowScale > short.windowScale, 'a longer hold must widen the window');
-  assert.ok(long.durZ > short.durZ, 'a longer hold must raise the evidence bar');
-});
-
-test('a longer duration never fires more often on the same tape', () => {
-  const digits = digitStream(d => d > 3, 0.66, 700, 31);
-  const count = (p) => {
-    let n = 0;
-    for (let k = 0; k < 40; k++) {
-      const params = { stake: 1, ...accuracyParams('max'), ...p };
-      if (AUTO_CONTRACTS['DIGITOVER:3'].signal({ digits: digits.slice(k, k + 620), candles: [], params })) n++;
-    }
-    return n;
-  };
-  const t1 = count({ duration: 1, unit: 't' });
-  const m1 = count({ duration: 1, unit: 'm' });
-  assert.ok(m1 <= t1, `1-minute (${m1}) must not fire more than 1-tick (${t1})`);
-});
-
-test('the selected duration is echoed in the signal and the proposal', () => {
-  const digits = digitStream(d => d > 3, 0.85, 600, 41);
-  const params = { stake: 1, ...accuracyParams('max'), ...AUTO_CONTRACTS['DIGITOVER:3'].defaults, duration: 5, unit: 't' };
-  const sig = AUTO_CONTRACTS['DIGITOVER:3'].signal({ digits, candles: [], params });
-  assert.ok(sig, 'expected a signal on a strong stream');
-  assert.equal(sig.dur, '5t');
-
-  const value = buildAutoValue(AUTO_CONTRACTS['DIGITOVER:3'], params);
-  const fields = buildProposal('over_under', 'up', value, 'R_10');
-  assert.equal(fields.duration, 5);
-  assert.equal(fields.duration_unit, 't');
-});
-
-// ── multi-market scanner ─────────────────────────────────────────────────
-test('scanner ranks the universe and follows the strongest market', () => {
-  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3', leader: 'R_75', leaderRate: 0.9 });
-  engine.running = true;
-  engine._scanAt = 0;
-  const best = engine.scanner.scan();
-  assert.equal(best.sym, 'R_75', `expected R_75 to lead, got ${best.sym}`);
-  const rows = engine.scanner.top(8);
-  assert.ok(rows.length >= 2, 'scanner must rank multiple markets');
-  // Ranking is sorted descending.
-  for (let i = 1; i < rows.length; i++) assert.ok(rows[i - 1].score >= rows[i].score);
-});
-
-test('scanner only rotates when the leader is clearly ahead', () => {
-  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3', leader: 'R_75', leaderRate: 0.9 });
-  engine.running = true;
-  engine._scanAt = 0;
-  engine._runScan();
-  assert.equal(engine.autoMarket, 'R_75', 'should adopt a clearly stronger market');
-});
-
-// ── lightning execution ──────────────────────────────────────────────────
-test('a qualifying tick executes in milliseconds with a correct proposal', () => {
-  const { engine, client } = makeEngine({ contractKey: 'DIGITOVER:3', leader: 'R_75', leaderRate: 0.9 });
-  engine.running = true;
-  engine._scanAt = 0;
-  engine._runScan();
-  const leader = engine.autoMarket;
-
-  const t0 = Date.now();
-  tick(engine, leader, 5000.44);
-  const dt = Date.now() - t0;
-
-  const props = client.proposals();
-  assert.equal(props.length, 1, 'exactly one proposal must be sent');
-  assert.equal(props[0].contract_type, 'DIGITOVER');
-  assert.equal(String(props[0].barrier), '3');
-  assert.ok(dt < 100, `decision took ${dt}ms — expected a synchronous tick decision`);
-});
-
-test('no second trade is placed while one is in flight', () => {
-  const { engine, client } = makeEngine({ contractKey: 'DIGITOVER:3', leader: 'R_75', leaderRate: 0.9 });
-  engine.running = true;
-  engine._scanAt = 0;
-  engine._runScan();
-  const leader = engine.autoMarket;
-
-  tick(engine, leader, 5000.44);
-  tick(engine, leader, 5000.45); // activeContracts now holds "sending"
-  assert.equal(client.proposals().length, 1, 'must not stack proposals');
-});
-
-test('a tick on a market with no qualifying signal does not trade', () => {
-  const { engine, client } = makeEngine({ contractKey: 'DIGITOVER:3', leader: 'R_75', leaderRate: 0.9 });
-  engine.running = true;
-  engine._scanAt = 0;
-  engine._runScan();
-  // R_10 was seeded at 50% — no edge, so no trade.
-  tick(engine, 'R_10', 1111.1);
-  assert.equal(client.proposals().length, 0, 'must not trade a no-edge market');
-});
-
-test('exec latency stats are recorded from tick to proposal', () => {
-  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3', leader: 'R_75', leaderRate: 0.9 });
-  engine.running = true;
-  engine._scanAt = 0;
-  engine._runScan();
-  tick(engine, engine.autoMarket, 5000.1);
-  engine._onProposal({ proposal: { id: 'P1', ask_price: 1, payout: 1.95 } });
-  const s = engine.execStats();
-  assert.equal(s.n, 1);
-  assert.ok(Number.isFinite(s.p50) && s.p50 >= 0);
-});
-
-test('proposal → buy → settle updates session stats', () => {
-  const { engine, client } = makeEngine();
-  engine.running = true;
-  engine._execStart = Date.now();
-  engine._onProposal({ proposal: { id: 'P1', ask_price: 1, payout: 1.95 } });
-  assert.equal(client.buys.length, 1, 'proposal must be bought');
-  engine._onBuy({ buy: { contract_id: 77, buy_price: 1, contract_type: 'DIGITOVER', longcode: 'x' } });
-  engine._onContract({ contract_id: 77, status: 'won', profit: 0.95, is_sold: 1 });
-  assert.equal(engine.trades, 1, 'buy must count the trade');
-  assert.equal(engine.wins, 1);
-  assert.ok(Math.abs(engine.pnl - 0.95) < 1e-9);
-});
-
-// ── warm-up / seamless start ─────────────────────────────────────────────
-test('start is refused on a cold tape and engages automatically when warm', () => {
-  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3' });
-  // Cold: clear the target market's history.
-  engine.store.digHist = {};
-  assert.equal(engine.start(), false, 'must not start cold');
+test('warm-up gate: start queues until the market is warm', () => {
+  const { engine } = makeEngine();
+  engine.setSymbol('R_100');
+  engine.setStrategy(defaultStrategy());
+  loadTape(engine, 'R_100', tickTape(40, 1));   // only 40 ticks
+  const started = engine.start();
+  assert.equal(started, false);
   assert.equal(engine.running, false);
-  assert.equal(engine._startPending, true, 'start must be queued');
-
-  // Not ready yet after a few ticks.
-  for (let i = 0; i < 50; i++) tick(engine, engine.autoMarket, 5000 + i);
-  assert.equal(engine.running, false, 'still warming at 50 ticks');
-
-  // Cross the 100-tick threshold.
-  for (let i = 0; i < 60; i++) tick(engine, engine.autoMarket, 5100 + i);
-  assert.equal(engine.running, true, 'must auto-start once warm');
-  assert.equal(engine._startPending, false);
-  engine.stop();
-});
-
-test('start engages immediately when the tape is already warm', () => {
-  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3' });
-  assert.ok(engine.warmup().have >= 100, 'fixture should be warm');
-  assert.equal(engine.start(), true);
+  assert.equal(engine.warmup().ready, false);
+  // Now push the tape over the threshold and send one more tick: the pending
+  // start engages automatically.
+  loadTape(engine, 'R_100', tickTape(200, 2));
+  tick(engine, 'R_100', 1000, 1_700_000_500);
   assert.equal(engine.running, true);
-  engine.stop();
 });
 
-test('warm-up reports progress against the 100-tick target', () => {
-  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3' });
-  engine.store.digHist = { R_10: digitStream(d => d >= 0, 0.5, 42, 1) };
-  const w = engine.warmup();
-  assert.equal(w.need, 100);
-  assert.equal(w.have, 42);
-  assert.equal(w.ready, false);
+test('start refuses without a valid strategy', () => {
+  const { engine } = makeEngine();
+  engine.setSymbol('R_100');
+  loadTape(engine, 'R_100', tickTape(300, 1));
+  assert.equal(engine.start(), false);          // no strategy yet
+  engine.setStrategy({ name: '', long: { logic: 'AND', conditions: [] } });
+  assert.equal(engine.start(), false);          // invalid strategy
 });
 
-// ── guards and caps ──────────────────────────────────────────────────────
-test('digit contracts refuse to start on a non-volatility market', () => {
-  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3' });
-  engine.autoMarket = 'frxEURUSD';
-  assert.equal(engine.start(), false);
+test('the strategy fires on a closed candle and reaches the proposal socket', () => {
+  const { engine, client } = makeEngine();
+  client.autoRespond = true;
+  engine.setSymbol('R_100');
+  engine.setTimeframe('5s');
+  const always = {
+    id: 'always', name: 'always long', timeframe: '5s',
+    long: { logic: 'AND', conditions: [{ left: { kind: 'price' }, op: 'gt', right: { kind: 'const', value: 0 } }] },
+    risk: { stake: 1, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0, martingale: false },
+    action: { contract: 'CALL', duration: 5, durationUnit: 't' },
+  };
+  engine.setStrategy(always);
+  loadTape(engine, 'R_100', tickTape(300, 3));
+  engine.start();
+  assert.equal(engine.running, true);
+
+  // Push ticks across a 5s boundary so a candle closes, then one more tick so a
+  // newer candle exists and the previous one is complete.
+  let t = 1_700_001_000;
+  for (let i = 0; i < 12; i++) { tick(engine, 'R_100', 1000 + i, t + i); }
+  // A closed candle should now have produced a proposal.
+  const proposals = client.sent.filter(m => m.proposal);
+  assert.ok(proposals.length >= 1, 'no proposal sent after a candle closed');
+  const p = proposals[0];
+  assert.equal(p.contract_type, 'CALL');
+  assert.equal(p.underlying_symbol, 'R_100');
+  assert.equal(p.duration, 5);
+  assert.equal(p.duration_unit, 't');
+});
+
+test('the engine does not trade twice on the same closed candle', () => {
+  const { engine, client } = makeEngine();
+  client.autoRespond = true;
+  engine.setSymbol('R_100');
+  engine.setTimeframe('5s');
+  engine.setStrategy({
+    id: 'always', name: 'always', timeframe: '5s',
+    long: { logic: 'AND', conditions: [{ left: { kind: 'price' }, op: 'gt', right: { kind: 'const', value: 0 } }] },
+    risk: { stake: 1, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0 },
+    action: { contract: 'CALL', duration: 5, durationUnit: 't' },
+  });
+  loadTape(engine, 'R_100', tickTape(300, 4));
+  engine.start();
+  let t = 1_700_002_000;
+  for (let i = 0; i < 10; i++) tick(engine, 'R_100', 1000 + i, t + i);
+  const first = client.sent.filter(m => m.proposal).length;
+  // Same candle window: no additional entries while an entry is 'sending'.
+  for (let i = 0; i < 3; i++) tick(engine, 'R_100', 1000 + i, t + 9);
+  const after = client.sent.filter(m => m.proposal).length;
+  assert.ok(after - first <= 1, `fired ${after - first} extra proposals in one candle`);
+});
+
+test('manual placeTrade builds the exact proposal fields', () => {
+  const { engine, client } = makeEngine();
+  engine.setSymbol('R_50');
+  const ok = engine.placeTrade('rise_fall', 'down', { stake: 10, duration: 3, unit: 't' });
+  assert.equal(ok, true);
+  const p = client.sent.find(m => m.proposal);
+  assert.equal(p.contract_type, 'PUT');
+  assert.equal(p.underlying_symbol, 'R_50');
+  assert.equal(p.amount, 10);
+  assert.equal(p.duration, 3);
+});
+
+test('manual placeTrade maps digit contracts to their barrier', () => {
+  const { engine, client } = makeEngine();
+  engine.setSymbol('R_100');
+  engine.placeTrade('over_under', 'up', { stake: 1, duration: 1, unit: 't', digit: 3 });
+  const p = client.sent.find(m => m.proposal);
+  assert.equal(p.contract_type, 'DIGITOVER');
+  assert.equal(p.barrier, '3');
+});
+
+test('buy then settlement updates wins, pnl and reports', () => {
+  const { engine, client } = makeEngine();
+  engine.setSymbol('R_100');
+  engine.placeTrade('rise_fall', 'up', { stake: 5, duration: 1, unit: 't' });
+  // Simulate the proposal response, then the buy.
+  engine._onProposal({ proposal: { id: 'P1', ask_price: 5 } });
+  engine._onBuy({ buy: { contract_id: 123, buy_price: 5, contract_type: 'CALL', longcode: 'Rise' } });
+  assert.equal(engine.positions.length, 1);
+  assert.equal(engine.trades, 1);
+  engine._onContract({ contract_id: 123, status: 'won', profit: 4.75, is_sold: 1 });
+  assert.equal(engine.wins, 1);
+  assert.equal(engine.positions.length, 0);
+  assert.equal(engine.reports.length, 1);
+  assert.ok(Math.abs(engine.pnl - 4.75) < 1e-9);
+});
+
+test('a losing run hits maxLosses and stops the engine', () => {
+  const { engine } = makeEngine();
+  engine.setSymbol('R_100');
+  engine.setStrategy({
+    id: 's', name: 's', timeframe: '1m',
+    long: { logic: 'AND', conditions: [{ left: { kind: 'price' }, op: 'gt', right: { kind: 'const', value: 0 } }] },
+    risk: { stake: 1, maxLosses: 2, martingale: false },
+    action: { contract: 'CALL', duration: 1, durationUnit: 't' },
+  });
+  engine.running = true;
+  for (const id of [1, 2]) {
+    engine._onBuy({ buy: { contract_id: id, buy_price: 1, contract_type: 'CALL' } });
+    engine._onContract({ contract_id: id, status: 'lost', profit: -1, is_sold: 1 });
+  }
+  assert.equal(engine.running, false);
+  assert.equal(engine.losses, 2);
+});
+
+test('the session risk caps stop trading at take profit', () => {
+  const { engine } = makeEngine();
+  engine.setSymbol('R_100');
+  engine.setStrategy({
+    id: 's', name: 's', timeframe: '1m',
+    long: { logic: 'AND', conditions: [{ left: { kind: 'price' }, op: 'gt', right: { kind: 'const', value: 0 } }] },
+    risk: { stake: 1, takeProfit: 3 },
+    action: { contract: 'CALL', duration: 1, durationUnit: 't' },
+  });
+  engine.running = true;
+  engine.pnl = 5;
+  assert.equal(engine._sessionAllows(), false);
   assert.equal(engine.running, false);
 });
 
-test('max trades cap stops the engine', () => {
-  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3' });
-  engine.running = true;
-  engine.trades = 3;
-  engine.setParams({ maxTrades: 3 });
-  const allowed = engine._sessionAllows();
-  assert.equal(allowed, false);
-  assert.equal(engine.running, false, 'engine must stop at the trade cap');
+test('resetSession clears the bookkeeping', () => {
+  const { engine } = makeEngine();
+  engine.wins = 3; engine.losses = 2; engine.pnl = 10; engine.trades = 5;
+  engine.reports = [{ id: 1 }];
+  engine.resetSession();
+  assert.equal(engine.wins, 0);
+  assert.equal(engine.trades, 0);
+  assert.equal(engine.reports.length, 0);
 });
 
-test('stop clears a pending start', () => {
-  const { engine } = makeEngine({ contractKey: 'DIGITOVER:3' });
-  engine.store.digHist = {};
-  engine.start();
-  assert.equal(engine._startPending, true);
-  engine.stop();
-  assert.equal(engine._startPending, false);
+test('setRisk merges into the strategy risk block', () => {
+  const { engine } = makeEngine();
+  engine.setStrategy(defaultStrategy());
+  engine.setRisk({ stake: 7 });
+  assert.equal(engine.strategy.risk.stake, 7);
+  assert.equal(engine.strategy.risk.martingale, false);   // default retained
 });
 
-// ── per-contract bot button mapping ──────────────────────────────────────
-// The Trade tab's bot button resolves a trade type + side (+ digit/equals) onto
-// a registry key. Every family must resolve to a real contract so the button
-// can never arm the wrong (or a missing) strategy.
-test('autoKeyForType maps every trade type onto a real contract', () => {
-  const { engine } = makeEngine({ contractKey: 'CALL' });
-  const cases = [
-    ['rise_fall', { side: 'up' }, 'CALL'],
-    ['rise_fall', { side: 'down' }, 'PUT'],
-    ['rise_fall', { side: 'up', equals: true }, 'CALLE'],
-    ['rise_fall', { side: 'down', equals: true }, 'PUTE'],
-    ['higher_lower', { side: 'up' }, 'HIGHER'],
-    ['touch', { side: 'down' }, 'NOTOUCH'],
-    ['even_odd', { side: 'up' }, 'DIGITEVEN'],
-    ['over_under', { side: 'up', digit: 3 }, 'DIGITOVER:3'],
-    ['over_under', { side: 'down', digit: 2 }, 'DIGITUNDER:2'],
-    ['matches_differs', { side: 'up', digit: 7 }, 'DIGITMATCH:7'],
-    ['matches_differs', { side: 'down', digit: 4 }, 'DIGITDIFF:4'],
-    ['lookbacks', { side: 'up', highLow: true }, 'LBHIGHLOW'],
-    ['highs_lows', { side: 'down' }, 'TICKLOW'],
-    ['accumulators', { side: 'up' }, 'ACCU'],
-    ['multipliers', { side: 'down' }, 'MULTDOWN'],
-  ];
-  for (const [typeId, opts, expected] of cases) {
-    assert.equal(engine.autoKeyForType(typeId, opts), expected, `${typeId} ${JSON.stringify(opts)}`);
-    assert.ok(AUTO_CONTRACTS[engine.autoKeyForType(typeId, opts)], `${typeId} mapped to an unregistered key`);
-  }
+test('backtest reads the selected symbol history', () => {
+  const { engine } = makeEngine();
+  engine.setSymbol('R_100');
+  const s = defaultStrategy();
+  s.timeframe = '5s';                 // 1000 ticks at 1/s → 200 candles
+  engine.setStrategy(s);
+  loadTape(engine, 'R_100', tickTape(1000, 9));
+  const r = engine.backtest();
+  assert.ok(r);
+  assert.ok(!r.error, r.error);
+  assert.ok(r.count >= 0);
+  assert.ok(Number.isFinite(r.pnl));
 });
 
-test('autoKeyForType resolves a registry entry for every trade type', () => {
-  const { engine } = makeEngine({ contractKey: 'CALL' });
-  const typeIds = ['rise_fall', 'higher_lower', 'touch', 'matches_differs', 'even_odd',
-    'over_under', 'accumulators', 'multipliers', 'turbos', 'vanillas', 'stays_goes',
-    'ends_between', 'runs', 'asians', 'resets', 'highs_lows', 'lookbacks', 'lookbacks_highlow'];
-  for (const typeId of typeIds) {
-    const key = engine.autoKeyForType(typeId, { side: 'up', digit: 5 });
-    assert.ok(AUTO_CONTRACTS[key], `${typeId} did not resolve to a registry entry`);
-    assert.equal(AUTO_CONTRACTS[key].typeId, typeId, `${typeId} resolved to the wrong family`);
-  }
-});
-
-// ── directional routing ──────────────────────────────────────────────────
-test('a directional contract builds a CALL/RISE proposal with the chosen duration', () => {
-  const { engine, client } = makeEngine({ contractKey: 'CALL' });
-  const sym = engine.autoMarket;
-  engine.store.candles[sym] = ctxFor(AUTO_CONTRACTS.CALL, 3).candles;
-  engine.running = true;
-  engine.setParams({ duration: 5, unit: 't' });
-  engine._evaluateDirectional(sym, AUTO_CONTRACTS.CALL);
-  const props = client.proposals();
-  assert.ok(props.length >= 1, 'a clear uptrend must produce a Rise proposal');
-  assert.equal(props[0].contract_type, 'CALL');
-  assert.equal(props[0].underlying_symbol, sym);
+test('execStats is empty before any trade and reports after one', () => {
+  const { engine } = makeEngine();
+  assert.equal(engine.execStats().n, 0);
+  engine._recordExec(12);
+  engine._recordExec(20);
+  const s = engine.execStats();
+  assert.equal(s.n, 2);
+  assert.ok(s.p50 != null && s.p95 != null);
 });

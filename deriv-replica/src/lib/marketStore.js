@@ -1,185 +1,189 @@
-// Market data store — ported from bot.html's tick/candle engine.
+// Market data store.
 //
-// Maintains per-symbol tick history, live buffers, per-timeframe candles and
-// digit history, built from the same `ticks_history` + `tick` streams used by
-// the original.
+// Imports a 1000-tick history per symbol from Deriv's `ticks_history` stream and
+// aggregates it into time-based candles across every supported timeframe:
+// 5s / 10s / 15s / 30s, then 1m through 15m. Live `tick` messages extend the
+// same buffers, so the last candle of each timeframe updates in place and a new
+// one opens on the timeframe boundary.
 import { max, min } from './indicators.js';
+import { SYMBOLS, pipSize, digitOf } from './symbols.js';
 
-export const SYMBOLS = [
-  { sym: 'R_10', name: 'Volatility 10 Index', vol: 10, cat: 'VOL' },
-  { sym: 'R_25', name: 'Volatility 25 Index', vol: 25, cat: 'VOL' },
-  { sym: 'R_50', name: 'Volatility 50 Index', vol: 50, cat: 'VOL' },
-  { sym: 'R_75', name: 'Volatility 75 Index', vol: 75, cat: 'VOL' },
-  { sym: 'R_100', name: 'Volatility 100 Index', vol: 100, cat: 'VOL' },
-  { sym: '1HZ10V', name: 'Volatility 10 (1s) Index', vol: 10, cat: 'VOL1S' },
-  { sym: '1HZ25V', name: 'Volatility 25 (1s) Index', vol: 25, cat: 'VOL1S' },
-  { sym: '1HZ50V', name: 'Volatility 50 (1s) Index', vol: 50, cat: 'VOL1S' },
-  { sym: '1HZ75V', name: 'Volatility 75 (1s) Index', vol: 75, cat: 'VOL1S' },
-  { sym: '1HZ100V', name: 'Volatility 100 (1s) Index', vol: 100, cat: 'VOL1S' },
-  { sym: 'stpRNG', name: 'Step Index', vol: 10, cat: 'STEP' },
-  { sym: 'RDBULL', name: 'Bull Market Index', vol: 50, cat: 'TREND' },
-  { sym: 'RDBEAR', name: 'Bear Market Index', vol: 50, cat: 'TREND' },
+export { SYMBOLS };
+
+// Seconds per timeframe. Order is the display order in the UI.
+export const TIMEFRAMES = [
+  { id: '5s', sec: 5, label: '5s' },
+  { id: '10s', sec: 10, label: '10s' },
+  { id: '15s', sec: 15, label: '15s' },
+  { id: '30s', sec: 30, label: '30s' },
+  { id: '1m', sec: 60, label: '1m' },
+  { id: '2m', sec: 120, label: '2m' },
+  { id: '3m', sec: 180, label: '3m' },
+  { id: '4m', sec: 240, label: '4m' },
+  { id: '5m', sec: 300, label: '5m' },
+  { id: '6m', sec: 360, label: '6m' },
+  { id: '7m', sec: 420, label: '7m' },
+  { id: '8m', sec: 480, label: '8m' },
+  { id: '9m', sec: 540, label: '9m' },
+  { id: '10m', sec: 600, label: '10m' },
+  { id: '11m', sec: 660, label: '11m' },
+  { id: '12m', sec: 720, label: '12m' },
+  { id: '13m', sec: 780, label: '13m' },
+  { id: '14m', sec: 840, label: '14m' },
+  { id: '15m', sec: 900, label: '15m' },
 ];
 
-export const TF_LIST = ['5s', '15s', '30s', '1m'];
-export const TF = {
-  '5s': { tickSize: 5, tradeTicks: 5, label: '5s' },
-  '15s': { tickSize: 15, tradeTicks: 12, label: '15s' },
-  '30s': { tickSize: 30, tradeTicks: 25, label: '30s' },
-  '1m': { tickSize: 60, tradeTicks: 50, label: '1m' },
-};
+export const TF_IDS = TIMEFRAMES.map(t => t.id);
+export const TF_SEC = Object.fromEntries(TIMEFRAMES.map(t => [t.id, t.sec]));
 
-export function isDigitSymbol(sym) {
-  const info = SYMBOLS.find(x => x.sym === sym);
-  if (!info) return true;
-  return info.cat === 'VOL' || info.cat === 'VOL1S';
-}
+export const IMPORT_TICKS = 1000;
+const MAX_CANDLES = 600;
+const MAX_TICKS = 5000;
 
-// Authoritative pip size per symbol, from the Deriv `active_symbols` feed.
-// This matters for digits: the API sends raw JSON numbers, so a real price of
-// 1296.20 arrives as 1296.2. Reading the last character then returns 2 instead
-// of the correct last digit 0. We therefore fix the number of decimals to the
-// symbol's pip size before extracting the digit.
-export const PIP_SIZE = {
-  R_10: 3, R_25: 3, R_50: 4, R_75: 4, R_100: 2,
-  '1HZ10V': 2, '1HZ25V': 2, '1HZ50V': 2, '1HZ75V': 2, '1HZ100V': 2,
-  stpRNG: 1, stpRNG2: 1, stpRNG3: 1, stpRNG4: 1, stpRNG5: 1,
-  RDBULL: 4, RDBEAR: 4,
-};
-
-export function pipSize(sym) {
-  return PIP_SIZE[sym] ?? 2;
-}
-
-// Decimal places of the displayed price = pip size for these instruments.
-export function decimalsFor(sym) {
-  return pipSize(sym);
-}
-
-// Deriv digit = last digit of the *displayed* price at the symbol's pip
-// precision (decimal point ignored).
-export function digitOf(price, sym) {
-  const digits = pipSize(sym);
-  const v = Number(price);
-  if (!Number.isFinite(v)) return 0;
-  const s = Math.abs(v).toFixed(digits).replace('.', '');
-  return s ? parseInt(s.slice(-1), 10) : 0;
-}
-
-export function bucketTicks(times, prices, tickSize) {
+// Bucket raw ticks into time-based candles. A tick belongs to the bucket whose
+// start is its epoch floored to the timeframe length; the candle's timestamp is
+// that bucket start, so aggregation is stable regardless of tick density.
+export function bucketTicks(times, prices, sec) {
   const len = Math.min(times.length, prices.length);
   const candles = [];
-  let bucket = [];
+  let cur = null;
   for (let i = 0; i < len; i++) {
-    const epochSec = +times[i];
-    const price = +prices[i];
-    if (!Number.isFinite(epochSec) || !Number.isFinite(price)) continue;
-    bucket.push({ epoch: epochSec, price });
-    if (bucket.length >= tickSize) {
-      const ps = bucket.map(b => b.price);
-      candles.push({
-        epoch: bucket[bucket.length - 1].epoch,
-        open: bucket[0].price,
-        high: max(ps),
-        low: min(ps),
-        close: bucket[bucket.length - 1].price,
-        ticks: bucket.length,
-      });
-      bucket = [];
+    const t = Math.floor(+times[i]);
+    const p = +prices[i];
+    if (!Number.isFinite(t) || !Number.isFinite(p)) continue;
+    const start = t - (t % sec);
+    if (!cur || start !== cur.epoch) {
+      if (cur) candles.push(cur);
+      cur = { epoch: start, open: p, high: p, low: p, close: p, ticks: 1, volume: 1 };
+    } else {
+      cur.high = Math.max(cur.high, p);
+      cur.low = Math.min(cur.low, p);
+      cur.close = p;
+      cur.ticks++;
+      cur.volume = cur.ticks;
     }
   }
+  if (cur) candles.push(cur);
   return candles;
 }
 
 export class MarketStore {
   constructor() {
-    this.candles = {};       // selected TF, per symbol
-    this.prices = {};
-    this.tickBuf = {};
-    this.tickSubs = {};      // subscription id -> symbol
-    this.digHist = {};       // per symbol digit history
-    this.liveBuf = {};       // per symbol rolling price buffer
-    this.lastPrice = {};
-    this.tickPrices = {};
-    this._byTf = {};
-    TF_LIST.forEach(tk => { this._byTf[tk] = { candles: {}, prices: {}, tickBuf: {} }; });
-    this.history = {};       // full tick history { times, prices } per symbol
+    this.symbols = {};
+    // { sym: { times:[], prices:[], candles:{ tf: [] }, live:[], digits:[] } }
+    this.selectedTf = '5s';
+    this.listeners = {};
   }
 
-  setSelectedTf(tf) {
-    this.selectedTf = tf;
-    const cfg = this._byTf[tf];
-    this.candles = cfg.candles;
-    this.prices = cfg.prices;
-    this.tickBuf = cfg.tickBuf;
+  on(evt, fn) { (this.listeners[evt] = this.listeners[evt] || []).push(fn); return this; }
+  emit(evt, ...a) { (this.listeners[evt] || []).forEach(fn => { try { fn(...a); } catch (e) { console.error(e); } }); }
+
+  _sym(sym) {
+    if (!this.symbols[sym]) {
+      this.symbols[sym] = {
+        times: [], prices: [], candles: {}, live: [], digits: [], last: null, lastEpoch: null,
+      };
+      TIMEFRAMES.forEach(t => { this.symbols[sym].candles[t.id] = []; });
+    }
+    return this.symbols[sym];
   }
 
+  setTimeframe(tf) {
+    if (TF_SEC[tf]) this.selectedTf = tf;
+    this.emit('timeframe', this.selectedTf);
+  }
+
+  // Seed a symbol from a `ticks_history` response (1000 ticks) or replace an
+  // existing buffer with a fresher window. Rebuilds every timeframe's candles.
   onHistory(sym, times, prices) {
     if (!sym || !times?.length || !prices?.length) return;
-    this.history[sym] = { times, prices };
-    for (let i = 0; i < Math.min(times.length, prices.length); i++) {
-      const p = +prices[i];
-      if (Number.isFinite(p)) this.pushDigit(sym, p);
+    const s = this._sym(sym);
+    const n = Math.min(times.length, prices.length);
+    s.times = times.slice(0, n).map(Number);
+    s.prices = prices.slice(0, n).map(Number);
+    if (s.times.length > MAX_TICKS) {
+      s.times = s.times.slice(-MAX_TICKS);
+      s.prices = s.prices.slice(-MAX_TICKS);
     }
-    TF_LIST.forEach(tk => {
-      const cfg = this._byTf[tk];
-      const candles = bucketTicks(times, prices, TF[tk].tickSize).slice(-200);
-      cfg.candles[sym] = candles;
-      cfg.prices[sym] = candles.map(c => c.close);
-      cfg.tickBuf[sym] = [];
+    s.digits = s.prices.map(p => digitOf(p, sym));
+    s.last = s.prices[s.prices.length - 1] ?? null;
+    s.lastEpoch = s.times[s.times.length - 1] ?? null;
+    s.live = s.prices.slice(-200);
+    TIMEFRAMES.forEach(t => {
+      s.candles[t.id] = bucketTicks(s.times, s.prices, t.sec).slice(-MAX_CANDLES);
     });
-    // keep selected-TF references pointed at the freshly built arrays
-    this.setSelectedTf(this.selectedTf || '5s');
+    this.emit('history', sym);
   }
 
+  // Fold a live tick into every timeframe. Returns the symbol's latest price.
   onTick(sym, price, epoch) {
-    this.pushDigit(sym, price);
-    const lb = (this.liveBuf[sym] = this.liveBuf[sym] || []);
-    lb.push(price); if (lb.length > 120) lb.shift();
-    this.lastPrice[sym] = price;
+    const s = this._sym(sym);
+    const t = Math.floor(+epoch);
+    const p = +price;
+    if (!Number.isFinite(t) || !Number.isFinite(p)) return null;
+    s.times.push(t);
+    s.prices.push(p);
+    if (s.times.length > MAX_TICKS) { s.times.shift(); s.prices.shift(); }
+    s.digits.push(digitOf(p, sym));
+    if (s.digits.length > MAX_TICKS) s.digits.shift();
+    s.last = p;
+    s.lastEpoch = t;
+    s.live.push(p);
+    if (s.live.length > 200) s.live.shift();
 
-    let closed = null;
-    for (const tk of TF_LIST) {
-      const isSel = tk === (this.selectedTf || '5s');
-      const cfg = this._byTf[tk];
-      const candleArr = isSel ? this.candles : cfg.candles;
-      const bufArr = isSel ? this.tickBuf : cfg.tickBuf;
-      let buf = bufArr[sym];
-      if (!buf) bufArr[sym] = buf = [];
-      buf.push(price);
-      if (buf.length >= TF[tk].tickSize) {
-        const candle = { epoch, open: buf[0] || price, high: max(buf), low: min(buf), close: price, ticks: buf.length };
-        let candles = candleArr[sym];
-        if (!candles) candleArr[sym] = candles = [];
-        candles.push(candle);
-        if (candles.length > 200) candles.shift();
-        bufArr[sym] = [];
-        cfg.prices[sym] = candles.map(c => c.close);
-        if (isSel) {
-          closed = candle;
-          const tp = (this.tickPrices[sym] = this.tickPrices[sym] || []);
-          tp.push(...buf);
-          if (tp.length > 80) tp.splice(0, tp.length - 60);
-        }
+    TIMEFRAMES.forEach(tf => {
+      const arr = s.candles[tf.id];
+      const start = t - (t % tf.sec);
+      const last = arr[arr.length - 1];
+      if (last && last.epoch === start) {
+        last.high = Math.max(last.high, p);
+        last.low = Math.min(last.low, p);
+        last.close = p;
+        last.ticks++;
+        last.volume = last.ticks;
+      } else {
+        arr.push({ epoch: start, open: p, high: p, low: p, close: p, ticks: 1, volume: 1 });
+        if (arr.length > MAX_CANDLES) arr.shift();
       }
-    }
-    return closed;
+    });
+    return p;
   }
 
-  pushDigit(sym, price) {
-    const d = digitOf(price, sym);
-    const h = (this.digHist[sym] = this.digHist[sym] || []);
-    h.push(d);
-    if (h.length > 1000) h.shift();
-    return d;
+  candles(sym, tf) {
+    const s = this.symbols[sym];
+    if (!s) return [];
+    return s.candles[tf || this.selectedTf] || [];
+  }
+
+  ticks(sym) {
+    const s = this.symbols[sym];
+    return s ? { times: s.times.slice(), prices: s.prices.slice() } : { times: [], prices: [] };
+  }
+
+  digits(sym) {
+    const s = this.symbols[sym];
+    return s ? s.digits.slice() : [];
+  }
+
+  lastPrice(sym) {
+    const s = this.symbols[sym];
+    return s ? s.last : null;
   }
 
   lastDigit(sym) {
-    const h = this.digHist[sym];
-    return h && h.length ? h[h.length - 1] : 0;
+    const s = this.symbols[sym];
+    return s && s.digits.length ? s.digits[s.digits.length - 1] : null;
   }
 
-  // Returns a fresh copy so consumers keyed on the array identity (e.g. the
-  // chart's useMemo) recompute on every tick instead of seeing a mutated array.
-  livePrices(sym) { return (this.liveBuf[sym] || []).slice(); }
+  livePrices(sym) {
+    const s = this.symbols[sym];
+    return s ? s.live.slice() : [];
+  }
+
+  // Number of ticks imported for a symbol — the UI shows this so "1000 ticks"
+  // is a measurement, not a claim.
+  tickCount(sym) {
+    const s = this.symbols[sym];
+    return s ? s.times.length : 0;
+  }
 }

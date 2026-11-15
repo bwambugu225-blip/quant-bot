@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Assembles the Vercel output: the React rebuild at the root ("/") and the
-# original bot.html kept at "/bot.html". Run by Vercel via vercel.json buildCommand.
+# Assembles the Vercel output: the terminal build at the root, plus the OAuth
+# callback bridge at "/callback.html". Run by Vercel via vercel.json.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -15,7 +15,6 @@ rm -rf "$OUT"
 mkdir -p "$OUT"
 
 cp -r deriv-replica/dist/. "$OUT/"
-cp bot.html "$OUT/bot.html"
 if [ -f callback.html ]; then cp callback.html "$OUT/callback.html"; fi
 
 echo "Assembled $OUT"

@@ -1,413 +1,220 @@
 import React from 'react';
-import Header from './components/Header.jsx';
-import TradeTypesBar from './components/TradeTypesBar.jsx';
-import MarketSelector from './components/MarketSelector.jsx';
-import ChartArea from './components/ChartArea.jsx';
-import SmartChartArea from './components/SmartChartArea.jsx';
-import ChartErrorBoundary from './components/ChartErrorBoundary.jsx';
-import DigitAnalysis from './components/DigitAnalysis.jsx';
-import TradeForm from './components/TradeForm.jsx';
-import DurationSheet from './components/DurationSheet.jsx';
-import NumberSheet from './components/NumberSheet.jsx';
-import BarrierSheet from './components/BarrierSheet.jsx';
-import BottomNav from './components/BottomNav.jsx';
-import Sidebar from './components/Sidebar.jsx';
-import Positions from './components/Positions.jsx';
-import SymbolSheet from './components/SymbolSheet.jsx';
-import Sheet from './components/Sheet.jsx';
-import { MenuScreen, Reports, LoginScreen } from './components/screens.jsx';
-import { LabelPairedPresentationScreenSmRegularIcon } from '@deriv/quill-icons';
-import { UseTheme } from '@deriv-com/quill-ui';
-import { SYMBOLS, pipSize } from './lib/marketStore.js';
-import { TRADE_TYPES, findTradeType, buildProposal, isDigitContract } from './lib/contracts.js';
-import { analyzeDigits } from './lib/digitAnalysis.js';
+import Chart from './components/Chart.jsx';
+import Analytics from './components/Analytics.jsx';
+import Panel from './components/Panel.jsx';
+import StrategyBuilder from './components/StrategyBuilder.jsx';
+import TradeDock from './components/TradeDock.jsx';
+import { Positions, Reports, Logs } from './components/Tables.jsx';
+import { SymbolPicker, LoginModal, Modal } from './components/Modals.jsx';
 import { useEngine } from './lib/useEngine.js';
-import { openPaymentPortal } from './lib/payments.js';
+import { SYMBOLS, symbolInfo, pipSize } from './lib/symbols.js';
+import { TIMEFRAMES } from './lib/marketStore.js';
+import { defaultStrategy } from './lib/strategyBuilder.js';
 import { usePayout } from './lib/usePayout.js';
 import { addComma } from './lib/format.js';
 
-const CURRENCY = 'USD';
-const DURATION_BOUNDS = { t: [1, 10], s: [15, 86400], m: [1, 1440], h: [1, 24], d: [1, 365] };
-const UNIT_LABELS = { t: 'Ticks', s: 'Seconds', m: 'Minutes', h: 'Hours', d: 'Days' };
+const PANES = [['rsi', 'RSI'], ['macd', 'MACD'], ['none', 'None']];
+const OVERLAY_SETS = [
+  { id: 'ema', label: 'EMA 9/21', overlays: ['ema9', 'ema21'] },
+  { id: 'ema+bb', label: 'EMA + BB', overlays: ['ema9', 'ema21', 'bb'] },
+  { id: 'sma', label: 'SMA 50', overlays: ['sma50'] },
+  { id: 'none', label: 'None', overlays: [] },
+];
 
 export default function App() {
-  const { engine, client, state, tick, toast, login, loginWithOAuth, logout, switchAccount, topUpDemo } = useEngine();
+  const { engine, client, state, tick, logs, toast, login, loginWithOAuth, logout, switchAccount } = useEngine();
 
-  const [tab, setTab] = React.useState('trade');
-  const [marketIdx, setMarketIdx] = React.useState(0);
-  const [type, setType] = React.useState('rise_fall');
-  const [side, setSide] = React.useState('up');
-  const [sheet, setSheet] = React.useState(null);
-  const [typesSheet, setTypesSheet] = React.useState(false);
-  const [guide, setGuide] = React.useState(false);
-  const [showLogin, setShowLogin] = React.useState(false);
-  const [langOpen, setLangOpen] = React.useState(false);
-  const [language, setLanguage] = React.useState('EN');
+  const [view, setView] = React.useState('trade');          // trade | positions | reports | logs
+  const [chartMode, setChartMode] = React.useState('candles');
+  const [overlaySet, setOverlaySet] = React.useState('ema+bb');
+  const [pane, setPane] = React.useState('rsi');
+  const [symOpen, setSymOpen] = React.useState(false);
+  const [loginOpen, setLoginOpen] = React.useState(false);
+  const [guideOpen, setGuideOpen] = React.useState(false);
+  const [backtest, setBacktest] = React.useState(null);
 
-  // Theme comes from quill-ui's ThemeProvider: it owns the `dark`/`light` class
-  // on <html>, which flips the quill-tokens variables our own CSS reads. Using
-  // the provider's own toggle keeps its context state (and therefore any quill
-  // component) in sync; we just persist the choice for the next reload.
-  const { theme, toggleTheme: toggleProviderTheme } = UseTheme();
-  const dark = theme !== 'light';
-  const toggleTheme = () => {
-    try { localStorage.setItem('deriv_theme', dark ? 'light' : 'dark'); } catch (e) { /* ignore */ }
-    toggleProviderTheme();
-  };
+  const strategy = state?.strategy;
+  const symbol = state?.selectedSymbol || 'R_100';
+  const info = symbolInfo(symbol);
+  const tf = state?.selectedTf || '5s';
 
-  // Shared form state across every trade type; each type reads the keys it needs.
-  const [form, setForm] = React.useState({
-    duration: 5, unit: 't', stake: 1, digit: 5, barrier: '+0.10',
-    equals: false, growthRate: 0.01, multiplier: 100,
-    takeProfit: 0, stopLoss: 0, cancellation: '',
-  });
-  const set = React.useCallback(patch => setForm(f => ({ ...f, ...patch })), []);
-
-  const market = SYMBOLS[marketIdx];
-  const tradeType = findTradeType(type);
-  const isDigit = isDigitContract(type);
-  const spot = React.useMemo(() => {
-    if (tick?.sym === market.sym) return tick.price;
-    return engine.store.lastPrice[market.sym] ?? 0;
-  }, [tick, market.sym, engine]);
-  const livePrices = React.useMemo(() => engine.store.livePrices(market.sym), [tick, market.sym, engine]);
-
-  const prevRef = React.useRef(spot);
-  const up = spot >= prevRef.current;
-  React.useEffect(() => { prevRef.current = spot; }, [spot]);
-
-  React.useEffect(() => { engine.selectedMarket = market.sym; }, [engine, market.sym]);
+  // Bootstrap the default strategy once.
   React.useEffect(() => {
-    if (!tradeType.durationUnits.includes(form.unit)) {
-      set({ unit: tradeType.durationUnits[0] || 't' });
-    }
-  }, [tradeType, form.unit, set]);
+    if (state && !state.strategy) engine.setStrategy(defaultStrategy());
+  }, [state, engine]);
 
-  // Digit analysis runs on the selected market's live tick history.
-  const digitAnalysis = React.useMemo(
-    () => (isDigit ? analyzeDigits(engine.digitHistory(market.sym)) : null),
-    [isDigit, engine, market.sym, tick]
-  );
+  const candles = React.useMemo(() => engine.store.candles(symbol, tf), [engine, symbol, tf, tick]);
+  const digits = React.useMemo(() => engine.store.digits(symbol), [engine, symbol, tick]);
+  const price = tick?.sym === symbol ? tick.price : (engine.store.lastPrice(symbol) ?? null);
 
-  // Accurate payout, quoted by Deriv for the exact contract the buttons offer.
-  const payoutFields = buildProposal(type, side, form, market.sym);
-  const payout = usePayout(
-    client,
-    payoutFields,
-    [client, type, side, market.sym, form.duration, form.unit, form.stake, form.digit,
-      form.barrier, form.equals, form.growthRate, form.multiplier, form.takeProfit, form.stopLoss, form.cancellation]
-  );
+  const prev = React.useRef(price);
+  const up = price != null && prev.current != null ? price >= prev.current : true;
+  React.useEffect(() => { if (price != null) prev.current = price; }, [price]);
 
-  const onTrade = s => {
-    setSide(s);
-    if (!state?.auth) { setShowLogin(true); return; }
-    engine.placeTrade(type, s, form);
+  const overlays = OVERLAY_SETS.find(o => o.id === overlaySet)?.overlays ?? [];
+
+  // Live payout for the manual dock (Rise/Fall, current stake).
+  const payout = usePayout(client, { contract_type: 'CALL', underlying_symbol: symbol, amount: 1, basis: 'stake', currency: 'USD', duration: 5, duration_unit: 't' }, [client, symbol]);
+
+  const onBacktest = () => {
+    const r = engine.backtest(strategy, symbol);
+    setBacktest(r ? { ...r, __sym: symbol } : null);
   };
 
-  const selectType = id => {
-    setType(id);
-    setSide('up');
-    const t = findTradeType(id);
-    if (!t.durationUnits.includes(form.unit)) set({ unit: t.durationUnits[0] || 't' });
-    setTypesSheet(false);
-  };
-
-  const openCount = state?.positions?.length ?? 0;
-
-  // Per-contract bot button: arm the auto engine on the exact product the
-  // strip shows (its side, digit or equals clause), carry the Trade-tab stake
-  // across, and start. Clicking the bot on the running contract stops it.
-  const handleBot = (typeId) => {
-    if (state?.running && state?.autoTypeId === typeId) { engine.stop(); return; }
-    if (state?.running) engine.stop();
-    const key = engine.autoKeyForType(typeId, { side, digit: form.digit, equals: form.equals });
-    engine.setContract(key);
-    engine.setParams({ stake: form.stake });
-    if (typeId !== type) { setType(typeId); setSide('up'); }
-    if (!state?.auth) { setShowLogin(true); return; }
-    engine.start();
-  };
+  const ticks = state?.ticks ?? 0;
 
   return (
-    <div className={`app app--theme-${dark ? 'dark' : 'light'}`}>
-      <Sidebar
-        tab={tab}
-        setTab={setTab}
-        openCount={openCount}
-        dark={dark}
-        onToggleTheme={toggleTheme}
-        onLanguage={() => setLangOpen(true)}
-        onLogin={() => setShowLogin(true)}
-        connected={!!state?.auth}
-      />
-
-      <div className="app__content">
-        <Header
-          balance={state?.balance ?? 0}
-          currency={CURRENCY}
-          accountType={state?.accountType}
-          connected={state?.auth}
-          accounts={state?.accounts ?? []}
-          accountId={state?.accountId}
-          onSwitchAccount={id => switchAccount(id)}
-          onLogin={() => setShowLogin(true)}
-          onAccount={() => setTab('menu')}
-          onDeposit={() => openPaymentPortal('deposit', { accountId: state?.accountId, currency: CURRENCY })}
-        />
-
-        <main className="app__main">
-          {/* Always mounted, hidden with CSS off-tab. SmartCharts mounts a
-              single Flutter engine and tears it down when unmounted, so a
-              tab switch that unmounted and remounted it would reuse a disposed
-              engine and crash the chart. Keeping one instance alive matches
-              Deriv's own app. */}
-          <div className={`trade-screen${tab === 'trade' ? '' : ' trade-screen--hidden'}`}>
-              <div className="trade-types-row">
-                <TradeTypesBar
-                  type={type}
-                  onSelect={selectType}
-                  onViewAll={() => setTypesSheet(true)}
-                  onBot={handleBot}
-                  botType={state?.running ? state?.autoTypeId : null}
-                />
-              </div>
-              <div className="trade-grid">
-                <div className="trade-grid__chart">
-                  <div className="home__row">
-                    <MarketSelector display={market.name} sym={market.sym} price={spot} up={up} onOpen={() => setSheet('symbol')} />
-                    <button className="trade__guide" onClick={() => setGuide(true)} type="button" aria-label="Guide">
-                      <LabelPairedPresentationScreenSmRegularIcon fill="currentColor" iconSize="sm" />
-                    </button>
-                  </div>
-                  {client ? (
-                    <ChartErrorBoundary fallback={<ChartArea prices={livePrices} up={up} sym={market.sym} />}>
-                      <SmartChartArea client={client} sym={market.sym} prices={livePrices} up={up} theme={theme === 'light' ? 'light' : 'dark'} />
-                    </ChartErrorBoundary>
-                  ) : (
-                    <ChartArea prices={livePrices} up={up} sym={market.sym} />
-                  )}
-                  {isDigit && (
-                    <DigitAnalysis analysis={digitAnalysis} />
-                  )}
-                </div>
-                <div className="trade-grid__params">
-                  <div className="trade-form-wrap">
-                    <TradeForm
-                      type={type}
-                      side={side}
-                      value={form}
-                      set={set}
-                      onSheet={setSheet}
-                      payout={payout}
-                      currency={CURRENCY}
-                      canTrade={!!state?.auth}
-                      onTrade={onTrade}
-                    />
-                  </div>
-                </div>
-              </div>
+    <div className="app">
+      <div className="topbar">
+        <div className="brand">
+          <span className="brand__mark">Q</span>
+          <span>Quant Terminal</span>
+          <span className="brand__sub">charts · analytics · strategy</span>
+        </div>
+        <div className="topbar__tabs">
+          {[['trade', 'Chart'], ['builder', 'Strategy'], ['positions', 'Positions'], ['reports', 'Reports'], ['logs', 'Log']].map(([id, label]) => (
+            <button key={id} className={`tab${view === id ? ' is-active' : ''}`} onClick={() => setView(id)} type="button">{label}</button>
+          ))}
+        </div>
+        <div className="topbar__spacer" />
+        <div className="conn">
+          <span className={`dot ${state?.auth ? 'is-live' : ''}`} />
+          <span>{state?.auth ? 'live' : 'public feed'}</span>
+          <span style={{ color: 'var(--text-mute)' }}>· {ticks} ticks</span>
+        </div>
+        {state?.auth ? (
+          <div className="acct">
+            <span className="acct__bal">{addComma(state.balance)} USD</span>
+            <span className={`acct__type ${state.accountType === 'real' ? 'is-real' : ''}`}>{state.accountType}</span>
+            {state.accounts?.length > 1 && (
+              <select className="sel" value={state.accountId || ''} onChange={e => switchAccount(e.target.value)} style={{ maxWidth: 120 }}>
+                {state.accounts.map(a => <option key={a.account} value={a.account}>{a.account} ({a.currency})</option>)}
+              </select>
+            )}
+            <button className="btn btn--ghost" onClick={logout} type="button">Log out</button>
           </div>
-
-          {tab === 'positions' && (
-            <div className="app__scroll">
-              <Positions positions={state?.positions ?? []} currency={CURRENCY} />
-            </div>
-          )}
-          {tab === 'reports' && (
-            <div className="app__scroll">
-              <Reports reports={state?.reports ?? []} positions={state?.positions ?? []} currency={CURRENCY} />
-            </div>
-          )}
-          {tab === 'menu' && (
-            <div className="app__scroll">
-              <MenuScreen
-                state={state}
-                dark={dark}
-                onLogin={() => setShowLogin(true)}
-                onLogout={() => { engine.stop(); logout(); }}
-                onSwitch={id => switchAccount(id)}
-                onTopUp={() => topUpDemo()}
-                onToggleTheme={toggleTheme}
-                onToast={m => engine.toast(m, 'info')}
-              />
-            </div>
-          )}
-        </main>
-
-        <BottomNav tab={tab} setTab={setTab} openCount={openCount} />
+        ) : (
+          <button className="btn btn--primary" onClick={() => setLoginOpen(true)} type="button">Log in</button>
+        )}
       </div>
 
-      {sheet === 'symbol' && (
-        <SymbolSheet symbols={SYMBOLS} current={marketIdx} onSelect={i => { setMarketIdx(i); engine.selectedMarket = SYMBOLS[i].sym; setSheet(null); }} onClose={() => setSheet(null)} />
-      )}
+      <div className="body">
+        <nav className="rail">
+          {[['trade', '📈'], ['builder', '⚙'], ['positions', '▤'], ['reports', '▦'], ['logs', '≡']].map(([id, icon]) => (
+            <button key={id} className={`rail__item${view === id ? ' is-active' : ''}`} onClick={() => setView(id)} title={id} type="button">{icon}</button>
+          ))}
+        </nav>
 
-      {sheet === 'duration' && (
-        <DurationSheet
-          duration={form.duration}
-          unit={form.unit}
-          allowed={tradeType.durationUnits}
-          onChange={(d, u) => set({ duration: d, unit: u })}
-          onClose={() => setSheet(null)}
-        />
-      )}
-
-      {sheet === 'stake' && (
-        <NumberSheet
-          title="Stake"
-          value={form.stake}
-          min={0.35}
-          max={200}
-          step={1}
-          quick={[1, 5, 10, 25, 50, 100]}
-          suffix={` ${CURRENCY}`}
-          onChange={v => set({ stake: v })}
-          onClose={() => setSheet(null)}
-        />
-      )}
-
-      {sheet === 'multiplier' && (
-        <Sheet title="Multiplier" onClose={() => setSheet(null)}>
-          <div className="duration-editor">
-            <div className="duration-editor__quick">
-              {tradeType.multipliers.map(m => (
-                <button
-                  key={m}
-                  className={`stake-editor__chip${form.multiplier === m ? ' is-active' : ''}`}
-                  onClick={() => { set({ multiplier: m }); setSheet(null); }}
-                  type="button"
-                >
-                  x{m}
-                </button>
-              ))}
+        <div className="main">
+          {view === 'builder' ? (
+            <div className="workspace">
+              <StrategyBuilder
+                strategy={strategy}
+                onChange={s => engine.setStrategy(s)}
+                onBacktest={onBacktest}
+                onStart={() => engine.start()}
+                onStop={() => engine.stop()}
+                running={!!state?.running}
+                backtest={backtest}
+                symbols={SYMBOLS}
+              />
             </div>
-          </div>
-        </Sheet>
-      )}
+          ) : view === 'positions' || view === 'reports' || view === 'logs' ? (
+            <div className="workspace" style={{ overflow: 'auto' }}>
+              {view === 'positions' && <Positions positions={state?.positions ?? []} />}
+              {view === 'reports' && <Reports reports={state?.reports ?? []} onReset={() => engine.resetSession()} />}
+              {view === 'logs' && <Logs logs={logs} />}
+            </div>
+          ) : (
+            <div className="workspace">
+              <div className="ctool">
+                <button className="symbtn" onClick={() => setSymOpen(true)} type="button">
+                  <span className="symbtn__name">{info.name}</span>
+                  <span className={`symbtn__price ${up ? 'is-up' : 'is-down'}`}>{price != null ? price.toFixed(pipSize(symbol)) : '—'}</span>
+                  <span className="symbtn__meta">▾</span>
+                </button>
 
-      {sheet === 'growth' && (
-        <NumberSheet
-          title="Growth rate"
-          value={+(form.growthRate * 100).toFixed(0)}
-          min={1}
-          max={5}
-          step={1}
-          quick={[1, 2, 3, 4, 5]}
-          suffix="%"
-          onChange={v => set({ growthRate: v / 100 })}
-          onClose={() => setSheet(null)}
-        />
-      )}
+                <div className="tfbar">
+                  {TIMEFRAMES.map(t => (
+                    <button key={t.id} className={`tf${tf === t.id ? ' is-active' : ''}`} onClick={() => engine.setTimeframe(t.id)} type="button">{t.label}</button>
+                  ))}
+                </div>
 
-      {sheet === 'barrier' && (
-        <BarrierSheet
-          value={form.barrier}
-          spot={spot}
-          decimals={pipSize(market.sym)}
-          onChange={v => set({ barrier: v })}
-          onClose={() => setSheet(null)}
-        />
-      )}
+                <div className="tfbar">
+                  <button className={`tf${chartMode === 'candles' ? ' is-active' : ''}`} onClick={() => setChartMode('candles')} type="button">Candles</button>
+                  <button className={`tf${chartMode === 'line' ? ' is-active' : ''}`} onClick={() => setChartMode('line')} type="button">Line</button>
+                </div>
 
-      {sheet === 'takeProfit' && (
-        <NumberSheet
-          title="Take profit"
-          value={form.takeProfit}
-          min={0}
-          max={10000}
-          step={1}
-          quick={[10, 25, 50, 100, 250]}
-          suffix={` ${CURRENCY}`}
-          onChange={v => set({ takeProfit: v })}
-          onClose={() => setSheet(null)}
-        />
-      )}
+                <select className="sel" value={overlaySet} onChange={e => setOverlaySet(e.target.value)}>
+                  {OVERLAY_SETS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
 
-      {sheet === 'stopLoss' && (
-        <NumberSheet
-          title="Stop loss"
-          value={form.stopLoss}
-          min={0}
-          max={10000}
-          step={1}
-          quick={[5, 10, 25, 50, 100]}
-          suffix={` ${CURRENCY}`}
-          onChange={v => set({ stopLoss: v })}
-          onClose={() => setSheet(null)}
-        />
-      )}
+                <select className="sel" value={pane} onChange={e => setPane(e.target.value)}>
+                  {PANES.map(([id, l]) => <option key={id} value={id}>{l} pane</option>)}
+                </select>
 
-      {typesSheet && (
-        <Sheet title="Trade types" onClose={() => setTypesSheet(false)}>
-          <div className="types-sheet">
-            {TRADE_TYPES.map(t => (
-              <button
-                key={t.id}
-                className={`types-sheet__row${t.id === type ? ' is-active' : ''}`}
-                onClick={() => selectType(t.id)}
-                type="button"
-              >
-                <span className="types-sheet__meta">
-                  <span className="types-sheet__label">{t.label}</span>
-                  <span className="types-sheet__tip">{t.tooltip}</span>
-                </span>
-                <span className="types-sheet__cat">{t.category.replace('_', ' ')}</span>
-              </button>
-            ))}
-          </div>
-        </Sheet>
-      )}
-
-      {guide && (
-        <Sheet title="Guide" onClose={() => setGuide(false)}>
-          <div className="guide">
-            <h3 className="guide__title">{tradeType.label}</h3>
-            <p className="guide__body">{tradeType.tooltip}</p>
-            <dl className="guide__facts">
-              <div className="guide__fact">
-                <dt>Market</dt><dd>{market.name}</dd>
+                <div className="topbar__spacer" />
+                {state?.running && (
+                  <span className="pill is-up">bot: {strategy?.name} · {state.warmup?.have} ticks warm</span>
+                )}
+                <button className="btn btn--ghost" onClick={() => setGuideOpen(true)} type="button">Guide</button>
               </div>
-              <div className="guide__fact">
-                <dt>Duration</dt><dd>{form.duration} {(UNIT_LABELS[form.unit] || 'Ticks').toLowerCase()}</dd>
-              </div>
-              <div className="guide__fact">
-                <dt>Stake</dt><dd>{addComma(form.stake, 2)} {CURRENCY}</dd>
-              </div>
-            </dl>
-          </div>
-        </Sheet>
-      )}
 
-      {langOpen && (
-        <Sheet title="Language" onClose={() => setLangOpen(false)}>
-          <div className="lang-list">
-            {[['EN', 'English'], ['PT', 'Português'], ['ES', 'Español'], ['FR', 'Français'], ['DE', 'Deutsch']].map(([code, name]) => (
-              <button
-                key={code}
-                className={`menu-row${language === code ? ' is-active' : ''}`}
-                onClick={() => { setLanguage(code); setLangOpen(false); }}
-                type="button"
-              >
-                <span>
-                  <span className="menu-row__title">{name}</span>
-                  <span className="menu-row__sub">{code}</span>
-                </span>
-                <span className="menu-row__chevron">{language === code ? '●' : '›'}</span>
-              </button>
-            ))}
-          </div>
-        </Sheet>
-      )}
+              <Chart candles={candles} up={up} overlays={overlays} pane={pane} mode={chartMode} />
+            </div>
+          )}
 
-      {showLogin && (
-        <Sheet title="Log in to Deriv" onClose={() => setShowLogin(false)}>
-          <LoginScreen
-            onSubmit={async token => { await login(token); setShowLogin(false); }}
-            onOAuth={mode => loginWithOAuth(mode)}
-            onClose={() => setShowLogin(false)}
-          />
-        </Sheet>
-      )}
+          {view === 'trade' && (
+            <aside className="dock">
+              <Analytics candles={candles} digits={digits} sym={symbol} price={price} />
+              <Panel title="Trade" count={state?.auth ? 'ready' : 'login'} defaultOpen>
+                <TradeDock
+                  auth={!!state?.auth}
+                  onLogin={() => setLoginOpen(true)}
+                  onTrade={(type, side, value) => engine.placeTrade(type, side, value)}
+                  symbol={symbol}
+                  price={price}
+                  payout={payout}
+                />
+              </Panel>
+              <Panel title="Session" defaultOpen={false}>
+                <div className="rows">
+                  <div className="row"><span className="row__k">Trades</span><span className="row__v">{state?.trades ?? 0}</span></div>
+                  <div className="row"><span className="row__k">Wins / Losses</span><span className="row__v"><span className="is-up">{state?.wins ?? 0}</span> / <span className="is-down">{state?.losses ?? 0}</span></span></div>
+                  <div className="row"><span className="row__k">Net P&L</span><span className={`row__v ${(state?.pnl ?? 0) >= 0 ? 'is-up' : 'is-down'}`}>{(state?.pnl ?? 0) >= 0 ? '+' : ''}{addComma(state?.pnl ?? 0)}</span></div>
+                  <div className="row"><span className="row__k">Exec p50 / p95</span><span className="row__v">{state?.exec?.p50 ?? '—'} / {state?.exec?.p95 ?? '—'} ms</span></div>
+                  <div className="row"><span className="row__k">Warm-up</span><span className="row__v">{state?.warmup?.have}/{state?.warmup?.need}</span></div>
+                </div>
+              </Panel>
+            </aside>
+          )}
+        </div>
+      </div>
 
+      {symOpen && <SymbolPicker current={symbol} onSelect={s => engine.setSymbol(s)} onClose={() => setSymOpen(false)} />}
+      {loginOpen && (
+        <LoginModal
+          onToken={login}
+          onOAuth={loginWithOAuth}
+          onClose={() => setLoginOpen(false)}
+        />
+      )}
+      {guideOpen && (
+        <Modal title="Guide" onClose={() => setGuideOpen(false)}>
+          <p style={{ color: 'var(--text-dim)', lineHeight: 1.7 }}>
+            The terminal imports <b>1000 ticks</b> per market and aggregates them into candles across every
+            timeframe from <b>5s</b> to <b>15m</b>. The analytics column reads 20+ indicators over the
+            selected timeframe; the digit distribution is measured on the raw tick tape.
+          </p>
+          <p style={{ color: 'var(--text-dim)', lineHeight: 1.7 }}>
+            Build a strategy on the <b>Strategy</b> tab: nest AND/OR groups, compare any indicator,
+            price field or constant with greater/less, cross-over/under, rising/falling. Run a backtest
+            to see how it would have traded the imported history, then <b>Start bot</b> to trade it live.
+            The bot evaluates the strategy when a candle of its timeframe closes and places the contract
+            through the same Deriv proposal path as a manual trade.
+          </p>
+        </Modal>
+      )}
       {toast && <div className={`toast toast--${toast.kind || 'info'}`}>{toast.msg}</div>}
     </div>
   );

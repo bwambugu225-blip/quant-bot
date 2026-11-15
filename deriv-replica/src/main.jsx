@@ -1,45 +1,39 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { ThemeProvider } from '@deriv-com/quill-ui';
-import '@deriv-com/quill-tokens/dist/quill.css';
 import './styles.css';
-import './site/site.css';
 import App from './App.jsx';
-import SiteShell from './site/SiteShell.jsx';
-import { RouterProvider, useRoute } from './site/router.jsx';
+import { completeOAuth, describeOAuthError } from './lib/oauth.js';
 
-// Two applications share one bundle:
-//   - "/" and every marketing path  -> the Deriv.com interface clone
-//   - "/trader" and deeper          -> the live trading app
-// The choice is reactive, not a one-time decision at boot: navigating between
-// the two (e.g. a marketing link or the login hand-off) swaps apps in place, so
-// a client-side link to /trader opens the trading app instead of a 404.
+// OAuth redirect lands on /callback (see callback.html). Run the PKCE exchange
+// here, on the origin that holds the verifier, then hand back to the app. The
+// exchange stores the session in localStorage; `useEngine` restores it on boot.
 function Root() {
-  const path = (useRoute() || '/').replace(/\/+$/, '') || '/';
-  const isTrader = path === '/trader' || path.startsWith('/trader/');
+  const [phase, setPhase] = React.useState(
+    window.location.pathname.replace(/\/+$/, '') === '/callback' ? 'callback' : 'app',
+  );
+  const [error, setError] = React.useState('');
 
   React.useEffect(() => {
-    document.body.classList.toggle('site-body', !isTrader);
-    if (isTrader) document.title = 'Deriv Trader';
-  }, [isTrader]);
+    if (phase !== 'callback') return;
+    completeOAuth(window.location.search)
+      .then(() => { window.history.replaceState({}, '', '/'); setPhase('app'); })
+      .catch(err => setError(describeOAuthError(err)));
+  }, [phase]);
 
-  if (isTrader) {
-    // Restore the saved theme so the trading app opens on the user's choice.
-    let savedTheme = 'dark';
-    try { savedTheme = localStorage.getItem('deriv_theme') || 'dark'; } catch (e) { /* ignore */ }
+  if (phase === 'callback') {
     return (
-      <ThemeProvider theme={savedTheme}>
-        <App />
-      </ThemeProvider>
+      <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', padding: 24 }}>
+        <div style={{ textAlign: 'center', color: 'var(--text-dim)' }}>
+          {error ? <p style={{ color: 'var(--down)' }}>{error}</p> : <p>Completing your Deriv login…</p>}
+        </div>
+      </div>
     );
   }
-  return <SiteShell />;
+  return <App />;
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <RouterProvider>
-      <Root />
-    </RouterProvider>
-  </React.StrictMode>
+    <Root />
+  </React.StrictMode>,
 );
