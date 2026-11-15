@@ -14,7 +14,7 @@ import { SYMBOLS, symbolInfo, pipSize } from './lib/symbols.js';
 import { TIMEFRAMES } from './lib/marketStore.js';
 import { defaultStrategy } from './lib/strategyBuilder.js';
 import { usePayout } from './lib/usePayout.js';
-import { addComma } from './lib/format.js';
+import { CURRENCY, money } from './lib/format.js';
 
 const PANES = [['rsi', 'RSI'], ['macd', 'MACD'], ['none', 'None']];
 const OVERLAY_SETS = [
@@ -65,8 +65,9 @@ export default function App() {
 
   const overlays = OVERLAY_SETS.find(o => o.id === overlaySet)?.overlays ?? [];
 
-  // Live payout for the manual dock (Rise/Fall, current stake).
-  const payout = usePayout(client, { contract_type: 'CALL', underlying_symbol: symbol, amount: 1, basis: 'stake', currency: 'USD', duration: 5, duration_unit: 't' }, [client, symbol]);
+  // Live payout for the manual dock. Quoted in KES so it matches the currency
+  // the trade is placed in, and refreshed when the market or stake changes.
+  const payout = usePayout(client, { contract_type: 'CALL', underlying_symbol: symbol, amount: 1, basis: 'stake', currency: CURRENCY, duration: 5, duration_unit: 't' }, [client, symbol]);
 
   const onBacktest = () => {
     const r = engine.backtest(strategy, symbol);
@@ -97,8 +98,8 @@ export default function App() {
         </div>
         {state?.auth ? (
           <div className="acct">
-            <span className="acct__bal">{addComma(state.balance)}</span>
-            <span className="acct__cur">USD</span>
+            <span className="acct__bal">{money(state.balance, state.currency)}</span>
+            <span className="acct__cur">{state.currency || CURRENCY}</span>
             <span className={`acct__type ${state.accountType === 'real' ? 'is-real' : ''}`}>{state.accountType}</span>
             {state.accounts?.length > 1 && (
               <select className="sel" value={state.accountId || ''} onChange={e => switchAccount(e.target.value)} style={{ maxWidth: 120 }}>
@@ -139,8 +140,8 @@ export default function App() {
             </div>
           ) : view === 'positions' || view === 'reports' || view === 'logs' ? (
             <div className="workspace" style={{ overflow: 'auto' }}>
-              {view === 'positions' && <Positions positions={state?.positions ?? []} />}
-              {view === 'reports' && <Reports reports={state?.reports ?? []} onReset={() => engine.resetSession()} />}
+              {view === 'positions' && <Positions positions={state?.positions ?? []} currency={state?.currency} />}
+              {view === 'reports' && <Reports reports={state?.reports ?? []} onReset={() => engine.resetSession()} currency={state?.currency} />}
               {view === 'logs' && <Logs logs={logs} />}
             </div>
           ) : (
@@ -204,8 +205,8 @@ export default function App() {
                 <div className="rows">
                   <div className="row"><span className="row__k">Trades</span><span className="row__v">{state?.trades ?? 0}</span></div>
                   <div className="row"><span className="row__k">Wins / Losses</span><span className="row__v"><span className="is-up">{state?.wins ?? 0}</span> / <span className="is-down">{state?.losses ?? 0}</span></span></div>
-                  <div className="row"><span className="row__k">Net P&L</span><span className={`row__v ${(state?.pnl ?? 0) >= 0 ? 'is-up' : 'is-down'}`}>{(state?.pnl ?? 0) >= 0 ? '+' : ''}{addComma(state?.pnl ?? 0)}</span></div>
-                  <div className="row"><span className="row__k">Best / Worst</span><span className="row__v">{(state?.bestTrade ?? 0).toFixed(2)} / {(state?.worstTrade ?? 0).toFixed(2)}</span></div>
+                  <div className="row"><span className="row__k">Net P&L</span><span className={`row__v ${(state?.pnl ?? 0) >= 0 ? 'is-up' : 'is-down'}`}>{(state?.pnl ?? 0) >= 0 ? '+' : ''}{money(state?.pnl ?? 0, state?.currency)}</span></div>
+                  <div className="row"><span className="row__k">Best / Worst</span><span className="row__v">{money(state?.bestTrade ?? 0, state?.currency)} / {money(state?.worstTrade ?? 0, state?.currency)}</span></div>
                   <div className="row"><span className="row__k">Exec p50 / p95</span><span className="row__v">{state?.exec?.p50 ?? '—'} / {state?.exec?.p95 ?? '—'} ms</span></div>
                   <div className="row"><span className="row__k">Warm-up</span><span className="row__v">{state?.warmup?.have}/{state?.warmup?.need}</span></div>
                 </div>
@@ -239,7 +240,8 @@ export default function App() {
             price field or constant with greater/less, cross-over/under, rising/falling. Run a backtest
             to see how it would have traded the imported history, then <b>Start bot</b> to trade it live.
             The bot evaluates the strategy when a candle of its timeframe closes and places the contract
-            through the same Deriv proposal path as a manual trade.
+            through the same Deriv proposal path as a manual trade. Every stake, profit and balance is
+            shown in Kenyan shillings; the default stake is <b>KES 0.35</b>.
           </p>
         </Modal>
       )}

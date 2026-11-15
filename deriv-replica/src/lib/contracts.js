@@ -4,6 +4,7 @@
 // do not share a parameter set. `buildProposal` maps the form state onto the
 // exact `proposal` payload the Deriv API expects. This is the manual-placement
 // surface; the strategy builder drives the same proposals automatically.
+import { CURRENCY } from './format.js';
 
 export const CATEGORY_LABELS = {
   directional: 'Directional',
@@ -111,8 +112,10 @@ export function needsDigitBarrier(id) {
   return id === 'matches_differs' || id === 'over_under';
 }
 
-// Maps a form selection onto the exact Deriv `proposal` fields.
-export function buildProposal(type, side, value, symbol) {
+// Maps a form selection onto the exact Deriv `proposal` fields. `currency`
+// defaults to the terminal's KES; the engine passes the live account currency
+// when trading, so a real buy is always denominated in the account's own money.
+export function buildProposal(type, side, value, symbol, currency = CURRENCY) {
   const t = findTradeType(type);
   let contractType = t.contracts[side] || t.contracts.up;
   if (type === 'rise_fall' && value.equals) contractType = t.equalsContracts[side] || contractType;
@@ -122,7 +125,7 @@ export function buildProposal(type, side, value, symbol) {
     underlying_symbol: symbol,
     amount: +(+value.stake).toFixed(2),
     basis: 'stake',
-    currency: 'USD',
+    currency,
   };
   if (t.inputs.includes('duration')) {
     fields.duration = Math.max(1, Math.round(+value.duration || 1));

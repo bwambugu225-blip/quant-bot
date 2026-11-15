@@ -169,8 +169,26 @@ timeframe / strategy, and the session bookkeeping. It attaches to a
 - Timers (`sendingTimeout`, the `_watch` watchdog) are `unref()`'d so headless
   runs and tests exit cleanly.
 
-Constants: `MIN_STAKE=0.35`, `MAX_STAKE=200`, `PROPOSAL_TIMEOUT=6000`,
-`WARMUP_TICKS=100`.
+Constants: `DEFAULT_STAKE=0.35` (the venue minimum, and the default
+everywhere a stake is entered), `MIN_STAKE=0.35`, `MAX_STAKE=200`,
+`PROPOSAL_TIMEOUT=6000`, `WARMUP_TICKS=100`.
+
+## Money is shown in Kenyan shillings
+
+Every monetary figure in the terminal is presented in KES, and the default
+stake is `KES 0.35`.
+
+- `src/lib/format.js` owns the policy: `CURRENCY='KES'`, `DEFAULT_STAKE=0.35`,
+  `USD_KES=130`, plus `kes(v)` (an amount already in shillings), `money(v,
+  accountCurrency)` (an exchange-quoted figure, converted when the account is
+  not KES) and `stakeLabel()`.
+- `buildProposal` defaults to `currency: 'KES'`, and the engine passes the live
+  account currency (`accountCurrency()`) so a real buy is always denominated in
+  the account's own money. The snapshot carries `currency` for the UI.
+- The manual trade dock and the strategy builder both ask Deriv for a **KES**
+  proposal, so the quoted payout and the placed trade share one currency. A
+  figure the exchange quotes in the account currency (balance, contract P&L,
+  backtest equity) is converted to KES for display at `USD_KES`.
 
 ## Connection layer (retained, and made permanent)
 

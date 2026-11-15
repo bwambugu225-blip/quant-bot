@@ -1,6 +1,6 @@
 import React from 'react';
 import { TRADE_TYPES, findTradeType } from '../lib/contracts.js';
-import { addComma } from '../lib/format.js';
+import { addComma, CURRENCY, DEFAULT_STAKE, stakeLabel } from '../lib/format.js';
 
 const UNITS = [['t', 'Ticks'], ['s', 'Seconds'], ['m', 'Minutes'], ['h', 'Hours']];
 
@@ -8,7 +8,7 @@ const UNITS = [['t', 'Ticks'], ['s', 'Seconds'], ['m', 'Minutes'], ['h', 'Hours'
 export default function TradeDock({ auth, onLogin, onTrade, symbol, price, payout }) {
   const [type, setType] = React.useState('rise_fall');
   const [side, setSide] = React.useState('up');
-  const [stake, setStake] = React.useState(1);
+  const [stake, setStake] = React.useState(DEFAULT_STAKE);
   const [duration, setDuration] = React.useState(5);
   const [unit, setUnit] = React.useState('t');
   const [digit, setDigit] = React.useState(5);
@@ -67,12 +67,12 @@ export default function TradeDock({ auth, onLogin, onTrade, symbol, price, payou
         </div>
       )}
 
-      <label className="field"><span className="field__lbl">Stake (USD)</span>
-        <input type="number" min="0.35" step="0.01" value={stake} onChange={e => setStake(+e.target.value)} /></label>
+      <label className="field"><span className="field__lbl">{stakeLabel()}</span>
+        <input type="number" min={DEFAULT_STAKE} step="0.01" value={stake} onChange={e => setStake(+e.target.value)} /></label>
 
       <div className="payout"><span>Market</span><b>{symbol}</b></div>
       <div className="payout"><span>Spot</span><b>{price != null ? price.toFixed(4) : '—'}</b></div>
-      <div className="payout"><span>Est. payout</span><b>{payout != null ? `${addComma(payout)} USD` : '—'}</b></div>
+      <div className="payout"><span>Est. payout</span><b>{payout != null ? `${addComma(payout)} ${CURRENCY}` : '—'}</b></div>
 
       <div className="trade-btns">
         <button className="btn btn--up" onClick={() => place('up')} type="button">{t.sides[0]}</button>

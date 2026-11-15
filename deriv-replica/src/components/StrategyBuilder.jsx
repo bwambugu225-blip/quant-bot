@@ -3,6 +3,7 @@ import {
   INDICATORS, OPERATORS, defaultParamsFor, describeStrategy, validateStrategy, STRATEGY_TEMPLATES,
 } from '../lib/strategyBuilder.js';
 import { TIMEFRAMES } from '../lib/marketStore.js';
+import { CURRENCY, DEFAULT_STAKE, kes, stakeLabel } from '../lib/format.js';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -199,11 +200,11 @@ function RiskEditor({ risk, onChange }) {
   const set = patch => onChange({ ...risk, ...patch });
   return (
     <div className="risk-grid">
-      <label className="field"><span className="field__lbl">Stake (USD)</span>
-        <input type="number" min="0.35" step="0.01" value={risk.stake} onChange={e => set({ stake: +e.target.value })} /></label>
-      <label className="field"><span className="field__lbl">Take profit</span>
+      <label className="field"><span className="field__lbl">{stakeLabel()}</span>
+        <input type="number" min={DEFAULT_STAKE} step="0.01" value={risk.stake} onChange={e => set({ stake: +e.target.value })} /></label>
+      <label className="field"><span className="field__lbl">Take profit ({CURRENCY})</span>
         <input type="number" min="0" value={risk.takeProfit} onChange={e => set({ takeProfit: +e.target.value })} /></label>
-      <label className="field"><span className="field__lbl">Stop loss</span>
+      <label className="field"><span className="field__lbl">Stop loss ({CURRENCY})</span>
         <input type="number" min="0" value={risk.stopLoss} onChange={e => set({ stopLoss: +e.target.value })} /></label>
       <label className="field"><span className="field__lbl">Max trades (0 = ∞)</span>
         <input type="number" min="0" value={risk.maxTrades} onChange={e => set({ maxTrades: +e.target.value })} /></label>
@@ -225,12 +226,12 @@ function BacktestResult({ r }) {
   const stats = [
     ['Trades', r.count, ''],
     ['Win rate', `${(r.winRate * 100).toFixed(1)}%`, r.winRate >= 0.5 ? 'is-up' : 'is-down'],
-    ['Net P&L', `${r.pnl >= 0 ? '+' : ''}${r.pnl}`, r.pnl >= 0 ? 'is-up' : 'is-down'],
+    ['Net P&L', `${r.pnl >= 0 ? '+' : ''}${kes(r.pnl)}`, r.pnl >= 0 ? 'is-up' : 'is-down'],
     ['Profit factor', r.profitFactor === Infinity ? '∞' : r.profitFactor, r.profitFactor >= 1 ? 'is-up' : 'is-down'],
-    ['Expectancy', r.expectancy, r.expectancy >= 0 ? 'is-up' : 'is-down'],
-    ['Max drawdown', r.maxDrawdown, 'is-down'],
+    ['Expectancy', kes(r.expectancy), r.expectancy >= 0 ? 'is-up' : 'is-down'],
+    ['Max drawdown', kes(r.maxDrawdown), 'is-down'],
     ['Sharpe (est.)', r.sharpe, r.sharpe >= 0 ? 'is-up' : 'is-down'],
-    ['End equity', r.equity, r.equity >= r.startEquity ? 'is-up' : 'is-down'],
+    ['End equity', kes(r.equity), r.equity >= r.startEquity ? 'is-up' : 'is-down'],
   ];
   return (
     <>
@@ -253,7 +254,7 @@ function BacktestResult({ r }) {
                   <td className={t.side === 'up' ? 'is-up' : 'is-down'}>{t.side.toUpperCase()}</td>
                   <td>{t.entry.toFixed(4)}</td>
                   <td>{t.exit.toFixed(4)}</td>
-                  <td className={t.profit >= 0 ? 'is-up' : 'is-down'}>{t.profit >= 0 ? '+' : ''}{t.profit.toFixed(2)}</td>
+                  <td className={t.profit >= 0 ? 'is-up' : 'is-down'}>{t.profit >= 0 ? '+' : ''}{kes(t.profit)}</td>
                 </tr>
               ))}
             </tbody>

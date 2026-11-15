@@ -32,7 +32,9 @@ shows is computed from the tape it imported; nothing is pre-baked.
   `crosses above`, `crosses below`, `is rising`, `is falling`, `is within % of`.
   Separate long/short entry trees, a contract + duration, and a risk block
   (stake, take-profit, stop-loss, max trades, max consecutive losses,
-  martingale multiplier/steps). Save/load strategies to `localStorage`.
+  martingale multiplier/steps). Save/load strategies to `localStorage`. The
+  stake defaults to `KES 0.35` and every money figure is shown in Kenyan
+  shillings.
 - **Backtest engine**: close-to-close simulation over the imported candles with
   win rate, net P&L, profit factor, expectancy, max drawdown, an estimated
   Sharpe and end equity, plus the full trade list.

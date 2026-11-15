@@ -23,6 +23,7 @@
 // makes the builder "however complex" — groups nest arbitrarily and every
 // comparison, crossover and slope test is available at any depth.
 import * as TA from './indicators.js';
+import { DEFAULT_STAKE } from './format.js';
 
 // ── indicator registry ─────────────────────────────────────────────────────
 // `series(candles, params)` returns an object of aligned series. `params`
@@ -289,7 +290,7 @@ export function defaultStrategy() {
       ],
     },
     risk: {
-      stake: 1, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0,
+      stake: DEFAULT_STAKE, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0,
       martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed',
     },
     action: { contract: 'CALL', duration: 5, durationUnit: 't' },
@@ -308,7 +309,7 @@ export const STRATEGY_TEMPLATES = [
       { left: { kind: 'indicator', name: 'rsi', params: { period: 14 } }, op: 'gt', right: { kind: 'const', value: 70 } },
       { left: { kind: 'price' }, op: 'lt', right: { kind: 'indicator', name: 'sma', params: { period: 20 } } },
     ] },
-    risk: { stake: 1, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0, martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed' },
+    risk: { stake: DEFAULT_STAKE, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0, martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed' },
     action: { contract: 'CALL', duration: 5, durationUnit: 't' },
   }),
   () => ({
@@ -321,7 +322,7 @@ export const STRATEGY_TEMPLATES = [
       { left: { kind: 'price' }, op: 'crossUnder', right: { kind: 'indicator', name: 'bb', output: 'lower', params: { period: 20, mult: 2 } } },
       { left: { kind: 'indicator', name: 'adx', output: 'adx', params: { period: 14 } }, op: 'gt', right: { kind: 'const', value: 20 } },
     ] },
-    risk: { stake: 1, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0, martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed' },
+    risk: { stake: DEFAULT_STAKE, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0, martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed' },
     action: { contract: 'CALL', duration: 5, durationUnit: 't' },
   }),
   () => ({
@@ -334,7 +335,7 @@ export const STRATEGY_TEMPLATES = [
       { left: { kind: 'indicator', name: 'superTrend', output: 'dir', params: { period: 10, mult: 3 } }, op: 'lt', right: { kind: 'const', value: 0 } },
       { left: { kind: 'indicator', name: 'ema', params: { period: 50 } }, op: 'falling' },
     ] },
-    risk: { stake: 1, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0, martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed' },
+    risk: { stake: DEFAULT_STAKE, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0, martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed' },
     action: { contract: 'CALL', duration: 5, durationUnit: 't' },
   }),
 ];
