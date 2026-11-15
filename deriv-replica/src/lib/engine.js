@@ -87,10 +87,14 @@ export class Engine {
     client.on('authorized', info => { this.emit('authorized', info); this.emit('state', this.snapshot()); });
     client.on('market-open', () => {
       this._subscribed.clear();
+      this._marketErrors = 0;
       this.log('[MARKET] Public socket connected — importing market history', 's');
       this._subscribeMarkets();
     });
     client.on('market-close', () => this.log('[MARKET] Public socket closed — retrying', 'w'));
+    client.on('market-state', ({ state, attempt, in: wait }) => {
+      if (state === 'retrying') this.log(`[MARKET] Reconnecting${attempt ? ` (attempt ${attempt})` : ''} in ${Math.round((wait || 0) / 1000)}s`, 'w');
+    });
     client.on('market-error', (info) => {
       this.log(`[MARKET] Socket error (${info?.url || '?'}) — check network/firewall`, 'e');
       this._marketErrors = (this._marketErrors || 0) + 1;
@@ -184,6 +188,7 @@ export class Engine {
       lastSignal: this.lastSignal,
       warmup: this.warmup(),
       exec: this.execStats(),
+      market: this.client?.marketHealth ? this.client.marketHealth() : null,
       sessionStart: this.sessionStart,
       ticks: this.store.tickCount(this.selectedSymbol),
       importTicks: IMPORT_TICKS,

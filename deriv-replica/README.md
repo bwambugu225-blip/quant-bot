@@ -37,22 +37,29 @@ shows is computed from the tape it imported; nothing is pre-baked.
   and the automation toggle that runs the built strategy live.
 - **Reporting**: session win/loss bookkeeping, net P&L, and a per-trade report
   table.
+- **Live tape + status bar**: a marquee ticker tape across the top shows every
+  subscribed market with its session change; the bottom status bar reports the
+  health of the feed (state, tick rate, tick age, tick count, reconnect count)
+  alongside execution latency and the session P&L.
 
 ## Architecture
 
 ```
 src/
   main.jsx              boot; completes the OAuth PKCE exchange on /callback
-  App.jsx               shell: nav, header, screens
+  App.jsx               shell: nav, header, tape, status bar, screens
   components/
-    Chart.jsx           self-contained canvas candles + overlays + panes
+    Chart.jsx           self-contained SVG candles/line + overlays + volume + panes + crosshair
+    TickerTape.jsx      marquee live tape across all subscribed markets
+    StatusBar.jsx       feed health, latency, session P&L
+    icons.jsx           inline stroked rail icons
     StrategyBuilder.jsx visual DSL editor + backtest panel
     Analytics.jsx       digit distribution + market structure
     TradeDock.jsx       manual trade form + automation toggle
-    Tables.jsx          positions + reports tables
+    Tables.jsx          positions + reports + logs tables
     Panel.jsx, Modals.jsx
   lib/
-    derivClient.js      Deriv API client (public market WS + authed trading WS)
+    derivClient.js      Deriv API client (public market WS + authed trading WS + reconnect/health)
     oauth.js            OAuth 2.0 PKCE (authorize URL, token exchange, refresh)
     symbols.js          symbol catalogue + per-symbol pip size
     marketStore.js      1000-tick import, candle aggregation for all timeframes
@@ -66,16 +73,25 @@ src/
     usePayout.js        live payout quoting
 ```
 
-The chart is self-contained (canvas), so the app has **no Deriv UI
-dependencies** — only `react`, `react-dom` and Vite. The connection layer is
-retained unchanged: the public market socket for ticks/history and the
-authenticated trading socket for balance, proposals, buys and contracts.
+The chart is self-contained (SVG), so the app has **no Deriv UI dependencies** —
+only `react`, `react-dom` and Vite. The connection layer is retained: the public
+market socket for ticks/history and the authenticated trading socket for
+balance, proposals, buys and contracts.
 
-## Connection layer (retained)
+## Connection layer (retained, and made permanent)
 
 - **Market data** needs no login. `DerivClient.connectMarket()` opens
   `wss://api.derivws.com/trading/v1/options/ws/public`; `requestHistory` seeds
   1000 ticks per subscribed symbol and `tick` streams keep them live.
+- **The stream is treated as a permanent service.** The market socket
+  reconnects forever on a jittered backoff (no attempt cap), a watchdog drops
+  and rebuilds a socket that has gone quiet for 45s, and the client revives the
+  connection the moment the tab regains focus or the network returns — so a
+  backgrounded tab or a laptop sleep never needs a reload. `marketHealth()`
+  surfaces state / freshness / rate / reconnects for the status bar.
+- **The session never logs out on its own.** A saved OAuth session is refreshed
+  in place every minute; a transient failure is retried, never treated as a
+  logout. Only the explicit Log out button clears the session.
 - **Trading** uses the OAuth-issued OTP URL: REST accounts (Bearer +
   `Deriv-App-ID`) → WS `authorize` → `POST /trading/v1/options/accounts/{id}/otp`
   → direct WS. Account switching (demo ↔ real) re-requests an OTP.
@@ -123,6 +139,10 @@ backtester and engine routing are the real code.
 - `engine.test.mjs` — 1000-tick import, warm-up gating, strategy firing through
   the proposal socket, one-entry-per-candle, manual placement field mapping,
   buy→settle bookkeeping, loss caps, take-profit stop and exec latency stats.
+- `connection.test.mjs` — the connection layer against a stub WebSocket: the
+  market-state transitions, infinite auto-reconnect after a drop, the tick
+  health readout (count/freshness/rate), `reconnectMarket()`, and that
+  `close()` stops the reconnect loop.
 
 ## Deployment
 

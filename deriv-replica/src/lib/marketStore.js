@@ -170,6 +170,12 @@ export class MarketStore {
     return s ? s.last : null;
   }
 
+  // First price of the imported window — the reference for a session change.
+  openPrice(sym) {
+    const s = this.symbols[sym];
+    return s && s.prices.length ? s.prices[0] : null;
+  }
+
   lastDigit(sym) {
     const s = this.symbols[sym];
     return s && s.digits.length ? s.digits[s.digits.length - 1] : null;

@@ -4,8 +4,11 @@ import Analytics from './components/Analytics.jsx';
 import Panel from './components/Panel.jsx';
 import StrategyBuilder from './components/StrategyBuilder.jsx';
 import TradeDock from './components/TradeDock.jsx';
+import TickerTape from './components/TickerTape.jsx';
+import StatusBar from './components/StatusBar.jsx';
 import { Positions, Reports, Logs } from './components/Tables.jsx';
 import { SymbolPicker, LoginModal, Modal } from './components/Modals.jsx';
+import { IconChart, IconStrategy, IconPositions, IconReports, IconLog } from './components/icons.jsx';
 import { useEngine } from './lib/useEngine.js';
 import { SYMBOLS, symbolInfo, pipSize } from './lib/symbols.js';
 import { TIMEFRAMES } from './lib/marketStore.js';
@@ -20,11 +23,18 @@ const OVERLAY_SETS = [
   { id: 'sma', label: 'SMA 50', overlays: ['sma50'] },
   { id: 'none', label: 'None', overlays: [] },
 ];
+const NAV = [
+  ['trade', 'Chart', IconChart],
+  ['builder', 'Strategy', IconStrategy],
+  ['positions', 'Positions', IconPositions],
+  ['reports', 'Reports', IconReports],
+  ['logs', 'Log', IconLog],
+];
 
 export default function App() {
-  const { engine, client, state, tick, logs, toast, login, loginWithOAuth, logout, switchAccount } = useEngine();
+  const { engine, client, state, tick, logs, toast, health, login, loginWithOAuth, logout, switchAccount } = useEngine();
 
-  const [view, setView] = React.useState('trade');          // trade | positions | reports | logs
+  const [view, setView] = React.useState('trade');          // trade | builder | positions | reports | logs
   const [chartMode, setChartMode] = React.useState('candles');
   const [overlaySet, setOverlaySet] = React.useState('ema+bb');
   const [pane, setPane] = React.useState('rsi');
@@ -62,47 +72,53 @@ export default function App() {
   };
 
   const ticks = state?.ticks ?? 0;
+  const live = !!state?.auth;
 
   return (
     <div className="app">
       <div className="topbar">
         <div className="brand">
           <span className="brand__mark">Q</span>
-          <span>Quant Terminal</span>
+          <span className="brand__name">Quant Terminal</span>
           <span className="brand__sub">charts · analytics · strategy</span>
         </div>
         <div className="topbar__tabs">
-          {[['trade', 'Chart'], ['builder', 'Strategy'], ['positions', 'Positions'], ['reports', 'Reports'], ['logs', 'Log']].map(([id, label]) => (
+          {NAV.map(([id, label]) => (
             <button key={id} className={`tab${view === id ? ' is-active' : ''}`} onClick={() => setView(id)} type="button">{label}</button>
           ))}
         </div>
         <div className="topbar__spacer" />
         <div className="conn">
-          <span className={`dot ${state?.auth ? 'is-live' : ''}`} />
-          <span>{state?.auth ? 'live' : 'public feed'}</span>
+          <span className={`dot ${live ? 'is-live is-pulse' : health?.connected ? 'is-warn' : ''}`} />
+          <span>{live ? 'LIVE' : health?.connected ? 'MARKET FEED' : 'CONNECTING'}</span>
           <span style={{ color: 'var(--text-mute)' }}>· {ticks} ticks</span>
         </div>
         {state?.auth ? (
           <div className="acct">
-            <span className="acct__bal">{addComma(state.balance)} USD</span>
+            <span className="acct__bal">{addComma(state.balance)}</span>
+            <span className="acct__cur">USD</span>
             <span className={`acct__type ${state.accountType === 'real' ? 'is-real' : ''}`}>{state.accountType}</span>
             {state.accounts?.length > 1 && (
               <select className="sel" value={state.accountId || ''} onChange={e => switchAccount(e.target.value)} style={{ maxWidth: 120 }}>
                 {state.accounts.map(a => <option key={a.account} value={a.account}>{a.account} ({a.currency})</option>)}
               </select>
             )}
-            <button className="btn btn--ghost" onClick={logout} type="button">Log out</button>
+            <button className="btn btn--ghost btn--sm" onClick={logout} type="button">Log out</button>
           </div>
         ) : (
-          <button className="btn btn--primary" onClick={() => setLoginOpen(true)} type="button">Log in</button>
+          <button className="btn btn--primary" style={{ marginLeft: 14 }} onClick={() => setLoginOpen(true)} type="button">Log in</button>
         )}
       </div>
 
+      <TickerTape store={engine.store} tick={tick} selected={symbol} onSelect={s => engine.setSymbol(s)} />
+
       <div className="body">
         <nav className="rail">
-          {[['trade', '📈'], ['builder', '⚙'], ['positions', '▤'], ['reports', '▦'], ['logs', '≡']].map(([id, icon]) => (
-            <button key={id} className={`rail__item${view === id ? ' is-active' : ''}`} onClick={() => setView(id)} title={id} type="button">{icon}</button>
+          {NAV.map(([id, label, Icon]) => (
+            <button key={id} className={`rail__item${view === id ? ' is-active' : ''}`} onClick={() => setView(id)} title={label} type="button"><Icon /></button>
           ))}
+          <div className="rail__sep" />
+          <button className="rail__item" title="Guide" onClick={() => setGuideOpen(true)} type="button" style={{ fontSize: 15, fontWeight: 600 }}>?</button>
         </nav>
 
         <div className="main">
@@ -130,8 +146,9 @@ export default function App() {
               <div className="ctool">
                 <button className="symbtn" onClick={() => setSymOpen(true)} type="button">
                   <span className="symbtn__name">{info.name}</span>
+                  <span className="symbtn__sym">{symbol}</span>
                   <span className={`symbtn__price ${up ? 'is-up' : 'is-down'}`}>{price != null ? price.toFixed(pipSize(symbol)) : '—'}</span>
-                  <span className="symbtn__meta">▾</span>
+                  <span className="symbtn__meta">▼</span>
                 </button>
 
                 <div className="tfbar">
@@ -145,6 +162,8 @@ export default function App() {
                   <button className={`tf${chartMode === 'line' ? ' is-active' : ''}`} onClick={() => setChartMode('line')} type="button">Line</button>
                 </div>
 
+                <div className="tool-sep" />
+
                 <select className="sel" value={overlaySet} onChange={e => setOverlaySet(e.target.value)}>
                   {OVERLAY_SETS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
                 </select>
@@ -155,12 +174,14 @@ export default function App() {
 
                 <div className="topbar__spacer" />
                 {state?.running && (
-                  <span className="pill is-up">bot: {strategy?.name} · {state.warmup?.have} ticks warm</span>
+                  <span className="pill is-up">BOT · {strategy?.name} · {state.warmup?.have} warm</span>
                 )}
-                <button className="btn btn--ghost" onClick={() => setGuideOpen(true)} type="button">Guide</button>
+                {state?.running
+                  ? <button className="btn btn--down btn--sm" onClick={() => engine.stop()} type="button">Stop bot</button>
+                  : <button className="btn btn--ghost btn--sm" onClick={() => engine.start()} type="button">Start bot</button>}
               </div>
 
-              <Chart candles={candles} up={up} overlays={overlays} pane={pane} mode={chartMode} />
+              <Chart candles={candles} up={up} overlays={overlays} pane={pane} mode={chartMode} symbol={symbol} />
             </div>
           )}
 
@@ -182,6 +203,7 @@ export default function App() {
                   <div className="row"><span className="row__k">Trades</span><span className="row__v">{state?.trades ?? 0}</span></div>
                   <div className="row"><span className="row__k">Wins / Losses</span><span className="row__v"><span className="is-up">{state?.wins ?? 0}</span> / <span className="is-down">{state?.losses ?? 0}</span></span></div>
                   <div className="row"><span className="row__k">Net P&L</span><span className={`row__v ${(state?.pnl ?? 0) >= 0 ? 'is-up' : 'is-down'}`}>{(state?.pnl ?? 0) >= 0 ? '+' : ''}{addComma(state?.pnl ?? 0)}</span></div>
+                  <div className="row"><span className="row__k">Best / Worst</span><span className="row__v">{(state?.bestTrade ?? 0).toFixed(2)} / {(state?.worstTrade ?? 0).toFixed(2)}</span></div>
                   <div className="row"><span className="row__k">Exec p50 / p95</span><span className="row__v">{state?.exec?.p50 ?? '—'} / {state?.exec?.p95 ?? '—'} ms</span></div>
                   <div className="row"><span className="row__k">Warm-up</span><span className="row__v">{state?.warmup?.have}/{state?.warmup?.need}</span></div>
                 </div>
@@ -190,6 +212,8 @@ export default function App() {
           )}
         </div>
       </div>
+
+      <StatusBar state={state} health={health} symbol={symbol} />
 
       {symOpen && <SymbolPicker current={symbol} onSelect={s => engine.setSymbol(s)} onClose={() => setSymOpen(false)} />}
       {loginOpen && (
@@ -203,8 +227,10 @@ export default function App() {
         <Modal title="Guide" onClose={() => setGuideOpen(false)}>
           <p style={{ color: 'var(--text-dim)', lineHeight: 1.7 }}>
             The terminal imports <b>1000 ticks</b> per market and aggregates them into candles across every
-            timeframe from <b>5s</b> to <b>15m</b>. The analytics column reads 20+ indicators over the
-            selected timeframe; the digit distribution is measured on the raw tick tape.
+            timeframe from <b>5s</b> to <b>15m</b>. The live tape never stops: the feed reconnects on its own,
+            refreshes a stale stream, and reconnects the moment the tab is focused or the network returns.
+            The analytics column reads 20+ indicators over the selected timeframe; the digit distribution is
+            measured on the raw tick tape.
           </p>
           <p style={{ color: 'var(--text-dim)', lineHeight: 1.7 }}>
             Build a strategy on the <b>Strategy</b> tab: nest AND/OR groups, compare any indicator,
@@ -219,3 +245,4 @@ export default function App() {
     </div>
   );
 }
+

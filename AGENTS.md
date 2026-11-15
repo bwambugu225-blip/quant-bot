@@ -157,7 +157,7 @@ timeframe / strategy, and the session bookkeeping. It attaches to a
 Constants: `MIN_STAKE=0.35`, `MAX_STAKE=200`, `PROPOSAL_TIMEOUT=6000`,
 `WARMUP_TICKS=100`.
 
-## Connection layer (retained, unchanged in spirit)
+## Connection layer (retained, and made permanent)
 
 - `derivClient.js` — Deriv API client. Public market socket for
   ticks/history (no auth); authenticated trading socket for balance, proposals,
@@ -165,6 +165,18 @@ Constants: `MIN_STAKE=0.35`, `MAX_STAKE=200`, `PROPOSAL_TIMEOUT=6000`,
   `authorize` → `POST /trading/v1/options/accounts/{id}/otp` → direct WS with
   the OTP URL. Account switching re-requests an OTP. `requestContractsFor`
   (TTL-cached by the engine) and `requestPayout` are retained.
+- **The connection is a permanent service.** The market socket reconnects
+  forever on a jittered backoff (no attempt cap). A watchdog closes and rebuilds
+  a socket that has been silent for 45s. `_installNetHooks()` revives both
+  sockets on `online`, window `focus` and tab `visibilitychange`, so a
+  backgrounded tab or a laptop sleep needs no reload. `marketHealth()` returns
+  `{ state, connected, age, rate, ticks, reconnects, reconnectIn }`; the engine
+  surfaces it in the snapshot and `useEngine` polls it once a second for the
+  status bar. Market-state transitions are logged through the `market-state`
+  event.
+- **No self-logout.** `restoreSession`/`keepSessionAlive` in `useEngine.js`
+  refresh an OAuth session in place (once a minute) and retry transient
+  failures; a failure never clears the session. Only the Log out button does.
 - `oauth.js` — OAuth 2.0 Authorization Code + PKCE. `beginOAuth` builds the
   authorize URL and stores verifier/state; `completeOAuth(search)` runs the
   token exchange and stores the session. The redirect URI is
@@ -175,6 +187,19 @@ Constants: `MIN_STAKE=0.35`, `MAX_STAKE=200`, `PROPOSAL_TIMEOUT=6000`,
 To trade, log in with Deriv (OAuth) or paste an API token with Read + Trade
 scope. Market data needs no login.
 
+## UI shell
+
+- `App.jsx` is the shell: top bar (brand, tabs, account chip), the
+  `TickerTape` marquee, the left icon `rail`, the workspace (chart + dock) and
+  the bottom `StatusBar`.
+- `styles.css` is one flat institutional dark palette — page `#0a0c11`, panels
+  `#0f1218`, hairline `#1c222b`, up `#2bb673`, down `#e0524f`, accent `#4c86e0`.
+  Hairlines and tabular monospace, no gradients or glows. Keep it that way.
+- `Chart.jsx` is self-contained SVG (not canvas): candles/line, EMA/SMA/BB
+  overlays, a volume histogram, an RSI/MACD sub-pane, a price+time axis grid, a
+  last-price tag and a pointer crosshair with an OHLC readout.
+- `icons.jsx` holds the stroked rail icons — the rail carries no emoji.
+
 ## Tests and CI
 
 - `tests/` runs on Node's built-in test runner (no extra dependency).
@@ -182,7 +207,9 @@ scope. Market data needs no login.
   client — only the socket boundary (`send`/`buy`) is faked; the store,
   indicators, strategy builder, backtester and engine routing are the real code.
 - Suites: `marketStore.test.mjs`, `indicators.test.mjs`,
-  `strategyBuilder.test.mjs`, `backtest.test.mjs`, `engine.test.mjs`.
+  `strategyBuilder.test.mjs`, `backtest.test.mjs`, `engine.test.mjs`,
+  `connection.test.mjs` (the reconnect loop, stream health and `close()` against
+  a stub WebSocket).
 - `.github/dependabot.yml` keeps npm deps and workflow actions current.
   Dependabot PRs run with a read-only token, so
   `.github/workflows/dependabot-auto-merge.yml` reacts to the **CI run

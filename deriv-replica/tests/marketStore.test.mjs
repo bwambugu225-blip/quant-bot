@@ -84,3 +84,11 @@ test('digit history is derived from the imported tape', () => {
   assert.deepEqual(d, [2, 3, 4]);
   assert.equal(store.lastDigit('R_100'), 4);
 });
+
+test('openPrice is the first imported price, the reference for a session change', () => {
+  const store = new MarketStore();
+  assert.equal(store.openPrice('R_100'), null);
+  store.onHistory('R_100', [0, 1, 2], [100.1, 101.2, 102.3]);
+  assert.equal(store.openPrice('R_100'), 100.1);
+  assert.equal(store.lastPrice('R_100'), 102.3);
+});

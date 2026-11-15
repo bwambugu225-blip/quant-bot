@@ -44,46 +44,142 @@ export class DerivClient {
     this._closing = false;
     this._reconn = null;
     this._reconnAttempts = 0;
+    // Market-stream health. The terminal keeps the tape live indefinitely, so
+    // the socket is treated as a permanent service: it reconnects forever with
+    // jittered backoff, and the freshness of the last tick is surfaced so a
+    // silently stalled stream is visible rather than mistaken for a quiet one.
+    this._mwsState = 'idle';        // idle | connecting | open | retrying
+    this._mwsStartedAt = 0;
+    this._mwsReconnAt = 0;
+    this._lastTickAt = 0;
+    this._lastTickSym = null;
+    this._tickCount = 0;
+    this._tickWindow = [];          // epochs of recent ticks, for a rate reading
+    this._staleTimer = null;
+    this._mwsReconns = 0;           // lifetime reconnect count
+    this._installNetHooks();
   }
 
   on(evt, fn) { (this.handlers[evt] = this.handlers[evt] || []).push(fn); return this; }
   emit(evt, ...args) { (this.handlers[evt] || []).forEach(fn => { try { fn(...args); } catch (e) { console.error(e); } }); }
   nextId() { return ++this.rid; }
 
+  // Reconnect the moment the tab is shown again or the network returns, so a
+  // backgrounded tab or a laptop sleep does not need a manual reload. Installed
+  // once; guarded for the Node test environment where there is no window.
+  _installNetHooks() {
+    if (this._netHooks || typeof window === 'undefined' || !window.addEventListener) return;
+    this._netHooks = true;
+    const revive = () => {
+      if (this._closing) return;
+      this.connectMarket();
+      if (this.auth && this.token) this._scheduleRecon(true);
+    };
+    window.addEventListener('online', revive);
+    window.addEventListener('focus', revive);
+    if (typeof document !== 'undefined' && document.addEventListener) {
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) revive(); });
+    }
+  }
+
+  _setMwsState(state, extra) {
+    this._mwsState = state;
+    this.emit('market-state', { state, ...extra });
+  }
+
   // ── Public market socket ───────────────────────────────────────────────
+  // Tries the current public gateway first, falls back to the legacy v3 endpoint
+  // once, and then reconnects forever on a jittered backoff. There is no
+  // attempt cap: the market feed is the terminal's lifeblood.
   connectMarket() {
+    if (this._closing) return;
     if (this.mws && (this.mws.readyState === WebSocket.OPEN || this.mws.readyState === WebSocket.CONNECTING)) return;
     if (this._mwsReconn) { clearTimeout(this._mwsReconn); this._mwsReconn = null; }
-    // Try the current public gateway first; on failure fall back to the legacy
-    // v3 endpoint once, then keep retrying whichever we last used.
-    const url = this._mwsUseLegacy
-      ? `${WS_BASE}?app_id=${this.appId}`
-      : PUBLIC_WS;
+    const url = this._mwsUseLegacy ? `${WS_BASE}?app_id=${this.appId}` : PUBLIC_WS;
+    this._setMwsState('connecting', { url });
     const mws = new WebSocket(url);
     this.mws = mws;
     mws.onopen = () => {
       this.mwsAttempts = 0;
+      this._mwsStartedAt = Date.now();
+      this._setMwsState('open', { url });
       this.emit('market-open');
       this.startHeartbeat();
+      this._startStaleWatch();
     };
     mws.onmessage = e => this._onMessage(e, 'market');
     mws.onerror = () => this.emit('market-error', { url });
     mws.onclose = () => {
       if (this.mws === mws) this.mws = null;
       this.emit('market-close');
-      if (!this._mwsUseLegacy) { this._mwsUseLegacy = true; this._mwsReconn = setTimeout(() => this.connectMarket(), 700); return; }
-      const delay = Math.min(700 * Math.pow(1.4, this.mwsAttempts++), 8000);
-      this._mwsReconn = setTimeout(() => this.connectMarket(), delay);
+      if (this._closing) return;
+      this._mwsReconns++;
+      if (!this._mwsUseLegacy) { this._mwsUseLegacy = true; this._scheduleMws(700); return; }
+      const delay = Math.min(600 * Math.pow(1.5, this.mwsAttempts++), 15000);
+      this._scheduleMws(delay);
     };
   }
 
+  _scheduleMws(delay) {
+    this._mwsReconnAt = Date.now() + delay;
+    this._setMwsState('retrying', { in: delay, attempt: this.mwsAttempts });
+    const jitter = delay * (0.85 + Math.random() * 0.3);
+    this._mwsReconn = setTimeout(() => this.connectMarket(), jitter);
+  }
+
+  // A feed that has gone quiet for a while is as broken as one that closed.
+  // If no tick has arrived for 45s, drop the socket and let it reconnect.
+  _startStaleWatch() {
+    if (this._staleTimer) return;
+    this._staleTimer = setInterval(() => {
+      if (this._closing) return;
+      const age = this._lastTickAt ? Date.now() - this._lastTickAt : Date.now() - this._mwsStartedAt;
+      if (age > 45000 && this.mws && this.mws.readyState === WebSocket.OPEN) {
+        this.emit('log', { t: `[MARKET] No ticks for ${Math.round(age / 1000)}s — reconnecting`, k: 'w' });
+        try { this.mws.close(); } catch (e) { /* ignore */ }
+      }
+    }, 15000);
+    this._staleTimer.unref?.();
+  }
+
+  // Rebuild the market stream without a page reload.
   reconnectMarket() {
     if (this._mwsReconn) { clearTimeout(this._mwsReconn); this._mwsReconn = null; }
-    if (this.mws) { try { this.mws.close(); } catch (e) {} this.mws = null; }
+    if (this.mws) { try { this.mws.close(); } catch (e) { /* ignore */ } this.mws = null; }
     this.mwsAttempts = 0;
     this._mwsUseLegacy = false;
     this.connectMarket();
     this.emit('log', { t: '[MARKET] Manual reconnect', k: 'i' });
+  }
+
+  // Record tick freshness for the health readout. Called on every tick message.
+  _noteTick(t) {
+    const now = Date.now();
+    this._lastTickAt = now;
+    this._lastTickSym = t.symbol || this._lastTickSym;
+    this._tickCount++;
+    this._tickWindow.push(now);
+    if (this._tickWindow.length > 400) this._tickWindow.splice(0, this._tickWindow.length - 400);
+  }
+
+  // Health of the live stream, for the status bar. `age` is the milliseconds
+  // since the last tick (null before the first one), `rate` the ticks/second
+  // over the recent window.
+  marketHealth() {
+    const now = Date.now();
+    const age = this._lastTickAt ? now - this._lastTickAt : null;
+    const cut = now - 10000;
+    const recent = this._tickWindow.filter(t => t >= cut).length;
+    return {
+      state: this._mwsState,
+      connected: !!this.mws && this.mws.readyState === WebSocket.OPEN,
+      age,
+      rate: recent / 10,
+      ticks: this._tickCount,
+      reconnects: this._mwsReconns,
+      reconnectIn: this._mwsReconnAt > now ? this._mwsReconnAt - now : 0,
+      since: this._mwsStartedAt,
+    };
   }
 
   // Headers for an authenticated REST call. An OAuth access token identifies
@@ -313,10 +409,12 @@ export class DerivClient {
     setTimeout(() => this.subscribeAll(), 200);
   }
 
-  _scheduleRecon() {
-    if (this._reconn) clearTimeout(this._reconn);
-    const delay = Math.min(1000 * Math.pow(1.5, this._reconnAttempts++), 10000);
-    this._reconn = setTimeout(() => { if (this.token) this._connectDirect(this.token); }, delay);
+  _scheduleRecon(force = false) {
+    if (this._reconn && !force) return;
+    if (this._reconn) { clearTimeout(this._reconn); this._reconn = null; }
+    const delay = force ? 0 : Math.min(1000 * Math.pow(1.5, this._reconnAttempts++), 15000);
+    this._reconn = setTimeout(() => { if (this.token && !this._closing) this._connectDirect(this.token); }, delay);
+    this._reconn.unref?.();
   }
 
   // ── Subscriptions ──────────────────────────────────────────────────────
@@ -361,6 +459,7 @@ export class DerivClient {
   _onMessage(e, source) {
     let msg; try { msg = JSON.parse(e.data); } catch (ex) { return; }
     if (msg.msg_type === 'ping' || msg.msg_type === 'pong') return;
+    if (msg.msg_type === 'tick' && msg.tick) this._noteTick(msg.tick);
     if (msg.req_id && this._cfCbs && this._cfCbs[msg.req_id]) {
       const cb = this._cfCbs[msg.req_id]; delete this._cfCbs[msg.req_id]; cb(msg); return;
     }
@@ -462,10 +561,14 @@ export class DerivClient {
   close() {
     this._closing = true;
     this.stopHeartbeat();
-    if (this.ws) { try { this.ws.close(); } catch (e) {} }
-    if (this.mws) { try { this.mws.close(); } catch (e) {} }
+    if (this._staleTimer) { clearInterval(this._staleTimer); this._staleTimer = null; }
+    if (this._mwsReconn) { clearTimeout(this._mwsReconn); this._mwsReconn = null; }
+    if (this._reconn) { clearTimeout(this._reconn); this._reconn = null; }
+    if (this.ws) { try { this.ws.close(); } catch (e) { /* ignore */ } }
+    if (this.mws) { try { this.mws.close(); } catch (e) { /* ignore */ } }
     this.ws = null; this.mws = null;
     this.auth = false; this.connected = false;
+    this._setMwsState('idle');
   }
 }
 
