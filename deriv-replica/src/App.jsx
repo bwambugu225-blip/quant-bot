@@ -239,6 +239,10 @@ export default function App() {
             Build a strategy on the <b>Strategy</b> tab: nest AND/OR groups, compare any indicator,
             price field or constant with greater/less, cross-over/under, rising/falling. Run a backtest
             to see how it would have traded the imported history, then <b>Start bot</b> to trade it live.
+            <b>Drag</b> the chart to pan through history, <b>scroll</b> or pinch to zoom,
+            and double-click to snap back to the live edge.
+          </p>
+          <p>
             The bot evaluates the strategy when a candle of its timeframe closes and places the contract
             through the same Deriv proposal path as a manual trade. Every stake, profit and balance is
             shown in Kenyan shillings; the default stake is <b>KES 0.35</b>.

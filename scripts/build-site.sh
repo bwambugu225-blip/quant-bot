@@ -7,7 +7,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="$ROOT/public_out"
 
 cd "$ROOT/deriv-replica"
-npm install
+npm ci --no-audit --no-fund
 npm run build
 
 cd "$ROOT"

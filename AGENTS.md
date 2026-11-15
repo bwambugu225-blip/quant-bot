@@ -231,7 +231,12 @@ scope. Market data needs no login.
 - `Chart.jsx` is self-contained SVG (not canvas): candles/line, EMA/SMA/BB/
   SuperTrend/VWAP overlays, a volume histogram, an RSI/MACD sub-pane, a
   price+time axis grid, a last-price tag and a pointer crosshair with an OHLC
-  readout.
+  readout. The view is a horizontal window over the candle buffer — drag to pan,
+  scroll or pinch to zoom, double-click (or the ⟲ control) to snap back to the
+  live edge. While the window sits at the live edge it follows new candles; once
+  panned back it holds its place. The windowing math lives in
+  `src/lib/chartView.js` (`visibleWindow` / `zoomWindow` / `panWindow`) so it is
+  unit-tested without a DOM.
 - `Analytics.jsx` leads with a one-line **Signal** read (blended trend bias +
   agreement, ADX regime, volatility state, momentum) and shows the 40+
   indicators grouped into Trend / Momentum / Volatility / Volume / Levels behind
@@ -262,5 +267,17 @@ deriv-replica and assembles `public_out/` with the build at the root and
 `callback.html` alongside it. The only rewrite sends non-asset paths to
 `/index.html` (the SPA); `/callback.html` is served as a real static file.
 `deriv-replica/vite.config.js` keeps `base: '/'`.
+
+The build installs with `npm ci` (not `npm install`) so it is reproducible and
+fails loudly on lockfile drift. **Vite 8 hard-requires Node ≥ 20.19 / 22.12** and
+the CLI aborts on anything older, so the Node version is pinned in both `.nvmrc`
+and `deriv-replica/package.json` (`engines.node`). Do not remove those pins: an
+unpinned build can land on an older Node and fail at `vite build` even though it
+passes locally.
+
+Only `master` gets a **Production** deployment; every other branch produces a
+**Preview** deployment (its own URL) plus a `Vercel` commit status. So a push to
+a feature branch never updates `dv-quant.vercel.app` — that still serves the
+bundle from the last `master` build, which is expected, not a failure.
 
 Note: `node_modules/` and `dist/` are gitignored. `public_out/` is gitignored.

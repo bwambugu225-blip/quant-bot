@@ -1,10 +1,15 @@
 import React from 'react';
 import { emaSeries, smaSeries, bollingerSeries, rsiSeries, macdSeries, closes, superTrendSeries, vwapSeries } from '../lib/indicators.js';
+import { DEFAULT_BARS, clamp, visibleWindow, zoomWindow, panWindow } from '../lib/chartView.js';
 
 // A dependency-free SVG chart: candles or line, with optional EMA/SMA/Bollinger
 // /SuperTrend/VWAP overlays, a volume histogram and an RSI/MACD sub-pane. It
 // renders from the same candles the engine trades, so what is drawn is what the
 // strategy sees. A crosshair tracks the pointer and reads out the hovered bar.
+//
+// The view is a horizontal window over the candle buffer: drag to pan, scroll
+// or pinch to zoom. While the window sits at the live edge it follows new
+// candles; once the user pans back it holds its place until they return.
 const OVERLAY_COLORS = { ema9: '#4c86e0', ema21: '#c8a250', sma50: '#8b7fd4', bb: '#3d4756', st: '#2bb673', vwap: '#d99a3a' };
 
 function useSize(ref) {
@@ -29,8 +34,20 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
   const wrapRef = React.useRef(null);
   const { w, h } = useSize(wrapRef);
   const [hover, setHover] = React.useState(null);
+  const [bars, setBars] = React.useState(DEFAULT_BARS);
+  const [follow, setFollow] = React.useState(true);
+  const [endIdx, setEndIdx] = React.useState(0);
+  const [panning, setPanning] = React.useState(false);
+  const dragRef = React.useRef(null);
+  const pinchRef = React.useRef(null);
+  const geomRef = React.useRef(null);
 
-  const view = React.useMemo(() => candles.slice(-200), [candles]);
+  const total = candles.length;
+  const win = visibleWindow({ total, bars, endIdx, follow });
+  const visBars = win.bars;
+  const start = win.start;
+  const end = win.end;
+  const view = React.useMemo(() => candles.slice(start, end), [candles, start, end]);
 
   const geom = React.useMemo(() => {
     const padL = 8, padR = 62, padT = 30, padB = 22;
@@ -88,24 +105,120 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
 
     return { padL, padR, padT, padB, plotW, mainH, lo, hi, x, y, ema9, ema21, sma50, bb, pathOf, paneGeom, volY, st, stLine, vwap };
   }, [view, w, h, overlays, pane]);
+  geomRef.current = geom;
 
   const last = view[view.length - 1];
   const shown = hover != null && view[hover] ? view[hover] : last;
   const priceY = geom && last ? geom.y(last.close) : null;
 
-  const onMove = e => {
-    if (!geom || !wrapRef.current) return;
-    const rect = wrapRef.current.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const frac = (px - geom.padL) / geom.plotW;
-    const idx = Math.round(frac * (view.length - 1));
-    setHover(idx >= 0 && idx < view.length ? idx : null);
+  const barWidth = geom ? geom.plotW / Math.max(1, view.length - 1) : 10;
+
+  const applyWindow = (nb, ne) => {
+    setBars(nb);
+    setEndIdx(ne);
+    setFollow(ne >= total);
   };
+
+  const idxAt = clientX => {
+    if (!geom || !wrapRef.current) return null;
+    const rect = wrapRef.current.getBoundingClientRect();
+    const frac = (clientX - rect.left - geom.padL) / geom.plotW;
+    const i = Math.round(frac * (view.length - 1));
+    return i >= 0 && i < view.length ? i : null;
+  };
+
+  const onDown = e => {
+    if (!geom || (e.button != null && e.button !== 0)) return;
+    // Ignore drags that start on an overlay control (zoom buttons), otherwise
+    // the pointer capture swallows the click before it reaches the button.
+    if (e.target && e.target.closest && e.target.closest('.chart-tools')) return;
+    dragRef.current = { x: e.clientX, end, follow, barWidth };
+    if (e.currentTarget.setPointerCapture && e.pointerId != null) {
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
+    }
+    setPanning(true);
+  };
+
+  const onMove = e => {
+    const d = dragRef.current;
+    if (d) {
+      const { end: ne } = panWindow({ total, bars: visBars, end: d.end, dxPx: e.clientX - d.x, barWidth: d.barWidth });
+      applyWindow(visBars, ne);
+      return;
+    }
+    setHover(idxAt(e.clientX));
+  };
+
+  const onUp = e => {
+    if (!dragRef.current) return;
+    dragRef.current = null;
+    setPanning(false);
+    if (e && e.currentTarget.releasePointerCapture && e.pointerId != null) {
+      try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* already released */ }
+    }
+  };
+
+  // Wheel needs a non-passive native listener so preventDefault stops page scroll.
+  const wheelRef = React.useRef(null);
+  wheelRef.current = e => {
+    const g = geomRef.current;
+    if (!g || view.length < 2) return;
+    e.preventDefault();
+    const rect = wrapRef.current.getBoundingClientRect();
+    const anchor = clamp((e.clientX - rect.left - g.padL) / g.plotW, 0, 1);
+    const factor = e.deltaY > 0 ? 1.18 : 1 / 1.18;
+    const next = zoomWindow({ total, bars: visBars, end, follow, anchor, factor });
+    if (next.bars === visBars && next.end === end) return;
+    applyWindow(next.bars, next.end);
+  };
+  React.useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return undefined;
+    const fn = e => wheelRef.current(e);
+    el.addEventListener('wheel', fn, { passive: false });
+    return () => el.removeEventListener('wheel', fn);
+  }, []);
+
+  const onTouchStart = e => {
+    if (e.touches.length !== 2) return;
+    dragRef.current = null;
+    setPanning(false);
+    const [a, b] = e.touches;
+    pinchRef.current = { dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), bars: visBars, end, follow };
+  };
+  const onTouchMove = e => {
+    const p = pinchRef.current;
+    if (!p || e.touches.length !== 2 || p.dist < 1) return;
+    const [a, b] = e.touches;
+    const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    if (dist < 1) return;
+    const next = zoomWindow({ total, bars: p.bars, end: p.end, follow: p.follow, anchor: 1, factor: p.dist / dist });
+    applyWindow(next.bars, next.end);
+  };
+  const onTouchEnd = e => { if (e.touches.length < 2) pinchRef.current = null; };
+
+  const zoom = dir => {
+    const next = zoomWindow({ total, bars: visBars, end, follow, anchor: 1, factor: dir > 0 ? 1 / 1.4 : 1.4 });
+    applyWindow(next.bars, next.end);
+  };
+  const reset = () => { setBars(DEFAULT_BARS); setFollow(true); setHover(null); };
 
   const hoverX = geom && hover != null ? geom.x(hover) : null;
 
   return (
-    <div className="chartwrap" ref={wrapRef} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+    <div
+      className={`chartwrap${panning ? ' is-panning' : ''}`}
+      ref={wrapRef}
+      onPointerDown={onDown}
+      onPointerMove={onMove}
+      onPointerUp={onUp}
+      onPointerCancel={onUp}
+      onPointerLeave={() => { if (!dragRef.current) setHover(null); }}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onDoubleClick={reset}
+    >
       {geom && (
         <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
           {[0, 0.2, 0.4, 0.6, 0.8, 1].map(f => {
@@ -180,7 +293,7 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
             <text x={geom.padL + 2} y={geom.paneGeom.top + 10} fill="var(--text-mute)" fontSize="9.5" fontFamily="var(--mono)">{pane === 'rsi' ? 'RSI 14' : 'MACD 12/26/9'}</text>
           </>}
 
-          {hoverX != null && <>
+          {hoverX != null && !panning && <>
             <line x1={hoverX} x2={hoverX} y1={geom.padT} y2={h - geom.padB} stroke="var(--text-mute)" strokeWidth="1" strokeDasharray="3 3" />
             <line x1={geom.padL} x2={w - geom.padR} y1={geom.y(shown.close)} y2={geom.y(shown.close)} stroke="var(--text-mute)" strokeWidth="1" strokeDasharray="3 3" />
             <rect x={w - geom.padR + 2} y={geom.y(shown.close) - 8} width={geom.padR - 4} height={16} rx="2" fill="var(--bg-4)" />
@@ -208,8 +321,15 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
         {overlays.includes('st') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.st }} />SuperTrend</div>}
         {overlays.includes('vwap') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.vwap }} />VWAP</div>}
       </div>
-      <div className="chart-note">{view.length} candles · {pane === 'rsi' ? 'RSI 14' : pane === 'macd' ? 'MACD 12/26/9' : 'no sub-pane'} · vol overlay</div>
-      <div className="chart-hint">hover to inspect</div>
+
+      <div className="chart-tools">
+        <button type="button" title="Zoom in" aria-label="Zoom in" onClick={() => zoom(1)}>+</button>
+        <button type="button" title="Zoom out" aria-label="Zoom out" onClick={() => zoom(-1)}>−</button>
+        <button type="button" title="Reset zoom" aria-label="Reset zoom" onClick={reset}>⟲</button>
+      </div>
+
+      <div className="chart-note">{view.length} bars · {follow ? 'live' : 'history'} · {pane === 'rsi' ? 'RSI 14' : pane === 'macd' ? 'MACD 12/26/9' : 'no sub-pane'} · vol overlay</div>
+      <div className="chart-hint">drag to pan · scroll / pinch to zoom · double-click to reset</div>
     </div>
   );
 }
