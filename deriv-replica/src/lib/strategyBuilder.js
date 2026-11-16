@@ -99,6 +99,17 @@ export const INDICATORS = {
   eom: { label: 'Ease of Move', params: [num('period', 'Period', 14)], outputs: ['value'], series: (c, p) => ({ value: TA.eomSeries(c, p.period) }) },
   forceIndex: { label: 'Force Index', params: [num('period', 'Period', 13)], outputs: ['value'], series: (c, p) => ({ value: TA.forceIndexSeries(c, p.period) }) },
   ultimate: { label: 'Ultimate Osc', params: [], outputs: ['value'], series: c => ({ value: TA.ultimateSeries(c) }) },
+  psar: { label: 'Parabolic SAR', params: [num('step', 'Step', 0.02, 0.001, 1), num('max', 'Max AF', 0.2, 0.01, 1)], outputs: ['value'], series: (c, p) => ({ value: TA.psarSeries(c, p.step, p.max) }) },
+  zscore: { label: 'Z-Score', params: [num('period', 'Period', 20)], outputs: ['value'], series: (c, p) => ({ value: TA.zscoreSeries(TA.closes(c), p.period) }) },
+  efficiencyRatio: { label: 'Efficiency Ratio', params: [num('period', 'Period', 20)], outputs: ['value'], series: (c, p) => ({ value: TA.efficiencyRatioSeries(c, p.period) }) },
+  choppiness: { label: 'Choppiness Index', params: [num('period', 'Period', 14)], outputs: ['value'], series: (c, p) => ({ value: TA.choppinessSeries(c, p.period) }) },
+  hurst: { label: 'Hurst Exponent', params: [num('period', 'Period', 64)], outputs: ['value'], series: (c, p) => ({ value: TA.hurstSeries(TA.closes(c), p.period) }) },
+  fractalDimension: { label: 'Fractal Dimension', params: [num('period', 'Period', 32)], outputs: ['value'], series: (c, p) => ({ value: TA.fractalDimensionSeries(TA.closes(c), p.period) }) },
+  entropy: { label: 'Entropy', params: [num('period', 'Period', 32), num('bins', 'Bins', 6, 2, 20)], outputs: ['value'], series: (c, p) => ({ value: TA.entropySeries(TA.closes(c), p.period, p.bins) }) },
+  skew: { label: 'Skew', params: [num('period', 'Period', 20)], outputs: ['value'], series: (c, p) => ({ value: TA.skewSeries(TA.closes(c), p.period) }) },
+  kurtosis: { label: 'Kurtosis', params: [num('period', 'Period', 20)], outputs: ['value'], series: (c, p) => ({ value: TA.kurtosisSeries(TA.closes(c), p.period) }) },
+  cusum: { label: 'CUSUM', params: [num('period', 'Period', 20)], outputs: ['value'], series: (c, p) => ({ value: TA.cusumSeries(TA.closes(c), p.period) }) },
+  kalman: { label: 'Kalman Filter', params: [num('process', 'Process', 0.01, 0.00001, 1), num('measure', 'Measure', 0.1, 0.00001, 1)], outputs: ['value'], series: (c, p) => ({ value: TA.kalmanSeries(TA.closes(c), p.process, p.measure) }) },
 };
 
 export const OPERATORS = [

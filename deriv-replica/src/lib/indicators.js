@@ -755,7 +755,260 @@ export function indicatorSnapshot(c, params = {}) {
     ultimate: lastOf(ultimateSeries(c)),
     pivots: pivotPoints(c),
     volumeProfile: volumeProfile(c, 12),
+    psar: lastOf(psarSeries(c, 0.02, 0.2)),
+    williamsRanges: (() => { const w = williamsRRanges(c, 14); return { value: w.value, state: w.state }; })(),
+    zscore: lastOf(zscoreSeries(cl, 20)),
+    efficiencyRatio: lastOf(efficiencyRatioSeries(c, 20)),
+    choppiness: lastOf(choppinessSeries(c, 14)),
+    hurst: lastOf(hurstSeries(cl, 64)),
+    fractalDimension: lastOf(fractalDimensionSeries(cl, 32)),
+    entropy: lastOf(entropySeries(cl, 32, 6)),
+    skew: lastOf(skewSeries(cl, 20)),
+    kurtosis: lastOf(kurtosisSeries(cl, 20)),
+    cusum: lastOf(cusumSeries(cl, 20)),
+    kalman: lastOf(kalmanSeries(cl)),
   };
+}
+
+// ── Parabolic SAR ──────────────────────────────────────────────────────────
+// A trend-following stop-and-reverse line. It accelerates toward the extreme
+// point as the trend extends and flips to the other side of price on a break,
+// so it doubles as a trailing stop and a trend-state read.
+export function psarSeries(c, step = 0.02, maxAf = 0.2) {
+  const n = c.length;
+  const out = new Array(n).fill(null);
+  if (n < 2) return out;
+
+  let bull = c[1].close >= c[0].close;
+  let af = step;
+  let ep = bull ? Math.max(c[0].high, c[1].high) : Math.min(c[0].low, c[1].low);
+  let sar = bull ? Math.min(c[0].low, c[1].low) : Math.max(c[0].high, c[1].high);
+  out[0] = sar;
+
+  for (let i = 1; i < n; i++) {
+    sar += af * (ep - sar);
+    if (bull) {
+      sar = Math.min(sar, c[i - 1].low, i >= 2 ? c[i - 2].low : c[i - 1].low);
+      if (c[i].low < sar) { bull = false; sar = ep; ep = c[i].low; af = step; }
+      else if (c[i].high > ep) { ep = c[i].high; af = Math.min(maxAf, af + step); }
+    } else {
+      sar = Math.max(sar, c[i - 1].high, i >= 2 ? c[i - 2].high : c[i - 1].high);
+      if (c[i].high > sar) { bull = true; sar = ep; ep = c[i].high; af = step; }
+      else if (c[i].low < ep) { ep = c[i].low; af = Math.min(maxAf, af + step); }
+    }
+    out[i] = sar;
+  }
+  return out;
+}
+
+export function psar(c, step, maxAf) {
+  const s = psarSeries(c, step, maxAf);
+  return s[s.length - 1] ?? null;
+}
+
+// Williams %R with its overbought / oversold ranges resolved into a label, so a
+// caller reads a zone rather than a bare number.
+export function williamsRRanges(c, p = 14, overbought = -20, oversold = -80) {
+  const series = williamsRSeries(c, p);
+  const zone = series.map(v => {
+    if (v == null) return null;
+    if (v >= overbought) return 'overbought';
+    if (v <= oversold) return 'oversold';
+    return 'neutral';
+  });
+  const i = c.length - 1;
+  return {
+    series, zone,
+    value: series[i] ?? null,
+    state: zone[i] ?? null,
+    overbought, oversold,
+  };
+}
+
+// ── quantitative indicators ────────────────────────────────────────────────
+// Rolling statistics that describe the *character* of the series rather than a
+// direction: how far it has strayed, how persistent it is, how ordered it is.
+
+// How many standard deviations the last value sits from its rolling mean.
+export function zscoreSeries(arr, p = 20) {
+  const out = new Array(arr.length).fill(null);
+  for (let i = p - 1; i < arr.length; i++) {
+    const win = arr.slice(i - p + 1, i + 1);
+    const sd = stdev(win);
+    out[i] = sd ? (arr[i] - mean(win)) / sd : 0;
+  }
+  return out;
+}
+
+export function zscore(arr, p = 20) { return lastOf(zscoreSeries(arr, p)); }
+
+// Kaufman efficiency ratio: net move divided by total path travelled. 1 means a
+// clean trend, near 0 means the price worked hard to go nowhere.
+export function efficiencyRatioSeries(c, p = 20) {
+  const cl = closes(c);
+  const out = new Array(c.length).fill(null);
+  for (let i = p; i < cl.length; i++) {
+    const net = Math.abs(cl[i] - cl[i - p]);
+    let path = 0;
+    for (let j = i - p + 1; j <= i; j++) path += Math.abs(cl[j] - cl[j - 1]);
+    out[i] = path ? net / path : 0;
+  }
+  return out;
+}
+
+export function efficiencyRatio(c, p = 20) { return lastOf(efficiencyRatioSeries(c, p)); }
+
+// Choppiness index: high values mean a ranging market, low values a trending
+// one. Bounded roughly 0–100.
+export function choppinessSeries(c, p = 14) {
+  const tr = trueRangeSeries(c);
+  const out = new Array(c.length).fill(null);
+  for (let i = p - 1; i < c.length; i++) {
+    let sumTr = 0, hi = -Infinity, lo = Infinity;
+    for (let j = i - p + 1; j <= i; j++) {
+      sumTr += tr[j];
+      hi = Math.max(hi, c[j].high);
+      lo = Math.min(lo, c[j].low);
+    }
+    const range = hi - lo;
+    out[i] = range > 0 && sumTr > 0 ? (100 * Math.log10(sumTr / range)) / Math.log10(p) : null;
+  }
+  return out;
+}
+
+export function choppiness(c, p = 14) { return lastOf(choppinessSeries(c, p)); }
+
+// Hurst exponent via rescaled range over a rolling window. >0.5 is persistent
+// (trending), <0.5 mean-reverting, 0.5 a random walk.
+export function hurstSeries(arr, p = 64) {
+  const out = new Array(arr.length).fill(null);
+  for (let i = p - 1; i < arr.length; i++) {
+    const win = arr.slice(i - p + 1, i + 1);
+    const m = mean(win);
+    let cum = 0, maxC = -Infinity, minC = Infinity, s2 = 0;
+    for (let j = 0; j < win.length; j++) {
+      const d = win[j] - m;
+      s2 += d * d;
+      cum += d;
+      maxC = Math.max(maxC, cum);
+      minC = Math.min(minC, cum);
+    }
+    const sd = Math.sqrt(s2 / win.length);
+    const rs = sd ? (maxC - minC) / sd : 0;
+    out[i] = rs > 0 ? Math.log(rs) / Math.log(p) : 0.5;
+  }
+  return out;
+}
+
+export function hurst(arr, p = 64) { return lastOf(hurstSeries(arr, p)); }
+
+// Fractal dimension of the price path (Sevcik's method). Near 1 the path is a
+// straight line; higher values mean a more convoluted, noisier path.
+export function fractalDimensionSeries(arr, p = 32) {
+  const out = new Array(arr.length).fill(null);
+  for (let i = p - 1; i < arr.length; i++) {
+    const win = arr.slice(i - p + 1, i + 1);
+    const hi = max(win), lo = min(win);
+    const span = hi - lo || 1;
+    let len = 0;
+    for (let j = 1; j < win.length; j++) {
+      const dx = 1 / (win.length - 1);
+      const dy = (win[j] - win[j - 1]) / span;
+      len += Math.hypot(dx, dy);
+    }
+    out[i] = len > 0 ? 1 + Math.log(len) / Math.log(2 * (win.length - 1)) : 1;
+  }
+  return out;
+}
+
+export function fractalDimension(arr, p = 32) { return lastOf(fractalDimensionSeries(arr, p)); }
+
+// Shannon entropy of binned returns. Low values mean a predictable, ordered
+// tape; high values mean noise.
+export function entropySeries(arr, p = 32, bins = 6) {
+  const out = new Array(arr.length).fill(null);
+  for (let i = p; i < arr.length; i++) {
+    const rets = [];
+    for (let j = i - p + 1; j <= i; j++) rets.push(arr[j] - arr[j - 1]);
+    const hi = max(rets), lo = min(rets);
+    const span = hi - lo || 1;
+    const hist = new Array(bins).fill(0);
+    rets.forEach(r => {
+      const b = Math.min(bins - 1, Math.max(0, Math.floor(((r - lo) / span) * bins)));
+      hist[b]++;
+    });
+    let h = 0;
+    hist.forEach(n => { if (n) { const q = n / rets.length; h -= q * Math.log2(q); } });
+    out[i] = bins > 1 ? h / Math.log2(bins) : 0;
+  }
+  return out;
+}
+
+export function entropy(arr, p = 32, bins = 6) { return lastOf(entropySeries(arr, p, bins)); }
+
+export function skewSeries(arr, p = 20) {
+  const out = new Array(arr.length).fill(null);
+  for (let i = p - 1; i < arr.length; i++) {
+    const win = arr.slice(i - p + 1, i + 1);
+    const m = mean(win);
+    const sd = stdev(win);
+    out[i] = sd ? win.reduce((a, x) => a + ((x - m) / sd) ** 3, 0) / win.length : 0;
+  }
+  return out;
+}
+
+export function skew(arr, p = 20) { return lastOf(skewSeries(arr, p)); }
+
+export function kurtosisSeries(arr, p = 20) {
+  const out = new Array(arr.length).fill(null);
+  for (let i = p - 1; i < arr.length; i++) {
+    const win = arr.slice(i - p + 1, i + 1);
+    const m = mean(win);
+    const sd = stdev(win);
+    out[i] = sd ? win.reduce((a, x) => a + ((x - m) / sd) ** 4, 0) / win.length - 3 : 0;
+  }
+  return out;
+}
+
+export function kurtosis(arr, p = 20) { return lastOf(kurtosisSeries(arr, p)); }
+
+// CUSUM of standardised deviations from the rolling mean. A large absolute
+// reading flags a sustained statistical shift rather than a single outlier.
+export function cusumSeries(arr, p = 20) {
+  const out = new Array(arr.length).fill(null);
+  let acc = 0;
+  for (let i = p - 1; i < arr.length; i++) {
+    const win = arr.slice(i - p + 1, i + 1);
+    const m = mean(win);
+    const sd = stdev(win) || 1;
+    acc += (arr[i] - m) / sd;
+    out[i] = acc;
+  }
+  return out;
+}
+
+export function cusum(arr, p = 20) { return lastOf(cusumSeries(arr, p)); }
+
+// A one-dimensional Kalman filter used as an adaptive trend line: the gain
+// rises with process noise so the line tracks a fast tape without overshooting
+// a quiet one.
+export function kalmanSeries(arr, processNoise = 1e-2, measureNoise = 1e-1) {
+  const out = new Array(arr.length).fill(null);
+  if (!arr.length) return out;
+  let x = arr[0], p = 1;
+  out[0] = x;
+  for (let i = 1; i < arr.length; i++) {
+    p += processNoise;
+    const k = p / (p + measureNoise);
+    x += k * (arr[i] - x);
+    p *= 1 - k;
+    out[i] = x;
+  }
+  return out;
+}
+
+export function kalman(arr, processNoise, measureNoise) {
+  return lastOf(kalmanSeries(arr, processNoise, measureNoise));
 }
 
 // ── sizing helper retained from the original engine ────────────────────────

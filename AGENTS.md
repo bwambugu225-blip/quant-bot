@@ -60,6 +60,13 @@ src/
 - `marketStore.js` `onHistory(sym, times, prices)` seeds the tick buffer and
   `bucketTicks` aggregates into candles for every timeframe; `onTick` extends
   the live candle and opens a new one on the bucket boundary.
+- The same tape is also folded into **fixed-tick-count bars** (`TICK_BAR_SIZES`
+  = `10 25 50 100 200`): `bucketTicksByCount(times, prices, n)` closes a bar
+  every `n` ticks regardless of the clock, and `tickBars(sym, size)` reads them.
+  The Chart header's "Tick bars" control switches the chart to these, with a
+  size picker; "Tick chart" draws the raw tape as a line. Comparing a setup on
+  time bars against the same setup on tick bars shows whether it is driven by
+  the clock or by how much the tape actually moved.
 - The timeframe ladder (`TIMEFRAMES`) is `5s 10s 15s 30s 1m 2m 3m 4m 5m 6m 7m
   8m 9m 10m 11m 12m 13m 14m 15m` — 19 entries. `TF_SEC` maps an id to seconds.
 - `5s` is the default timeframe. A 1000-tick import spans ~33 min on the
@@ -87,9 +94,18 @@ Stochastic, Stoch RSI, Williams %R, CCI, Rate of Change, Momentum, Aroon,
 Ichimoku, SuperTrend, VWAP, OBV, MFI, Volume, TRIX, Williams Alligator, Awesome
 Oscillator, Chaikin Money Flow, Klinger Oscillator, Fisher Transform, Vortex,
 Detrended Price Oscillator, Ease of Movement, Elder's Force Index, Ultimate
-Oscillator, `pivotPoints` and `volumeProfile`. Helpers: `heikenAshi`,
-`isPinbar`, `isStrong`, `calcKelly`, `lastOf`, and `indicatorSnapshot(candles)`
-which returns 40+ named scalar readings for the analytics panel.
+Oscillator, Parabolic SAR (`psarSeries`), `pivotPoints` and `volumeProfile`.
+Helpers: `heikenAshi`, `isPinbar`, `isStrong`, `calcKelly`, `lastOf`, and
+`indicatorSnapshot(candles)` which returns 50+ named scalar readings for the
+analytics panel.
+
+A **quantitative** family sits alongside the classic TA: `zscoreSeries`,
+`efficiencyRatioSeries`, `choppinessSeries`, `hurstSeries`,
+`fractalDimensionSeries`, `entropySeries`, `skewSeries`, `kurtosisSeries`,
+`cusumSeries` and `kalmanSeries`. These describe the *character* of the series
+(persistent vs mean-reverting, ordered vs noisy, tail-heavy) rather than a
+direction, and each is a plain series so it is usable in the builder too.
+`williamsRRanges` returns the %R series plus its zone label.
 
 Two contracts worth keeping:
 
@@ -102,6 +118,34 @@ Two contracts worth keeping:
   new reference to re-render; returning the internal array (or the live,
   in-place-mutated last candle) is what froze the chart after mount. Keep the
   clone.
+
+## Intelligence layers
+
+Four modules sit on top of the raw tape and feed the Analytics panel. Each is
+pure (no state, no I/O) and unit-tested against a deterministic tape, so a
+reading is reproducible.
+
+- `microstructure.js` — tick-level reads off `store.ticks(sym)` (prices + times):
+  velocity, acceleration, tick frequency, direction ratio, streak, displacement,
+  price efficiency, tick/realised volatility, a short-vs-long volatility burst
+  ratio, trend strength, reversal rate and an exhaustion read. `tickIntelligence`
+  bundles them and derives a bounded `pressure` in `[-1, 1]`.
+- `marketStructure.js` — swing detection and structure labelling (HH/HL/LH/LL),
+  break-of-structure / change-of-character events, fair-value gaps, order blocks,
+  liquidity sweeps, equal highs/lows and a premium/discount split of the dealing
+  range. `structureRead(candles)` returns the whole bundle.
+- `candleIntelligence.js` — per-bar anatomy: body strength, upper/lower wick
+  pressure, displacement vs the recent range, streak, rejection wicks, engulfing,
+  inside/outside bars, three-candle reversals, imbalance and effort-vs-result.
+  `candleRead(candles)` is the latest-bar read.
+- `aiComposites.js` — ten named composites (Velocity Pulse, Exhaustion Radar,
+  Liquidity Trap, Microstructure Pressure, Volatility Storm, Reversal
+  Probability, Breakout Quality, Trend Persistence, Regime Classifier and a
+  Confluence verdict) plus `aiRead({candles, prices, times})`. Each composite
+  returns a `0–100` score with the evidence behind it; the Confluence line is the
+  agreement-weighted verdict (`BUY` / `SELL` / `WAIT FOR CONFIRMATION` /
+  `STAND ASIDE`). Honesty rule: a score is a statement about the measured sample,
+  never a promise about the next contract.
 
 ## Strategy builder
 
@@ -228,20 +272,23 @@ scope. Market data needs no login.
 - `styles.css` is one flat institutional dark palette — page `#0a0c11`, panels
   `#0f1218`, hairline `#1c222b`, up `#2bb673`, down `#e0524f`, accent `#4c86e0`.
   Hairlines and tabular monospace, no gradients or glows. Keep it that way.
-- `Chart.jsx` is self-contained SVG (not canvas): candles/line, EMA/SMA/BB/
-  SuperTrend/VWAP overlays, a volume histogram, an RSI/MACD sub-pane, a
-  price+time axis grid, a last-price tag and a pointer crosshair with an OHLC
-  readout. The view is a horizontal window over the candle buffer — drag to pan,
-  scroll or pinch to zoom, double-click (or the ⟲ control) to snap back to the
-  live edge. While the window sits at the live edge it follows new candles; once
-  panned back it holds its place. The windowing math lives in
-  `src/lib/chartView.js` (`visibleWindow` / `zoomWindow` / `panWindow`) so it is
-  unit-tested without a DOM.
+- `Chart.jsx` is self-contained SVG (not canvas): candles/line/Heiken-Ashi,
+  EMA/SMA/BB/SuperTrend/VWAP/Parabolic-SAR overlays, a volume histogram, an
+  RSI/MACD/Williams-%R sub-pane, a price+time axis grid, a last-price tag and a
+  pointer crosshair with an OHLC readout. The header switches the bar source
+  (time / tick bars / raw tick line) and the chart mode. The view is a horizontal
+  window over the candle buffer — drag to pan, scroll or pinch to zoom,
+  double-click (or the ⟲ control) to snap back to the live edge. While the window
+  sits at the live edge it follows new candles; once panned back it holds its
+  place. The windowing math lives in `src/lib/chartView.js` (`visibleWindow` /
+  `zoomWindow` / `panWindow`) so it is unit-tested without a DOM.
 - `Analytics.jsx` leads with a one-line **Signal** read (blended trend bias +
-  agreement, ADX regime, volatility state, momentum) and shows the 40+
-  indicators grouped into Trend / Momentum / Volatility / Volume / Levels behind
-  a segmented control, so only the important readings are on screen at once.
-  Digit distribution and market structure stay as collapsed panels.
+  agreement, ADX regime, volatility state, momentum) and an **AI Confluence**
+  panel (the ten composites with a verdict line), then Microstructure, Market
+  Structure and Candle Intelligence panels, then the 50+ indicators grouped into
+  Trend / Momentum / Volatility / Volume / Levels / Quant behind a segmented
+  control, so only the important readings are on screen at once. Digit
+  distribution and market structure stay as collapsed panels.
 - `icons.jsx` holds the stroked rail icons — the rail carries no emoji.
 
 ## Tests and CI
@@ -250,10 +297,13 @@ scope. Market data needs no login.
   `tests/helpers.mjs` builds deterministic tick tapes and a fake WebSocket
   client — only the socket boundary (`send`/`buy`) is faked; the store,
   indicators, strategy builder, backtester and engine routing are the real code.
-- Suites: `marketStore.test.mjs`, `indicators.test.mjs`,
-  `strategyBuilder.test.mjs`, `backtest.test.mjs`, `engine.test.mjs`,
-  `connection.test.mjs` (the reconnect loop, stream health and `close()` against
-  a stub WebSocket).
+- Suites: `marketStore.test.mjs`, `indicators.test.mjs`, `quant.test.mjs` (the
+  quantitative family — PSAR, Williams %R zones, z-score, efficiency ratio,
+  choppiness, Hurst, fractal dimension, entropy, skew, kurtosis, CUSUM, Kalman),
+  `intelligence.test.mjs` (microstructure, market structure, candle intelligence,
+  the AI composites and tick-bar folding), `strategyBuilder.test.mjs`,
+  `backtest.test.mjs`, `engine.test.mjs`, `connection.test.mjs` (the reconnect
+  loop, stream health and `close()` against a stub WebSocket).
 - `.github/dependabot.yml` keeps npm deps and workflow actions current.
   Dependabot PRs run with a read-only token, so
   `.github/workflows/dependabot-auto-merge.yml` reacts to the **CI run

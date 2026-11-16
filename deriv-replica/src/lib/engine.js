@@ -36,7 +36,7 @@ export class Engine {
     this.store = new MarketStore();
     this.client = null;
 
-    this.selectedSymbol = 'R_100';
+    this.selectedSymbol = 'R_75';
     this.selectedTf = '5s';
     this.running = false;
     this.strategy = null;

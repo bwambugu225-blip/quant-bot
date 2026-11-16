@@ -274,6 +274,12 @@ input, select { font-family: inherit; font-variant-numeric: tabular-nums; }
 .signal__fill.is-up { background: var(--up); }
 .signal__fill.is-down { background: var(--down); }
 .signal__grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.ai-verdict { display: flex; align-items: baseline; gap: 10px; padding: 6px 9px; margin-bottom: 8px; background: var(--bg-1); border: 1px solid var(--line); border-radius: var(--radius); }
+.ai-verdict__score { font-family: var(--mono); font-size: 24px; font-weight: 700; letter-spacing: -.5px; }
+.ai-verdict.is-up .ai-verdict__score, .ai-verdict.is-up .ai-verdict__label { color: var(--up); }
+.ai-verdict.is-down .ai-verdict__score, .ai-verdict.is-down .ai-verdict__label { color: var(--down); }
+.ai-verdict__label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+.ai-verdict__meta { font-family: var(--mono); font-size: 10px; color: var(--text-mute); margin-left: auto; }
 .mini { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; background: var(--bg-1); padding: 6px 9px; }
 .mini__k { font-size: 9.5px; color: var(--text-mute); text-transform: uppercase; letter-spacing: .6px; }
 .mini__v { font-family: var(--mono); font-size: 12px; font-weight: 600; text-transform: capitalize; }

@@ -14,8 +14,28 @@ export const CURRENCY = 'KES';
 export const USD_KES = 130;
 
 // The venue's minimum stake, and the terminal's default everywhere a stake is
-// entered.
+// entered. Quoted in the account's own currency.
 export const DEFAULT_STAKE = 0.35;
+
+// The terminal is KES-native: the stake field shows and accepts shillings, and
+// the amount is converted to the account's own currency only when a proposal is
+// built. So the number on screen is the number traded, whichever currency the
+// account is denominated in.
+export function stakeInKes(stake, accountCurrency = CURRENCY) {
+  return accountCurrency === CURRENCY ? Number(stake || 0) : toKes(stake);
+}
+
+export function stakeFromKes(value, accountCurrency = CURRENCY) {
+  const n = Number(value || 0);
+  return accountCurrency === CURRENCY ? n : n / USD_KES;
+}
+
+// Smallest stake the terminal will send, expressed in shillings. The venue
+// minimum is 0.35 in the account's own currency, so the KES figure depends on
+// the account: 0.35 KES for a KES account, the converted value otherwise.
+export function minStakeKes(accountCurrency = CURRENCY) {
+  return Math.round(stakeInKes(DEFAULT_STAKE, accountCurrency) * 100) / 100;
+}
 
 export function addComma(value, decimals = 2) {
   return Number(value || 0).toLocaleString('en-US', {
