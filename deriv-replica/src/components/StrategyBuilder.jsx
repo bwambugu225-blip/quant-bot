@@ -2,7 +2,8 @@ import React from 'react';
 import {
   INDICATORS, OPERATORS, defaultParamsFor, describeStrategy, validateStrategy, STRATEGY_TEMPLATES,
 } from '../lib/strategyBuilder.js';
-import { TIMEFRAMES } from '../lib/marketStore.js';
+import { TIMEFRAMES, TICK_BAR_SIZES } from '../lib/marketStore.js';
+import { TRADE_TYPES, findTradeType } from '../lib/contracts.js';
 import { CURRENCY, stakeLabel, stakeInKes, stakeFromKes, minStakeKes, money } from '../lib/format.js';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
@@ -121,7 +122,7 @@ function GroupEditor({ group, onChange, onRemove, depth = 0 }) {
 }
 
 // ── main builder ───────────────────────────────────────────────────────────
-export default function StrategyBuilder({ strategy, onChange, onBacktest, onStart, onStartBest, onStop, running, backtest, symbols, onSymbol, currency, tune }) {
+export default function StrategyBuilder({ strategy, onChange, onBacktest, onStart, onStop, running, backtest, symbols, onSymbol, currency }) {
   if (!strategy) return <div className="empty">No strategy loaded</div>;
   const s = strategy;
   const errors = validateStrategy(s);
@@ -133,13 +134,28 @@ export default function StrategyBuilder({ strategy, onChange, onBacktest, onStar
     onChange(t);
   };
 
+  // The entry rule reads either clock candles (the timeframe) or fixed-tick
+  // bars: a bar closes every N ticks regardless of the clock, so the signal is
+  // a statement about how much the tape actually moved, not about the time.
+  const barSource = s.barSize ? 'ticks' : 'time';
+
   return (
     <div className="builder">
       <div className="builder__bar">
         <input className="builder__name" value={s.name} onChange={e => set({ name: e.target.value })} placeholder="Strategy name" />
-        <select className="sel" value={s.timeframe} onChange={e => set({ timeframe: e.target.value })}>
-          {TIMEFRAMES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+        <select className="sel" value={barSource} onChange={e => set({ barSize: e.target.value === 'ticks' ? (s.barSize || TICK_BAR_SIZES[0]) : null })}>
+          <option value="time">Time bars</option>
+          <option value="ticks">Tick bars</option>
         </select>
+        {barSource === 'time' ? (
+          <select className="sel" value={s.timeframe} onChange={e => set({ timeframe: e.target.value })}>
+            {TIMEFRAMES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        ) : (
+          <select className="sel" value={s.barSize || TICK_BAR_SIZES[0]} onChange={e => set({ barSize: +e.target.value })}>
+            {TICK_BAR_SIZES.map(n => <option key={n} value={n}>{n}-tick bars</option>)}
+          </select>
+        )}
         <select className="sel" value="" onChange={e => { if (e.target.value !== '') loadTemplate(+e.target.value); }}>
           <option value="">Load template…</option>
           <option value="0">EMA cross + trend filter</option>
@@ -148,41 +164,14 @@ export default function StrategyBuilder({ strategy, onChange, onBacktest, onStar
           <option value="3">SuperTrend follow</option>
         </select>
         <button className="btn" onClick={onBacktest} type="button">Run backtest</button>
-        <button className={`btn ${running ? '' : 'btn--primary'}`} onClick={running ? onStop : (onStartBest || onStart)} type="button"
-          title="Auto-tune over every indicator, pick the best, then trade">
+        <button className={`btn ${running ? '' : 'btn--primary'}`} onClick={running ? onStop : onStart} type="button"
+          title="Trade this strategy on the selected market">
           {running ? 'Stop bot' : 'Start bot'}
         </button>
         <span style={{ marginLeft: 'auto', fontSize: 11, color: errors.length ? 'var(--down)' : 'var(--up)' }}>
           {errors.length ? errors[0] : 'Strategy valid'}
         </span>
       </div>
-
-      {tune && (
-        <div className="tune">
-          <div className="tune__head">
-            <span className="tune__title">Auto-tune</span>
-            <span className="tune__meta">{tune.evaluated} candidates · {tune.barSize}-tick bars ·{' '}
-              {tune.best ? `best: ${tune.best.name}` : 'no candidate cleared the bar'}</span>
-          </div>
-          {tune.ranked?.length > 0 && (
-            <table className="tbl tune__tbl">
-              <thead><tr><th>#</th><th>Strategy</th><th>Trades</th><th>Win</th><th>Score</th><th>Edge</th></tr></thead>
-              <tbody>
-                {tune.ranked.map((r, i) => (
-                  <tr key={i}>
-                    <td className="dim">{i + 1}</td>
-                    <td>{r.name}</td>
-                    <td>{r.count}</td>
-                    <td className={r.winRate >= 0.5 ? 'is-up' : 'is-down'}>{(r.winRate * 100).toFixed(0)}%</td>
-                    <td className={r.score > 0 ? 'is-up' : 'is-down'}>{r.score.toFixed(1)}</td>
-                    <td className={r.edge >= 0 ? 'is-up' : 'is-down'}>{(r.edge * 100).toFixed(1)}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
 
       <div className="builder__scroll">
         <div className="section-title">Entry — LONG (buy Rise / Call)</div>
@@ -194,16 +183,7 @@ export default function StrategyBuilder({ strategy, onChange, onBacktest, onStar
           : <button className="add-btn" onClick={() => set({ short: { logic: 'AND', conditions: [newCondition()] } })} type="button">+ add short entry</button>}
 
         <div className="section-title">Contract</div>
-        <div className="risk-grid">
-          <label className="field"><span className="field__lbl">Duration</span>
-            <input type="number" min="1" value={s.action?.duration ?? 5} onChange={e => set({ action: { ...s.action, duration: +e.target.value } })} />
-          </label>
-          <label className="field"><span className="field__lbl">Unit</span>
-            <select value={s.action?.durationUnit || 't'} onChange={e => set({ action: { ...s.action, durationUnit: e.target.value } })}>
-              <option value="t">Ticks</option><option value="s">Seconds</option><option value="m">Minutes</option>
-            </select>
-          </label>
-        </div>
+        <ContractEditor action={s.action} onChange={action => set({ action })} />
 
         <div className="section-title">Risk &amp; money management</div>
         <RiskEditor risk={s.risk} onChange={risk => set({ risk })} currency={currency} />
@@ -221,6 +201,80 @@ export default function StrategyBuilder({ strategy, onChange, onBacktest, onStar
         )}
       </div>
     </div>
+  );
+}
+
+// The contract the strategy trades. Every directional catalogue product is
+// available, so the same entry rule can be settled as Rise/Fall, Higher/Lower,
+// Touch/No Touch, Even/Odd, Over/Under, Matches/Differs, Multipliers or any
+// other call/put-style contract. Only the inputs that product needs are shown;
+// a barrier left blank is derived from spot at entry time.
+function ContractEditor({ action = {}, onChange }) {
+  const set = patch => onChange({ ...action, ...patch });
+  const type = action.type || 'rise_fall';
+  const t = findTradeType(type);
+  const has = k => t.inputs.includes(k);
+  const units = (t.durationUnits || []).filter(u => u !== 'd');
+  const unitLabels = { t: 'Ticks', s: 'Seconds', m: 'Minutes', h: 'Hours' };
+  const changeType = id => {
+    const nt = findTradeType(id);
+    const nextUnit = nt.durationUnits.includes(action.durationUnit) ? action.durationUnit : (nt.durationUnits[0] || 't');
+    onChange({ type: id, duration: action.duration ?? 5, durationUnit: nextUnit, barrier: action.barrier, barrier2: action.barrier2, digit: action.digit ?? 5, selectedTick: action.selectedTick ?? 1, multiplier: action.multiplier ?? 100, equals: !!action.equals });
+  };
+  return (
+    <>
+      <div className="risk-grid">
+        <label className="field"><span className="field__lbl">Contract type</span>
+          <select value={type} onChange={e => changeType(e.target.value)}>
+            {TRADE_TYPES.map(tt => <option key={tt.id} value={tt.id}>{tt.label}</option>)}
+          </select>
+        </label>
+        {has('duration') && (
+          <label className="field"><span className="field__lbl">Duration</span>
+            <input type="number" min="1" value={action.duration ?? 5} onChange={e => set({ duration: +e.target.value })} />
+          </label>
+        )}
+        {has('duration') && units.length > 0 && (
+          <label className="field"><span className="field__lbl">Unit</span>
+            <select value={action.durationUnit || units[0]} onChange={e => set({ durationUnit: e.target.value })}>
+              {units.map(u => <option key={u} value={u}>{unitLabels[u] || u}</option>)}
+            </select>
+          </label>
+        )}
+        {has('digit') && (
+          <label className="field"><span className="field__lbl">Last digit</span>
+            <input type="number" min="0" max="9" value={action.digit ?? 5} onChange={e => set({ digit: Math.max(0, Math.min(9, +e.target.value)) })} />
+          </label>
+        )}
+        {has('barrier') && (
+          <label className="field"><span className="field__lbl">Barrier (blank = spot)</span>
+            <input type="number" step="any" value={action.barrier ?? ''} onChange={e => set({ barrier: e.target.value === '' ? null : +e.target.value })} />
+          </label>
+        )}
+        {has('barrier2') && (
+          <label className="field"><span className="field__lbl">Barrier 2 (blank = ATR)</span>
+            <input type="number" step="any" value={action.barrier2 ?? ''} onChange={e => set({ barrier2: e.target.value === '' ? null : +e.target.value })} />
+          </label>
+        )}
+        {has('selectedTick') && (
+          <label className="field"><span className="field__lbl">Selected tick</span>
+            <input type="number" min="1" max="5" value={action.selectedTick ?? 1} onChange={e => set({ selectedTick: Math.max(1, Math.min(5, +e.target.value)) })} />
+          </label>
+        )}
+        {has('multiplier') && (
+          <label className="field"><span className="field__lbl">Multiplier</span>
+            <input type="number" min="1" value={action.multiplier ?? 100} onChange={e => set({ multiplier: +e.target.value })} />
+          </label>
+        )}
+        {type === 'rise_fall' && (
+          <label className="check" style={{ alignSelf: 'end' }}>
+            <input type="checkbox" checked={!!action.equals} onChange={e => set({ equals: e.target.checked })} />
+            Allow equals (Rise/Fall Equals)
+          </label>
+        )}
+      </div>
+      <p style={{ color: 'var(--text-mute)', fontSize: 11, marginTop: 6 }}>{t.tooltip}</p>
+    </>
   );
 }
 

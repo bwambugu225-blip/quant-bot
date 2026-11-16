@@ -209,14 +209,24 @@ export async function refreshAccessToken(refreshToken, clientId) {
   });
 }
 
+// A refresh failure only ends the session when the server says the grant itself
+// is dead. Anything else — offline, a timeout, a 5xx, a backgrounded tab — is
+// transient and the session must survive it: clearing here is what logged the
+// user out whenever a long-backgrounded tab tried to refresh.
+export function isFatalRefreshError(err) {
+  const m = (err?.message || '').toLowerCase();
+  return m.includes('invalid_grant') || m.includes('invalid_client') || m.includes('unauthorized');
+}
+
 // Refresh the stored session if it is close to expiry. Returns the access token
-// (possibly just refreshed) or null when there is no usable session. A failed
-// refresh clears the session so the app falls back to the login prompt.
+// (possibly just refreshed), or null only when there is genuinely no usable
+// session. A transient refresh failure keeps the current (possibly expired)
+// token so the caller can retry; only a dead grant clears the session.
 export async function ensureAccessToken() {
   const session = readOAuthSession();
   if (!session?.access_token) return null;
   if (isSessionFresh(session)) return session.access_token;
-  if (!session.refresh_token) { clearOAuthSession(); return null; }
+  if (!session.refresh_token) return session.access_token;   // nothing to refresh with; keep what we have
   try {
     const body = await refreshAccessToken(session.refresh_token, session.client_id || oauthClientId());
     const next = sessionFromTokenResponse(body, { clientId: session.client_id, scope: session.scope });
@@ -224,8 +234,8 @@ export async function ensureAccessToken() {
     saveOAuthSession(next);
     return next.access_token;
   } catch (e) {
-    clearOAuthSession();
-    return null;
+    if (isFatalRefreshError(e)) { clearOAuthSession(); return null; }
+    return session.access_token;   // transient — keep the session and retry later
   }
 }
 

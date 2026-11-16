@@ -48,7 +48,7 @@ src/
                         Panel, Modals
   lib/                  derivClient, oauth, symbols, marketStore, indicators,
                         strategyBuilder, backtest, contracts, engine, analytics,
-                        useEngine, usePayout, format
+                        useEngine, usePayout, format, studies, ticker
 ```
 
 ## Market data: 1000 ticks → 19 timeframes
@@ -167,6 +167,10 @@ Start button). `describeStrategy` renders the expression for the Preview line.
 `STRATEGY_TEMPLATES` are the starter strategies; `defaultStrategy()` is the
 default (EMA 9/21 cross + RSI filter, 5s).
 
+The strategy's `action` is the trade it places — `{ type, contract, duration,
+durationUnit, barrier?, allowEquals? }` — chosen in the builder's ContractEditor
+against the `contracts.js` `TRADE_TYPES` catalogue, not a fixed Rise/Fall.
+
 ### DSL gotchas
 
 - Operand resolution and the compiler both go through `INDICATORS`, so a new
@@ -187,65 +191,38 @@ runs inside the backtest exactly as it does live.
 Honest limit: close-to-close is a proxy for a tick contract, not the exchange's
 own settlement — the panel says so.
 
-## Auto-tune and chart studies
+## Manual strategy, contract selection, and chart studies
 
-Two pieces sit on top of the DSL and the chart.
+The bot is **manual only**: the trader builds one strategy and it trades the
+selected market. There is no auto-tune and no auto-scan — `autoTune.js`,
+`marketScanner.js` and the ScanBoard were removed, along with their tests. The
+engine's tick handler evaluates the built strategy on the selected symbol's
+closed bars and nothing else.
 
-### Auto-tune (`autoTune.js`)
+### Contract selection (`contracts.js` + `ContractEditor`)
 
-- **Default trading cadence is 10 ticks.** `DEFAULT_BAR_SIZE = 10`. An
-  auto-tuned strategy carries a `barSize`; the engine's `barsFor()` reads that
-  strategy's candles from the **tick-bar** buffer (`store.tickBars(sym, barSize)`)
-  instead of the clock, so the signal is a statement about 10 completed ticks.
-  `_maybeEvaluate` keys its "seen candle" map on `sym:timeframe:barSize` so a
-  tick-bar run and a clock run never collide.
-- **A rule template per indicator.** `indicatorTemplates(barSize)` builds a
-  long/short rule pair for every registry entry (except `price`, the raw
-  price-field pseudo-entry) from a `KIND` map — moving averages cross price,
-  bands cross their edges, oscillators revert at 30/70, MACD-style series cross
-  zero, ADX/Aroon/Vortex/Alligator/Ichimoku compare their own legs, quant
-  measures (z-score, Hurst, fractal dimension, entropy, skew, kurtosis) gate a
-  directional bias. A `GRID` gives each kind a small parameter sweep.
-- **Scoring and the winner.** `runBacktest(s, bars, { barTicks })` models the
-  hold: on tick-count bars a tick-unit duration is `duration / barTicks` bars.
-  `scoreBacktest` ranks by per-stake expectancy, profit factor and drawdown
-  penalty, and rejects runs with fewer than `minTrades` trades. `autoTune`
-  crowns the top candidate **only if it actually made money** (positive
-  expectancy and score); otherwise `best` is null. Honest limit: on Deriv's
-  fair random-walk indices that is the common case, and the engine says so
-  rather than dressing noise up as edge.
-- **`engine.startBest()`** tunes, adopts the winner (`Auto · <indicator>`), then
-  calls `start()`. The ranked board lands in the snapshot as `state.tune` and is
-  rendered on the Strategy tab.
-
-### Auto-scan (`marketScanner.js`)
-
-- **One toggle widens the search from one market to all of them.** The
-  **Auto-scan** chip in the chart toolbar (`engine.setAutoScan(true)`) ranks
-  every market with a warm tape (`scanUniverse()`, ≥ `WARMUP_TICKS` ticks) for
-  the *running* strategy and trades the first market whose closed bar fires the
-  rule — picking the highest-scoring one when several fire together. The ranking
-  needs no login; only the entry does, so the board fills the moment the toggle
-  is on.
-- **The score is the auto-tuner's own figure.** `scoreMarket` runs
-  `runBacktest` then `scoreBacktest` on each market's bars (`barsFor(sym)` —
-  tick bars for a `barSize` strategy, clock candles otherwise), so "best market"
-  and "best strategy" are measured the same way. `scanMarkets` orders the board.
-- **Off the hot path.** The scan runs from the 1s watchdog on its own
-  `SCAN_INTERVAL_MS` (900ms) cadence, never inside the tick handler. A full
-  29-market scan measures ~17ms.
-- **The entry is a decision over the universe, not a race.** In auto-scan mode
-  every market's closed bar is evaluated; a fire is queued (`_pendingSignals`)
-  and the choice waits one tick after the most recent fire
-  (`_resolvePendingSignals`), so markets that fire near-simultaneously are
-  compared in the same window instead of whichever ticked first winning by
-  accident. The winner is mirrored into `state.autoMarket` (and its symbol into
-  `lastSignal.asset`), and the Auto-scan leaderboard in the right column shows
-  the live ranking with the pick highlighted.
-- **Honest limit.** On Deriv's fair random-walk indices no market carries a real
-  edge, so a high score is a statement about the recent sample on that market.
-  The scanner orders candidates; the strategy's own rule still decides whether
-  anything fires, so a quiet tape correctly produces no entries.
+- **The strategy picks its own contract.** `strategy.action` carries
+  `{ type, contract, duration, durationUnit, barrier?, barrier2?, digit?,
+  multiplier?, selectedTick?, equals? }`. The builder's **ContractEditor** shows
+  only the inputs the chosen product needs, so a strategy is not locked to
+  Rise/Fall.
+- **Bar source is a strategy choice.** The builder header picks **Time bars**
+  (the timeframe) or **Tick bars** (a fixed tick count, `TICK_BAR_SIZES`). A
+  strategy carrying `barSize` reads `store.tickBars(sym, barSize)` instead of the
+  clock; `engine.barsFor()` is the single switch and the backtester honours the
+  same `barSize`.
+- **`TRADE_TYPES` covers the directional catalogue**: Rise/Fall (incl. Equals),
+  Higher/Lower, Touch/No Touch, Matches/Differs, Even/Odd, Over/Under,
+  Stays/Goes, Ends Between/Outside, **Multipliers** (`multipliers`, leveraged
+  long/short), and the digit/last-digit families. `findTradeType(id)` resolves a
+  type by id.
+- **Barrier derivation.** Types that need a barrier (Higher/Lower, Touch,
+  Stays/Goes, Ends…) derive one from spot via ATR when the strategy leaves it
+  blank; `engine._fillBarrier` snaps a spot-derived barrier to the published
+  ladder from `contracts_for`. The barrier and `equals` flag pass straight into
+  `buildProposal`.
+- **Multipliers** are leveraged long/short: `buildProposal` maps the side to
+  `MULTUP` / `MULTDOWN` with the chosen stake and multiplier.
 
 ### Chart studies (`studies.js` + `Chart.jsx`)
 
@@ -274,20 +251,27 @@ timeframe / strategy, and the session bookkeeping. It attaches to a
   the tape is warm. In practice the 1000-tick import means the start is
   immediate.
 - **Evaluation.** On each tick the engine checks whether a new candle has
-  closed for the selected timeframe; if so it evaluates the strategy on the
-  closed candles and, on a signal, builds a proposal via `contracts.js`
-  `buildProposal` and sends it. One entry per closed candle (`_lastEvalCandle`).
+  closed for the selected market's timeframe; if so it evaluates the built
+  strategy on the closed candles and, on a signal, builds a proposal via
+  `contracts.js` `buildProposal` and sends it. One entry per closed candle
+  (`_lastEvalCandle`). Only the **selected symbol** is evaluated — there is no
+  auto-scan across markets.
 - **Catalogue shaping.** `_ensureSpecs` fetches each market's `contracts_for`
   (TTL-cached) and `_snapBarrier` snaps a spot-derived barrier to the published
-  ladder; a contract the market does not list is skipped.
+  ladder; a contract the market does not list is skipped. `_fillBarrier` derives
+  a barrier from spot via ATR when the strategy's contract type needs one and
+  none was entered.
 - **Lifecycle.** `_onProposal` → `_onBuy` → `_onContract`; settlement updates
   wins/losses/pnl and the report table. `_sessionAllows` enforces take-profit /
   stop-loss / max-trades / max-losses and stops the run when a cap is hit.
   `_stakeFor` applies the martingale ladder.
+- **Persistence.** `_saveBot()` writes the strategy, market, timeframe and
+  running flag to `localStorage`; `restoreBot()` restores them on boot and
+  `attach()`'s `authorized` handler resumes a run that was live before a reload.
 - **Latency.** `_recordExec` / `execStats` report the rolling p50/p95 of
   tick→proposal-received.
-- Timers (`sendingTimeout`, the `_watch` watchdog) are `unref()`'d so headless
-  runs and tests exit cleanly.
+- The engine watchdog is a `ticker.js` subscription (see the connection
+  section), so it keeps its 1s cadence in a hidden tab.
 
 Constants: `DEFAULT_STAKE=0.35` (the venue minimum, and the default
 everywhere a stake is entered), `MIN_STAKE=0.35`, `MAX_STAKE=200`,
@@ -327,9 +311,27 @@ stake is `KES 0.35`.
   surfaces it in the snapshot and `useEngine` polls it once a second for the
   status bar. Market-state transitions are logged through the `market-state`
   event.
+- **Trading keeps running when the tab is hidden.** Browsers throttle window
+  timers in a hidden tab (down to once a minute), which used to stall the engine
+  watchdog, the socket heartbeat and the stale-feed watch exactly when the bot
+  was meant to keep going. `src/lib/ticker.js` runs a shared 1s tick in a
+  dedicated Web Worker (window timers are throttled; worker timers are not),
+  with a `setInterval` fallback when Workers are unavailable. The engine
+  watchdog, `startHeartbeat` and `_startStaleWatch` all subscribe to it; each
+  subscriber is an unsubscribe function, not a raw interval id.
 - **No self-logout.** `restoreSession`/`keepSessionAlive` in `useEngine.js`
   refresh an OAuth session in place (once a minute) and retry transient
-  failures; a failure never clears the session. Only the Log out button does.
+  failures; a failure never clears the session. `oauth.js` only clears the
+  session on a dead grant (invalid_grant / invalid refresh token) — a network
+  error, timeout, 5xx or a backgrounded tab keeps it. The header and Trade panel
+  key off `state.loggedIn` (session alive) rather than `state.auth` (socket
+  live), so a reconnect blip shows "reconnecting", not a logout. Only the Log
+  out button clears the session, and it also stops the bot.
+- **The bot survives a reload.** `engine._saveBot()` persists the strategy,
+  market, timeframe and running flag to `localStorage`; `restoreBot()` (called
+  from `useEngine` on boot) brings them back and, if the bot was running, sets a
+  resume flag so the run restarts the moment the restored session authorises.
+  A tab close is therefore a pause, not a stop.
 - `oauth.js` — OAuth 2.0 Authorization Code + PKCE. `beginOAuth` builds the
   authorize URL and stores verifier/state; `completeOAuth(search)` runs the
   token exchange and stores the session. The redirect URI is
@@ -378,8 +380,11 @@ scope. Market data needs no login.
   choppiness, Hurst, fractal dimension, entropy, skew, kurtosis, CUSUM, Kalman),
   `intelligence.test.mjs` (microstructure, market structure, candle intelligence,
   the AI composites and tick-bar folding), `strategyBuilder.test.mjs`,
-  `backtest.test.mjs`, `engine.test.mjs`, `connection.test.mjs` (the reconnect
-  loop, stream health and `close()` against a stub WebSocket).
+  `backtest.test.mjs`, `studies.test.mjs` (panel split and study→series
+  resolution), `engine.test.mjs` (incl. a Higher/Lower proposal with a derived
+  barrier), `resilience.test.mjs` (bot persistence + resume-on-authorise) and
+  `connection.test.mjs` (the reconnect loop, stream health and `close()` against
+  a stub WebSocket).
 - `.github/dependabot.yml` keeps npm deps and workflow actions current.
   Dependabot PRs run with a read-only token, so
   `.github/workflows/dependabot-auto-merge.yml` reacts to the **CI run

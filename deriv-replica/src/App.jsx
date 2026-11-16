@@ -6,7 +6,6 @@ import StrategyBuilder from './components/StrategyBuilder.jsx';
 import TradeDock from './components/TradeDock.jsx';
 import TickerTape from './components/TickerTape.jsx';
 import StatusBar from './components/StatusBar.jsx';
-import ScanBoard from './components/ScanBoard.jsx';
 import { Positions, Reports, Logs } from './components/Tables.jsx';
 import { SymbolPicker, LoginModal, Modal, IndicatorPicker } from './components/Modals.jsx';
 import { IconChart, IconStrategy, IconPositions, IconReports, IconLog } from './components/icons.jsx';
@@ -103,14 +102,11 @@ export default function App() {
     setBacktest(r ? { ...r, __sym: symbol } : null);
   };
 
-  // Start bot: auto-tune over the imported tape, adopt the best strategy, then
-  // start. Falls back to the loaded strategy when nothing clears the bar. The
-  // tuner's own backtest is shown, so the panel reflects what is now trading.
+  // Start bot: trade the strategy exactly as built. If the user is not
+  // authorised yet, open the login prompt instead.
   const startBot = () => {
-    if (!state?.auth) { setLoginOpen(true); return; }
-    engine.startBest(symbol);
-    const best = engine.lastTune?.best;
-    if (best) setBacktest({ ...best.backtest, __sym: symbol, __auto: true, __name: best.strategy.name });
+    if (!state?.loggedIn) { setLoginOpen(true); return; }
+    engine.start();
   };
 
   const addStudy = study => {
@@ -121,7 +117,10 @@ export default function App() {
   const removePane = () => setPane('none');
 
   const ticks = state?.ticks ?? 0;
-  const live = !!state?.auth;
+  // `loggedIn` survives a socket blip; `auth` is the live socket. The header
+  // shows the account whenever the session is alive, so a background reconnect
+  // never looks like a logout.
+  const live = !!state?.loggedIn;
 
   return (
     <div className="app">
@@ -142,7 +141,7 @@ export default function App() {
           <span>{live ? 'LIVE' : health?.connected ? 'MARKET FEED' : 'CONNECTING'}</span>
           <span style={{ color: 'var(--text-mute)' }}>· {ticks} ticks</span>
         </div>
-        {state?.auth ? (
+        {state?.loggedIn ? (
           <div className="acct">
             <span className="acct__bal">{money(state.balance, state.currency)}</span>
             <span className="acct__cur">{state.currency || CURRENCY}</span>
@@ -177,14 +176,12 @@ export default function App() {
                 strategy={strategy}
                 onChange={s => engine.setStrategy(s)}
                 onBacktest={onBacktest}
-                onStart={() => engine.start()}
-                onStartBest={startBot}
+                onStart={startBot}
                 onStop={() => engine.stop()}
                 running={!!state?.running}
                 backtest={backtest}
                 symbols={SYMBOLS}
                 currency={state?.currency}
-                tune={state?.tune}
               />
             </div>
           ) : view === 'positions' || view === 'reports' || view === 'logs' ? (
@@ -246,23 +243,13 @@ export default function App() {
 
                 <button className="btn btn--ghost btn--sm" onClick={() => setIndOpen(true)} type="button" title="Add an indicator to the chart">+ Indicator</button>
 
-                <button
-                  className={`chip-toggle${state?.autoScan ? ' is-on' : ''}`}
-                  onClick={() => engine.setAutoScan(!state?.autoScan)}
-                  type="button"
-                  title="Rank every market for the running strategy and trade the first one that fires, picking the strongest when several fire together"
-                >
-                  <span className={`dot ${state?.autoScan ? 'is-live is-pulse' : ''}`} />
-                  Auto-scan
-                </button>
-
                 <div className="topbar__spacer" />
                 {state?.running && (
                   <span className="pill is-up">BOT · {strategy?.name} · {state.warmup?.have} warm</span>
                 )}
                 {state?.running
                   ? <button className="btn btn--down btn--sm" onClick={() => engine.stop()} type="button">Stop bot</button>
-                  : <button className="btn btn--ghost btn--sm" onClick={startBot} type="button" title="Auto-tune, pick the best strategy, then trade">Start bot</button>}
+                  : <button className="btn btn--ghost btn--sm" onClick={startBot} type="button" title="Trade the built strategy on the selected market">Start bot</button>}
               </div>
 
               <Chart candles={candles} up={up} overlays={overlays} pane={pane} mode={barSource === 'tick' ? 'line' : chartMode} symbol={symbol} studies={studies} onRemoveStudy={removeStudy} onRemoveOverlay={removeOverlay} onRemovePane={removePane} />
@@ -272,14 +259,9 @@ export default function App() {
           {view === 'trade' && (
             <aside className="dock">
               <Analytics candles={candles} digits={digits} sym={symbol} price={price} prices={tickData.prices} times={tickData.times} />
-              {state?.autoScan && (
-                <Panel title="Auto-scan" count={state?.scanBoard?.length ? `top ${state.scanBoard.length}` : 'idle'} defaultOpen>
-                  <ScanBoard board={state?.scanBoard ?? []} autoMarket={state?.autoMarket} active={symbol} />
-                </Panel>
-              )}
-              <Panel title="Trade" count={state?.auth ? 'ready' : 'login'} defaultOpen>
+              <Panel title="Trade" count={state?.auth ? 'ready' : state?.loggedIn ? 'reconnecting' : 'login'} defaultOpen>
                 <TradeDock
-                  auth={!!state?.auth}
+                  auth={!!state?.loggedIn}
                   onLogin={() => setLoginOpen(true)}
                   onTrade={(type, side, value) => engine.placeTrade(type, side, value)}
                   client={client}
@@ -325,23 +307,18 @@ export default function App() {
           </p>
           <p style={{ color: 'var(--text-dim)', lineHeight: 1.7 }}>
             Build a strategy on the <b>Strategy</b> tab: nest AND/OR groups, compare any indicator,
-            price field or constant with greater/less, cross-over/under, rising/falling. Run a backtest
-            to see how it would have traded the imported history, then <b>Start bot</b>.
+            price field or constant with greater/less, cross-over/under, rising/falling. Choose the
+            <b>contract</b> the setup settles as — Rise/Fall, Higher/Lower, Touch/No Touch, Even/Odd,
+            Over/Under, Matches/Differs, Multipliers, Asians, Resets, High/Low Tick — and set its
+            duration, stake and barriers. Run a backtest to see how it would have traded the imported
+            history, then <b>Start bot</b>.
           </p>
           <p style={{ color: 'var(--text-dim)', lineHeight: 1.7 }}>
-            <b>Start bot auto-tunes.</b> It builds a rule template for every indicator in the registry,
-            backtests each one (and a parameter grid around them) over the imported tape on <b>10-tick
-            bars</b>, and trades the best. It only crowns a winner that actually made money over the
-            sample; on a fair tape with no edge it keeps the loaded strategy and says so. The ranked
-            board is shown on the Strategy tab.
-          </p>
-          <p style={{ color: 'var(--text-dim)', lineHeight: 1.7 }}>
-            <b>Auto-scan</b> widens the search from one market to all of them. While it is on, the engine
-            ranks every market for the running strategy on its own cadence and places the entry on the
-            first market whose closed bar fires the rule — picking the highest-scoring one when several
-            fire together. The <b>Auto-scan</b> leaderboard in the right column shows the live ranking and
-            which market the next entry prefers. It never fabricates a trade to keep a beat: a quiet tape
-            produces no entries, and the strategy's own rule still decides what fires.
+            <b>Start bot trades the strategy exactly as built</b> — there is no auto-tuner. The entry
+            rule you see is the rule the engine runs, evaluated on each closed bar of the strategy's
+            source (a clock candle, or fixed-tick-count bars). A long signal takes the long side of the
+            chosen contract, a short signal the short side. A barrier you leave blank is derived from the
+            live spot price at entry.
           </p>
           <p style={{ color: 'var(--text-dim)', lineHeight: 1.7 }}>
             Add any indicator to the chart with <b>+ Indicator</b>: price-scale studies (moving averages,
@@ -350,10 +327,10 @@ export default function App() {
             zoom, and double-click to snap back to the live edge.
           </p>
           <p>
-            The bot evaluates a strategy when a bar of its source closes — a clock candle, or a
-            <b>10-tick</b> bar for auto-tuned strategies — and places the contract through the same Deriv
-            proposal path as a manual trade. Every stake, profit and balance is shown in Kenyan shillings;
-            the default stake is <b>KES 0.35</b>.
+            The bot keeps running when the tab is in the background: the market feed and the trading
+            socket reconnect on their own, and the session refreshes in place — a backgrounded tab or a
+            laptop sleep needs no reload and never logs you out. Every stake, profit and balance is shown
+            in Kenyan shillings; the default stake is <b>KES 0.35</b>.
           </p>
         </Modal>
       )}

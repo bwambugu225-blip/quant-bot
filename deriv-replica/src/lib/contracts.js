@@ -92,6 +92,13 @@ export const TRADE_TYPES = [
     contracts: { up: 'TICKHIGH', down: 'TICKLOW' }, sides: ['High Tick', 'Low Tick'], tickWindow: 5,
   },
   {
+    id: 'multipliers', label: 'Multipliers',
+    tooltip: 'Open a leveraged long or short position; profit scales with the move, losses are capped at your stake.',
+    category: 'growth_based', popular: true,
+    inputs: ['stake', 'multiplier'], durationUnits: [],
+    contracts: { up: 'MULTUP', down: 'MULTDOWN' }, sides: ['Up', 'Down'],
+  },
+  {
     id: 'lookbacks', label: 'Lookbacks',
     tooltip: 'Payout scales with the range the price covers over the period.',
     category: 'growth_based',

@@ -11,6 +11,8 @@
 //   • authenticated trading: the OTP-issued URL from POST
 //     /trading/v1/options/accounts/{id}/otp (…/ws/real or …/ws/demo).
 // The legacy ws.derivws.com/websockets/v3 endpoint is kept only as a fallback.
+import { onTick } from './ticker.js';
+
 const PUBLIC_WS = 'wss://api.derivws.com/trading/v1/options/ws/public';
 const WS_BASE = 'wss://ws.derivws.com/websockets/v3';
 
@@ -41,7 +43,12 @@ export class DerivClient {
     this.accountId = null;
     this.accountType = 'demo';
     this.balance = 0;
+    // `auth` is the live socket's authorised state; `loggedIn` is the session's.
+    // They differ while the trading socket is reconnecting: the session is still
+    // valid, so the UI must not show the user as logged out just because the
+    // socket blipped (a backgrounded tab, a sleep, a network change).
     this.auth = false;
+    this.loggedIn = false;
     this.connected = false;
     this.handlers = {};
     this.mwsAttempts = 0;
@@ -78,7 +85,10 @@ export class DerivClient {
     const revive = () => {
       if (this._closing) return;
       this.connectMarket();
-      if (this.auth && this.token) this._scheduleRecon(true);
+      // Rebuild the trading socket from the session, not the socket's own flag:
+      // the session can outlive a dropped socket, and that is exactly the state
+      // a backgrounded tab wakes up in.
+      if (this.loggedIn && this.token) this._scheduleRecon(true);
     };
     window.addEventListener('online', revive);
     window.addEventListener('focus', revive);
@@ -133,18 +143,21 @@ export class DerivClient {
   }
 
   // A feed that has gone quiet for a while is as broken as one that closed.
-  // If no tick has arrived for 45s, drop the socket and let it reconnect.
+  // If no tick has arrived for 45s, drop the socket and let it reconnect. Runs
+  // on the shared worker-backed ticker so it keeps watching in a hidden tab.
   _startStaleWatch() {
     if (this._staleTimer) return;
-    this._staleTimer = setInterval(() => {
+    this._staleSecs = 0;
+    this._staleTimer = onTick(() => {
       if (this._closing) return;
+      if (++this._staleSecs < 15) return;
+      this._staleSecs = 0;
       const age = this._lastTickAt ? Date.now() - this._lastTickAt : Date.now() - this._mwsStartedAt;
       if (age > 45000 && this.mws && this.mws.readyState === WebSocket.OPEN) {
         this.emit('log', { t: `[MARKET] No ticks for ${Math.round(age / 1000)}s — reconnecting`, k: 'w' });
         try { this.mws.close(); } catch (e) { /* ignore */ }
       }
-    }, 15000);
-    this._staleTimer.unref?.();
+    });
   }
 
   // Rebuild the market stream without a page reload.
@@ -209,6 +222,7 @@ export class DerivClient {
   // authenticated REST call so an expired OAuth session refreshes in place.
   async authorize(token, options = {}) {
     this.token = token;
+    this.loggedIn = true;
     this.authMode = options.authMode || this.authMode || 'oauth';
     if (options.tokenProvider !== undefined) this._tokenProvider = options.tokenProvider;
     let accounts = this._oauthAccounts;
@@ -369,7 +383,12 @@ export class DerivClient {
     ws.onerror = () => { clearTimeout(timeout); this.emit('auth-failed', 'WebSocket connection failed'); };
     ws.onclose = () => {
       clearTimeout(timeout);
-      if (this.ws === ws) { this.auth = false; this.connected = false; this.emit('close'); }
+      if (this.ws !== ws) return;
+      this.auth = false; this.connected = false;
+      this.emit('close');
+      // A dropped trading socket is not a logout: rebuild it from the session
+      // and keep trading, the same way the market stream does.
+      if (!this._closing && this.loggedIn && this.token) this._scheduleRecon();
     };
   }
 
@@ -418,8 +437,37 @@ export class DerivClient {
     if (this._reconn && !force) return;
     if (this._reconn) { clearTimeout(this._reconn); this._reconn = null; }
     const delay = force ? 0 : Math.min(1000 * Math.pow(1.5, this._reconnAttempts++), 15000);
-    this._reconn = setTimeout(() => { if (this.token && !this._closing) this._connectDirect(this.token); }, delay);
+    this._reconn = setTimeout(() => this._reconnectTrading(), delay);
     this._reconn.unref?.();
+  }
+
+  // Rebuild the trading socket, refreshing an OAuth access token first so a
+  // long-backgrounded session reconnects with a valid token instead of a stale
+  // one. Prefers re-issuing the OTP trading socket (the documented auth path)
+  // and falls back to the direct token socket. Never clears the session: a
+  // failed refresh keeps the current token and the next attempt retries.
+  async _reconnectTrading() {
+    if (this._closing || !this.loggedIn) return;
+    if (this._tokenProvider) {
+      try { const fresh = await this._tokenProvider(); if (fresh) this.token = fresh; }
+      catch (e) { /* keep the current token; retry on the next attempt */ }
+    }
+    if (!this.token) return;
+    if (this.accountId) {
+      try {
+        const resp = await fetch(`${REST_ACCOUNTS}/${this.accountId}/otp`, {
+          method: 'POST',
+          headers: await this._authHeaders(),
+          body: '{}',
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          const url = data.data?.url || data.url;
+          if (url) { this._connectOTP(url); return; }
+        }
+      } catch (e) { /* fall through to the direct socket */ }
+    }
+    this._connectDirect(this.token);
   }
 
   // ── Subscriptions ──────────────────────────────────────────────────────
@@ -453,13 +501,16 @@ export class DerivClient {
 
   startHeartbeat() {
     if (this._heartbeat) return;
-    this._heartbeat = setInterval(() => {
+    this._beatSecs = 0;
+    this._heartbeat = onTick(() => {
+      if (++this._beatSecs < 15) return;
+      this._beatSecs = 0;
       if (this.ws && this.ws.readyState === WebSocket.OPEN) { try { this.send({ ping: 1 }); } catch (e) {} }
       if (this.mws && this.mws.readyState === WebSocket.OPEN) { try { this._sendOn(this.mws, { ping: 1 }); } catch (e) {} }
-    }, 15000);
+    });
   }
 
-  stopHeartbeat() { if (this._heartbeat) { clearInterval(this._heartbeat); this._heartbeat = null; } }
+  stopHeartbeat() { if (this._heartbeat) { this._heartbeat(); this._heartbeat = null; } }
 
   _onMessage(e, source) {
     let msg; try { msg = JSON.parse(e.data); } catch (ex) { return; }
@@ -566,13 +617,13 @@ export class DerivClient {
   close() {
     this._closing = true;
     this.stopHeartbeat();
-    if (this._staleTimer) { clearInterval(this._staleTimer); this._staleTimer = null; }
+    if (this._staleTimer) { this._staleTimer(); this._staleTimer = null; }
     if (this._mwsReconn) { clearTimeout(this._mwsReconn); this._mwsReconn = null; }
     if (this._reconn) { clearTimeout(this._reconn); this._reconn = null; }
     if (this.ws) { try { this.ws.close(); } catch (e) { /* ignore */ } }
     if (this.mws) { try { this.mws.close(); } catch (e) { /* ignore */ } }
     this.ws = null; this.mws = null;
-    this.auth = false; this.connected = false;
+    this.auth = false; this.loggedIn = false; this.connected = false;
     this._setMwsState('idle');
   }
 }

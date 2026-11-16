@@ -35,6 +35,9 @@ export function useEngine() {
     engine.on('log', onLog);
     engine.on('toast', onToast);
     engine.on('authorized', onState);
+    // Bring back the persisted desk (strategy, market, and whether the bot was
+    // running) before the first snapshot, so a reload lands on the same setup.
+    engine.restoreBot();
     setState(engine.snapshot());
     // Boot the public market feed immediately — the layout shows live data
     // before the user authorises.
@@ -70,9 +73,11 @@ export function useEngine() {
   );
 
   const logout = useCallback(() => {
+    engineRef.current.stop();
     clientRef.current.close();
     clearOAuthSession();
     try { localStorage.removeItem('deriv_token'); } catch (e) { /* ignore */ }
+    setState(engineRef.current.snapshot());
   }, []);
 
   const reconnectMarket = useCallback(() => clientRef.current.reconnectMarket(), []);

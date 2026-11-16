@@ -82,3 +82,16 @@ test('a strategy with no matching condition takes no trades', () => {
   assert.equal(r.count, 0);
   assert.equal(r.pnl, 0);
 });
+
+test('a tick-bar backtest reads a tick-unit hold as a fraction of a bar', () => {
+  const bars = candles(200, 3, 0.0002);
+  const s = {
+    name: 'x', timeframe: '5s', barSize: 10,
+    long: { logic: 'AND', conditions: [{ left: { kind: 'price' }, op: 'gt', right: { kind: 'const', value: 0 } }] },
+    short: null,
+    risk: { stake: 0.35, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0, martingale: false },
+    action: { contract: 'CALL', duration: 10, durationUnit: 't' },
+  };
+  const r = runBacktest(s, bars, { barTicks: 10 });
+  assert.equal(r.hold, 1);           // 10-tick hold == one 10-tick bar
+});

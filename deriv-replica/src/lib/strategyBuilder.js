@@ -304,7 +304,7 @@ export function defaultStrategy() {
       stake: DEFAULT_STAKE, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0,
       martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed',
     },
-    action: { contract: 'CALL', duration: 10, durationUnit: 't' },
+    action: { type: 'rise_fall', contract: 'CALL', duration: 10, durationUnit: 't' },
   };
 }
 
@@ -321,7 +321,7 @@ export const STRATEGY_TEMPLATES = [
       { left: { kind: 'price' }, op: 'lt', right: { kind: 'indicator', name: 'sma', params: { period: 20 } } },
     ] },
     risk: { stake: DEFAULT_STAKE, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0, martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed' },
-    action: { contract: 'CALL', duration: 10, durationUnit: 't' },
+    action: { type: 'rise_fall', contract: 'CALL', duration: 10, durationUnit: 't' },
   }),
   () => ({
     id: 'bb-breakout', name: 'Bollinger breakout', timeframe: '5s',
@@ -334,7 +334,7 @@ export const STRATEGY_TEMPLATES = [
       { left: { kind: 'indicator', name: 'adx', output: 'adx', params: { period: 14 } }, op: 'gt', right: { kind: 'const', value: 20 } },
     ] },
     risk: { stake: DEFAULT_STAKE, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0, martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed' },
-    action: { contract: 'CALL', duration: 10, durationUnit: 't' },
+    action: { type: 'rise_fall', contract: 'CALL', duration: 10, durationUnit: 't' },
   }),
   () => ({
     id: 'supertrend', name: 'SuperTrend follow', timeframe: '5s',
@@ -347,6 +347,6 @@ export const STRATEGY_TEMPLATES = [
       { left: { kind: 'indicator', name: 'ema', params: { period: 50 } }, op: 'falling' },
     ] },
     risk: { stake: DEFAULT_STAKE, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0, martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed' },
-    action: { contract: 'CALL', duration: 10, durationUnit: 't' },
+    action: { type: 'rise_fall', contract: 'CALL', duration: 10, durationUnit: 't' },
   }),
 ];

@@ -204,35 +204,6 @@ input, select { font-family: inherit; font-variant-numeric: tabular-nums; }
 .tf:hover { background: var(--bg-3); color: var(--text); }
 .tf.is-active { background: var(--bg-4); color: var(--text); }
 
-.chip-toggle {
-  display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-dim);
-  background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 5px 9px;
-}
-.chip-toggle:hover { color: var(--text); border-color: var(--line-3); }
-.chip-toggle.is-on { color: var(--accent); border-color: var(--accent); }
-.chip-toggle .dot { width: 6px; height: 6px; }
-
-/* ── auto-scan leaderboard ─────────────────────────────────────────────── */
-.scanboard { display: flex; flex-direction: column; }
-.scanrow {
-  display: grid; grid-template-columns: 16px 1fr 42px 42px auto; align-items: center; gap: 8px;
-  padding: 4px 2px; border-bottom: 1px solid var(--line);
-}
-.scanrow:last-of-type { border-bottom: 0; }
-.scanrow.is-active { background: var(--bg-2); }
-.scanrow.is-pick { box-shadow: inset 2px 0 0 var(--accent); }
-.scanrow__rank { font-family: var(--mono); font-size: 10px; color: var(--text-mute); text-align: right; }
-.scanrow__sym { display: flex; flex-direction: column; min-width: 0; }
-.scanrow__sym b { font-family: var(--mono); font-size: 11px; }
-.scanrow__name { font-size: 9.5px; color: var(--text-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.scanrow__bar { height: 4px; background: var(--bg-3); border-radius: 2px; overflow: hidden; }
-.scanrow__fill { display: block; height: 100%; }
-.scanrow__fill.is-up { background: var(--up); }
-.scanrow__fill.is-down { background: var(--down); }
-.scanrow__score { font-family: var(--mono); font-size: 10.5px; text-align: right; }
-.scanrow__meta { font-family: var(--mono); font-size: 9.5px; color: var(--text-mute); text-align: right; white-space: nowrap; }
-.scanboard__note { margin-top: 6px; font-size: 10px; color: var(--text-mute); line-height: 1.5; }
-
 /* ── chart ─────────────────────────────────────────────────────────────── */
 .chartwrap { position: relative; flex: 1; min-height: 0; background: var(--bg-0); cursor: crosshair; touch-action: none; }
 .chartwrap.is-panning { cursor: grabbing; }
@@ -471,14 +442,6 @@ input, select { font-family: inherit; font-variant-numeric: tabular-nums; }
 .ind-row__meta { font-family: var(--mono); font-size: 10px; color: var(--text-mute); }
 .ind-row__add { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--accent); font-weight: 700; }
 .ind-row.is-added .ind-row__add { color: var(--text-mute); font-weight: 400; }
-
-/* ── auto-tune panel ───────────────────────────────────────────────────── */
-.tune { border: 1px solid var(--line); border-radius: 8px; margin: 10px 12px 0; background: var(--bg-2); }
-.tune__head { display: flex; align-items: baseline; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
-.tune__title { font-size: 10px; text-transform: uppercase; letter-spacing: .9px; color: var(--text-dim); font-weight: 600; }
-.tune__meta { font-size: 11px; color: var(--text-mute); font-family: var(--mono); }
-.tune__tbl { font-size: 11px; }
-.tune__tbl td, .tune__tbl th { padding: 5px 12px; }
 
 /* ── status bar ────────────────────────────────────────────────────────── */
 .statusbar {
