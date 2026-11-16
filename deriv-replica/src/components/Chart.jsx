@@ -21,6 +21,20 @@ import { STUDY_COLORS } from '../lib/studies.js';
 // or pinch to zoom. While the window sits at the live edge it follows new
 // candles; once the user pans back it holds its place until they return.
 const OVERLAY_COLORS = { ema9: '#4c86e0', ema21: '#c8a250', sma50: '#8b7fd4', bb: '#3d4756', st: '#2bb673', vwap: '#d99a3a', psar: '#e0524f' };
+const overlayLegend = [
+  { key: 'ema9', label: 'EMA 9', color: OVERLAY_COLORS.ema9 },
+  { key: 'ema21', label: 'EMA 21', color: OVERLAY_COLORS.ema21 },
+  { key: 'sma50', label: 'SMA 50', color: OVERLAY_COLORS.sma50 },
+  { key: 'bb', label: 'BB 20/2', color: OVERLAY_COLORS.bb },
+  { key: 'st', label: 'SuperTrend', color: OVERLAY_COLORS.st },
+  { key: 'vwap', label: 'VWAP', color: OVERLAY_COLORS.vwap },
+  { key: 'psar', label: 'PSAR', color: OVERLAY_COLORS.psar },
+];
+const paneLegend = {
+  rsi: { label: 'RSI 14', color: '#8b7fd4' },
+  macd: { label: 'MACD 12/26/9', color: '#3fa9c9' },
+  willr: { label: 'Williams %R 14', color: '#c8a250' },
+};
 
 // Oscillator studies whose range is fixed, so their pane does not jump as the
 // window moves. Everything else auto-scales to the visible series.
@@ -49,7 +63,7 @@ const fmtT = epoch => {
 
 const isNum = v => v != null && Number.isFinite(v);
 
-export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'], pane = 'rsi', mode = 'candles', symbol, studies = [], onRemoveStudy }) {
+export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'], pane = 'rsi', mode = 'candles', symbol, studies = [], onRemoveStudy, onRemoveOverlay, onRemovePane }) {
   const wrapRef = React.useRef(null);
   const { w, h } = useSize(wrapRef);
   const [hover, setHover] = React.useState(null);
@@ -458,13 +472,18 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
       )}
 
       <div className="chart-legend">
-        {overlays.includes('ema9') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.ema9 }} />EMA 9</div>}
-        {overlays.includes('ema21') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.ema21 }} />EMA 21</div>}
-        {overlays.includes('sma50') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.sma50 }} />SMA 50</div>}
-        {overlays.includes('bb') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.bb }} />BB 20/2</div>}
-        {overlays.includes('st') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.st }} />SuperTrend</div>}
-        {overlays.includes('vwap') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.vwap }} />VWAP</div>}
-        {overlays.includes('psar') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.psar }} />PSAR</div>}
+        {overlayLegend.filter(o => overlays.includes(o.key)).map(o => (
+          <div className="legend" key={o.key}>
+            <span className="legend__swatch" style={{ background: o.color }} />{o.label}
+            {onRemoveOverlay && <button className="legend__x" onClick={() => onRemoveOverlay(o.key)} type="button" title="Remove from chart">×</button>}
+          </div>
+        ))}
+        {pane !== 'none' && (
+          <div className="legend">
+            <span className="legend__swatch" style={{ background: paneLegend[pane]?.color }} />{paneLegend[pane]?.label ?? pane}
+            {onRemovePane && <button className="legend__x" onClick={onRemovePane} type="button" title="Remove from chart">×</button>}
+          </div>
+        )}
         {mainStudies.map((s, si) => (
           <div className="legend" key={`lg${si}`} title={JSON.stringify(s.params)}>
             <span className="legend__swatch" style={{ background: STUDY_COLORS[(si * 2) % STUDY_COLORS.length] }} />

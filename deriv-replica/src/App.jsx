@@ -26,6 +26,8 @@ const OVERLAY_SETS = [
   { id: 'all', label: 'All overlays', overlays: ['ema9', 'ema21', 'bb', 'st', 'psar', 'vwap'] },
   { id: 'none', label: 'None', overlays: [] },
 ];
+const DEFAULT_OVERLAYS = OVERLAY_SETS.find(o => o.id === 'trend+bb').overlays;
+const sameOverlays = (a, b) => a.length === b.length && a.every(x => b.includes(x));
 const CHART_MODES = [['candles', 'Candles'], ['heiken', 'Heiken Ashi'], ['line', 'Line']];
 const NAV = [
   ['trade', 'Chart', IconChart],
@@ -42,7 +44,7 @@ export default function App() {
   const [chartMode, setChartMode] = React.useState('candles');
   const [barSource, setBarSource] = React.useState('time');  // time | tickbar | tick
   const [tickSize, setTickSize] = React.useState(10);
-  const [overlaySet, setOverlaySet] = React.useState('trend+bb');
+  const [overlays, setOverlays] = React.useState(DEFAULT_OVERLAYS);
   const [pane, setPane] = React.useState('rsi');
   const [symOpen, setSymOpen] = React.useState(false);
   const [loginOpen, setLoginOpen] = React.useState(false);
@@ -89,7 +91,11 @@ export default function App() {
   const up = price != null && prev.current != null ? price >= prev.current : true;
   React.useEffect(() => { if (price != null) prev.current = price; }, [price]);
 
-  const overlays = OVERLAY_SETS.find(o => o.id === overlaySet)?.overlays ?? [];
+  // Overlays are an explicit list so each can be removed straight from the
+  // chart legend. The dropdown is a shortcut that sets the list wholesale.
+  const activeOverlaySet = OVERLAY_SETS.find(o => sameOverlays(o.overlays, overlays))?.id ?? 'custom';
+  const applyOverlaySet = id => setOverlays(OVERLAY_SETS.find(o => o.id === id)?.overlays ?? []);
+  const removeOverlay = key => setOverlays(prev => prev.filter(o => o !== key));
 
   const onBacktest = () => {
     const r = engine.backtest(strategy, symbol);
@@ -111,6 +117,7 @@ export default function App() {
     setIndOpen(false);
   };
   const removeStudy = study => setStudies(prev => prev.filter(s => studyKey(s) !== studyKey(study)));
+  const removePane = () => setPane('none');
 
   const ticks = state?.ticks ?? 0;
   const live = !!state?.auth;
@@ -227,7 +234,8 @@ export default function App() {
 
                 <div className="tool-sep" />
 
-                <select className="sel" value={overlaySet} onChange={e => setOverlaySet(e.target.value)}>
+                <select className="sel" value={activeOverlaySet} onChange={e => applyOverlaySet(e.target.value)}>
+                  {activeOverlaySet === 'custom' && <option value="custom">Custom</option>}
                   {OVERLAY_SETS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
                 </select>
 
@@ -246,7 +254,7 @@ export default function App() {
                   : <button className="btn btn--ghost btn--sm" onClick={startBot} type="button" title="Auto-tune, pick the best strategy, then trade">Start bot</button>}
               </div>
 
-              <Chart candles={candles} up={up} overlays={overlays} pane={pane} mode={barSource === 'tick' ? 'line' : chartMode} symbol={symbol} studies={studies} onRemoveStudy={removeStudy} />
+              <Chart candles={candles} up={up} overlays={overlays} pane={pane} mode={barSource === 'tick' ? 'line' : chartMode} symbol={symbol} studies={studies} onRemoveStudy={removeStudy} onRemoveOverlay={removeOverlay} onRemovePane={removePane} />
             </div>
           )}
 

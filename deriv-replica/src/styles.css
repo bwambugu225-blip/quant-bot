@@ -232,11 +232,15 @@ input, select { font-family: inherit; font-variant-numeric: tabular-nums; }
 .chart-legend {
   position: absolute; top: 9px; right: 64px; display: flex; gap: 12px; align-items: center;
   font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); flex-wrap: wrap; justify-content: flex-end; max-width: 60%;
+  z-index: 2;
 }
 .legend { display: flex; align-items: center; gap: 5px; }
 .legend__swatch { width: 9px; height: 2px; border-radius: 1px; }
-.legend__x { border: 0; background: transparent; color: var(--text-mute); font-size: 12px; line-height: 1; padding: 0 1px; cursor: pointer; }
-.legend__x:hover { color: var(--down); }
+.legend__x {
+  border: 0; background: transparent; color: var(--text-mute); font-size: 13px; line-height: 1;
+  padding: 0 2px; cursor: pointer; border-radius: 3px;
+}
+.legend__x:hover { color: var(--down); background: rgba(255, 68, 79, 0.12); }
 .chart-note { position: absolute; bottom: 6px; left: 12px; font-size: 10px; color: var(--text-mute); font-family: var(--mono); letter-spacing: .2px; }
 .chart-hint { position: absolute; bottom: 6px; right: 12px; font-size: 10px; color: var(--text-mute); font-family: var(--mono); }
 
@@ -495,5 +499,10 @@ input, select { font-family: inherit; font-variant-numeric: tabular-nums; }
   .dock { width: 100%; border-left: 0; border-top: 1px solid var(--line); max-height: 46vh; }
   .rail { display: none; }
   .sym-list { grid-template-columns: 1fr; }
-  .chart-legend { display: none; }
+  .chart-legend {
+    top: auto; bottom: 22px; left: 8px; right: 8px; max-width: none;
+    gap: 8px; justify-content: flex-start; flex-wrap: wrap;
+  }
+  .legend { font-size: 10px; }
+  .legend__x { padding: 0 4px; font-size: 14px; }
 }
