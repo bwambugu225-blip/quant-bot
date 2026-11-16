@@ -14,7 +14,7 @@ export default function TradeDock({ auth, onLogin, onTrade, client, symbol, pric
   // The stake field is denominated in shillings; it is converted to the
   // account's own currency only when the proposal is built.
   const [stakeKes, setStakeKes] = React.useState(() => stakeInKes(DEFAULT_STAKE, currency));
-  const [duration, setDuration] = React.useState(5);
+  const [duration, setDuration] = React.useState(10);
   const [unit, setUnit] = React.useState('t');
   const [digit, setDigit] = React.useState(5);
 

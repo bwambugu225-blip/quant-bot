@@ -12,6 +12,7 @@ import { SYMBOLS, isDigitSymbol, decimalsFor, digitOf } from './symbols.js';
 import { buildProposal } from './contracts.js';
 import { evaluateStrategy, validateStrategy, describeStrategy } from './strategyBuilder.js';
 import { runBacktest } from './backtest.js';
+import { autoTune, DEFAULT_BAR_SIZE } from './autoTune.js';
 import { CURRENCY, DEFAULT_STAKE } from './format.js';
 
 const MIN_STAKE = DEFAULT_STAKE;
@@ -19,6 +20,9 @@ const MAX_STAKE = 200;
 const PROPOSAL_TIMEOUT = 6000;
 const WARMUP_TICKS = 100;
 const EXEC_WINDOW = 40;
+// Fixed-tick-count bars the auto-tuner evaluates on. A strategy carrying this
+// reads its candles from the tick-bar buffer instead of the clock.
+export const AUTO_BAR_SIZE = DEFAULT_BAR_SIZE;
 // How long a market's contracts_for catalogue is trusted. Spot-derived barriers
 // are re-priced every few seconds, so a cached ladder goes stale; one minute
 // keeps proposals valid without refetching on every entry.
@@ -190,6 +194,21 @@ export class Engine {
       strategyValid: this.strategy ? validateStrategy(this.strategy).length === 0 : false,
       strategyDesc: this.strategy ? describeStrategy(this.strategy) : '',
       risk: this.strategy?.risk || defaultRisk(),
+      tune: this.lastTune ? {
+        evaluated: this.lastTune.evaluated,
+        barSize: this.lastTune.barSize,
+        best: this.lastTune.best ? {
+          name: this.lastTune.best.strategy.name,
+          indicator: this.lastTune.best.strategy.indicator,
+          score: this.lastTune.best.score,
+          edge: this.lastTune.best.edge,
+          backtest: this.lastTune.best.backtest,
+        } : null,
+        ranked: (this.lastTune.ranked || []).slice(0, 8).map(r => ({
+          name: r.strategy.name, indicator: r.strategy.indicator, score: r.score, edge: r.edge,
+          count: r.backtest?.count ?? 0, winRate: r.backtest?.winRate ?? 0, pnl: r.backtest?.pnl ?? 0,
+        })),
+      } : null,
       wins: this.wins, losses: this.losses, pnl: this.pnl, trades: this.trades,
       consLoss: this.consLoss,
       bestTrade: this.bestTrade, worstTrade: this.worstTrade,
@@ -264,27 +283,35 @@ export class Engine {
     }
   }
 
-  // Evaluate the strategy when a new candle of the strategy timeframe has
-  // closed on the selected symbol. Automation never runs inside a forming
-  // candle — the signal is a statement about a completed bar.
+  // The candle buffer the strategy reads. A strategy that carries a `barSize`
+  // (the auto-tuner's output) reads fixed-tick-count bars so its signal is a
+  // statement about a fixed number of ticks; everything else reads the clock
+  // timeframe. Both return a fresh cloned array, so React re-renders.
+  barsFor(sym, strategy = this.strategy) {
+    if (strategy?.barSize) return this.store.tickBars(sym, strategy.barSize);
+    return this.store.candles(sym, strategy?.timeframe || '5s');
+  }
+
+  // Evaluate the strategy when a new bar of the strategy's source has closed on
+  // the selected symbol. Automation never runs inside a forming bar — the signal
+  // is a statement about a completed bar.
   _maybeEvaluate(sym) {
     if (!this.running || !this.strategy) return;
     if (this.activeContracts.size > 0) return;
     if (!this._sessionAllows()) return;
 
-    const tf = this.strategy.timeframe || '5s';
-    const candles = this.store.candles(sym, tf);
-    if (candles.length < 3) return;
-    // The last candle in the buffer is still forming; act on the one before it
-    // once it is complete, i.e. when a newer candle exists.
-    const closedIdx = candles.length - 2;
-    const closed = candles[closedIdx];
+    const bars = this.barsFor(sym);
+    if (bars.length < 3) return;
+    // The last bar in the buffer is still forming; act on the one before it
+    // once it is complete, i.e. when a newer bar exists.
+    const closedIdx = bars.length - 2;
+    const closed = bars[closedIdx];
     if (!closed) return;
-    const seenKey = `${sym}:${tf}`;
+    const seenKey = `${sym}:${this.strategy.timeframe || '5s'}:${this.strategy.barSize || 0}`;
     if (this._lastEvalCandle[seenKey] === closed.epoch) return;
     this._lastEvalCandle[seenKey] = closed.epoch;
 
-    const signal = evaluateStrategy(this.strategy, candles.slice(0, closedIdx + 1));
+    const signal = evaluateStrategy(this.strategy, bars.slice(0, closedIdx + 1));
     if (!signal) return;
     if (signal.action === 'both') return;
     this._execute(sym, signal);
@@ -571,9 +598,40 @@ export class Engine {
   // timeframe. Uses the same candles the live path reads.
   backtest(strategy = this.strategy, sym = this.selectedSymbol, opts = {}) {
     if (!strategy) return null;
-    const candles = this.store.candles(sym, strategy.timeframe || '5s');
-    if (candles.length < 20) return { error: 'Not enough history to backtest — import more ticks' };
-    return runBacktest(strategy, candles, opts);
+    const bars = this.barsFor(sym, strategy);
+    if (bars.length < 20) return { error: 'Not enough history to backtest — import more ticks' };
+    return runBacktest(strategy, bars, { ...opts, barTicks: strategy.barSize || opts.barTicks });
+  }
+
+  // ── Auto-tune ──────────────────────────────────────────────────────────
+  // Score every indicator template (and its parameter grid) over the imported
+  // tape and return the ranked list plus the winner. Pure read: it changes
+  // nothing the engine trades until the caller adopts a result.
+  autoTune(sym = this.selectedSymbol, opts = {}) {
+    const barSize = opts.barSize ?? AUTO_BAR_SIZE;
+    const candlesFor = s => this.store.tickBars(sym, s.barSize || barSize);
+    const res = autoTune(candlesFor, { ...opts, barSize });
+    return { ...res, sym, barSize };
+  }
+
+  // The user pressed Start: tune, adopt the best strategy, then start. If the
+  // tuner cannot find a strategy that clears the bar on this tape it says so and
+  // trades the loaded strategy unchanged rather than dressing up noise as edge.
+  startBest(sym = this.selectedSymbol, opts = {}) {
+    const tune = this.autoTune(sym, opts);
+    this.lastTune = tune;
+    if (tune.best) {
+      const chosen = { ...tune.best.strategy, id: `auto:${tune.best.strategy.indicator}`, name: `Auto · ${tune.best.strategy.name}` };
+      this.setStrategy(chosen);
+      const b = tune.best.backtest;
+      this.log(`[AUTO] Best of ${tune.evaluated}: "${chosen.name}" — ${b.count} trades, `
+        + `${(b.winRate * 100).toFixed(1)}% win, expectancy ${b.expectancy.toFixed(3)}, score ${tune.best.score.toFixed(1)}`, 's');
+      this.toast(`Auto-picked ${chosen.name}`, 'win');
+    } else {
+      this.log(`[AUTO] No template cleared the bar over ${tune.evaluated} candidates — keeping "${this.strategy?.name || 'none'}"`, 'w');
+      this.toast('No edge found — using the loaded strategy', 'w');
+    }
+    return this.start();
   }
 
   // ── Execution stats ────────────────────────────────────────────────────

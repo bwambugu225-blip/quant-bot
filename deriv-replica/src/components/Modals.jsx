@@ -1,5 +1,7 @@
 import React from 'react';
 import { SYMBOLS, SYMBOL_GROUPS } from '../lib/symbols.js';
+import { INDICATORS } from '../lib/strategyBuilder.js';
+import { defaultPanel, studyKey } from '../lib/studies.js';
 
 export function Modal({ title, onClose, children, width }) {
   return (
@@ -31,6 +33,39 @@ export function SymbolPicker({ current, onSelect, onClose }) {
             ))}
           </React.Fragment>
         ))}
+      </div>
+    </Modal>
+  );
+}
+
+// Add-indicator picker: every registry indicator, one click to add to the
+// chart. Grouped by panel (price overlay vs own pane) so the user knows where
+// it will land.
+export function IndicatorPicker({ onAdd, onClose, existing = [] }) {
+  const [q, setQ] = React.useState('');
+  const have = new Set(existing.map(studyKey));
+  const entries = Object.entries(INDICATORS).filter(([, i]) => i.label.toLowerCase().includes(q.toLowerCase()));
+  const overlays = entries.filter(([id]) => defaultPanel(id) === 'main');
+  const panes = entries.filter(([id]) => defaultPanel(id) !== 'main');
+  const row = ([id, ind]) => {
+    const study = { name: id, params: Object.fromEntries((ind.params || []).map(p => [p.key, p.def])), panel: defaultPanel(id) };
+    const added = have.has(studyKey(study));
+    return (
+      <button key={id} className={`ind-row${added ? ' is-added' : ''}`} onClick={() => onAdd(study)} type="button">
+        <span className="ind-row__name">{ind.label}</span>
+        <span className="ind-row__meta">{(ind.params || []).length ? ind.params.map(p => `${p.label} ${p.def}`).join(' · ') : 'no params'}</span>
+        <span className="ind-row__add">{added ? 'added' : '+'}</span>
+      </button>
+    );
+  };
+  return (
+    <Modal title="Add indicator to chart" onClose={onClose} width={520}>
+      <input className="builder__name" style={{ width: '100%' }} placeholder="Search indicators…"
+        value={q} onChange={e => setQ(e.target.value)} autoFocus />
+      <div className="ind-pick">
+        {overlays.length > 0 && <><div className="sym-group">Overlays on price</div>{overlays.map(row)}</>}
+        {panes.length > 0 && <><div className="sym-group">Own pane</div>{panes.map(row)}</>}
+        {entries.length === 0 && <div className="empty">No indicator matches “{q}”</div>}
       </div>
     </Modal>
   );

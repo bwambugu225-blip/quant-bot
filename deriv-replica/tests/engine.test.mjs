@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeEngine, loadTape, tick, tickTape } from './helpers.mjs';
-import { defaultStrategy } from '../src/lib/strategyBuilder.js';
+import { defaultStrategy, validateStrategy } from '../src/lib/strategyBuilder.js';
 
 test('importing a tape fills the store and the snapshot reports 1000 ticks', () => {
   const { engine } = makeEngine();
@@ -167,6 +167,68 @@ test('resetSession clears the bookkeeping', () => {
   assert.equal(engine.wins, 0);
   assert.equal(engine.trades, 0);
   assert.equal(engine.reports.length, 0);
+});
+
+test('a strategy carrying barSize evaluates and trades fixed-tick-count bars', () => {
+  const { engine, client } = makeEngine();
+  client.autoRespond = true;
+  engine.setSymbol('R_100');
+  loadTape(engine, 'R_100', tickTape(1000, 3));
+  const s = {
+    id: 'tb', name: 'tickbar long', timeframe: '5s', barSize: 10,
+    long: { logic: 'AND', conditions: [{ left: { kind: 'price' }, op: 'gt', right: { kind: 'const', value: 0 } }] },
+    risk: { stake: 1, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0, martingale: false },
+    action: { contract: 'CALL', duration: 10, durationUnit: 't' },
+  };
+  engine.setStrategy(s);
+  assert.equal(engine.start(), true);
+  // A fresh 10-tick bar closes on each 10th tick; the evaluator must read the
+  // tick-bar buffer, not the clock candles.
+  for (let i = 0; i < 30; i++) tick(engine, 'R_100', 1000 + i, 1_700_002_000 + i);
+  const prop = client.sent.find(o => o.proposal);
+  assert.ok(prop, 'expected a proposal from the tick-bar strategy');
+  assert.equal(prop.duration, 10);
+  assert.equal(prop.duration_unit, 't');
+});
+
+test('autoTune ranks the registry over the imported tape', () => {
+  const { engine } = makeEngine();
+  engine.setSymbol('R_100');
+  loadTape(engine, 'R_100', tickTape(1000, 7));
+  const tune = engine.autoTune('R_100');
+  assert.equal(tune.sym, 'R_100');
+  assert.equal(tune.barSize, 10);
+  assert.ok(tune.evaluated >= 30);
+  assert.ok(Array.isArray(tune.ranked));
+  if (tune.best) assert.ok(tune.best.strategy && tune.best.backtest);
+});
+
+test('startBest adopts the tuned winner and starts the engine', () => {
+  const { engine } = makeEngine();
+  engine.setSymbol('R_100');
+  loadTape(engine, 'R_100', tickTape(1000, 11));
+  engine.setStrategy(defaultStrategy());
+  const started = engine.startBest('R_100');
+  assert.equal(started, true);
+  assert.equal(engine.running, true);
+  // Whatever the tuner found, the running strategy is a valid one and the
+  // snapshot reports the tune board.
+  assert.deepEqual(validateStrategy(engine.strategy), []);
+  const snap = engine.snapshot();
+  assert.ok(snap.tune);
+  assert.equal(snap.tune.barSize, 10);
+});
+
+test('startBest keeps the loaded strategy when nothing clears the bar', () => {
+  const { engine } = makeEngine();
+  engine.setSymbol('R_100');
+  // A flat tape gives no indicator a directional edge with enough trades.
+  loadTape(engine, 'R_100', { times: Array.from({ length: 1000 }, (_, i) => 1_700_000_000 + i), prices: Array(1000).fill(1000) });
+  engine.setStrategy(defaultStrategy());
+  engine.startBest('R_100');
+  assert.equal(engine.running, true);
+  assert.equal(engine.strategy.name, defaultStrategy().name);
+  assert.equal(engine.snapshot().tune.best, null);
 });
 
 test('setRisk merges into the strategy risk block', () => {

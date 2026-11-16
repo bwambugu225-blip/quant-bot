@@ -7,12 +7,13 @@ import TradeDock from './components/TradeDock.jsx';
 import TickerTape from './components/TickerTape.jsx';
 import StatusBar from './components/StatusBar.jsx';
 import { Positions, Reports, Logs } from './components/Tables.jsx';
-import { SymbolPicker, LoginModal, Modal } from './components/Modals.jsx';
+import { SymbolPicker, LoginModal, Modal, IndicatorPicker } from './components/Modals.jsx';
 import { IconChart, IconStrategy, IconPositions, IconReports, IconLog } from './components/icons.jsx';
 import { useEngine } from './lib/useEngine.js';
 import { SYMBOLS, symbolInfo, pipSize } from './lib/symbols.js';
 import { TIMEFRAMES, TICK_BAR_SIZES } from './lib/marketStore.js';
 import { defaultStrategy } from './lib/strategyBuilder.js';
+import { studyKey } from './lib/studies.js';
 import { CURRENCY, money } from './lib/format.js';
 
 const PANES = [['rsi', 'RSI'], ['macd', 'MACD'], ['willr', 'Williams %R'], ['none', 'None']];
@@ -40,12 +41,14 @@ export default function App() {
   const [view, setView] = React.useState('trade');          // trade | builder | positions | reports | logs
   const [chartMode, setChartMode] = React.useState('candles');
   const [barSource, setBarSource] = React.useState('time');  // time | tickbar | tick
-  const [tickSize, setTickSize] = React.useState(25);
+  const [tickSize, setTickSize] = React.useState(10);
   const [overlaySet, setOverlaySet] = React.useState('trend+bb');
   const [pane, setPane] = React.useState('rsi');
   const [symOpen, setSymOpen] = React.useState(false);
   const [loginOpen, setLoginOpen] = React.useState(false);
   const [guideOpen, setGuideOpen] = React.useState(false);
+  const [indOpen, setIndOpen] = React.useState(false);
+  const [studies, setStudies] = React.useState([]);
   const [backtest, setBacktest] = React.useState(null);
 
   const strategy = state?.strategy;
@@ -92,6 +95,22 @@ export default function App() {
     const r = engine.backtest(strategy, symbol);
     setBacktest(r ? { ...r, __sym: symbol } : null);
   };
+
+  // Start bot: auto-tune over the imported tape, adopt the best strategy, then
+  // start. Falls back to the loaded strategy when nothing clears the bar. The
+  // tuner's own backtest is shown, so the panel reflects what is now trading.
+  const startBot = () => {
+    if (!state?.auth) { setLoginOpen(true); return; }
+    engine.startBest(symbol);
+    const best = engine.lastTune?.best;
+    if (best) setBacktest({ ...best.backtest, __sym: symbol, __auto: true, __name: best.strategy.name });
+  };
+
+  const addStudy = study => {
+    setStudies(prev => prev.some(s => studyKey(s) === studyKey(study)) ? prev : [...prev, study]);
+    setIndOpen(false);
+  };
+  const removeStudy = study => setStudies(prev => prev.filter(s => studyKey(s) !== studyKey(study)));
 
   const ticks = state?.ticks ?? 0;
   const live = !!state?.auth;
@@ -151,11 +170,13 @@ export default function App() {
                 onChange={s => engine.setStrategy(s)}
                 onBacktest={onBacktest}
                 onStart={() => engine.start()}
+                onStartBest={startBot}
                 onStop={() => engine.stop()}
                 running={!!state?.running}
                 backtest={backtest}
                 symbols={SYMBOLS}
                 currency={state?.currency}
+                tune={state?.tune}
               />
             </div>
           ) : view === 'positions' || view === 'reports' || view === 'logs' ? (
@@ -214,16 +235,18 @@ export default function App() {
                   {PANES.map(([id, l]) => <option key={id} value={id}>{l} pane</option>)}
                 </select>
 
+                <button className="btn btn--ghost btn--sm" onClick={() => setIndOpen(true)} type="button" title="Add an indicator to the chart">+ Indicator</button>
+
                 <div className="topbar__spacer" />
                 {state?.running && (
                   <span className="pill is-up">BOT · {strategy?.name} · {state.warmup?.have} warm</span>
                 )}
                 {state?.running
                   ? <button className="btn btn--down btn--sm" onClick={() => engine.stop()} type="button">Stop bot</button>
-                  : <button className="btn btn--ghost btn--sm" onClick={() => engine.start()} type="button">Start bot</button>}
+                  : <button className="btn btn--ghost btn--sm" onClick={startBot} type="button" title="Auto-tune, pick the best strategy, then trade">Start bot</button>}
               </div>
 
-              <Chart candles={candles} up={up} overlays={overlays} pane={pane} mode={barSource === 'tick' ? 'line' : chartMode} symbol={symbol} />
+              <Chart candles={candles} up={up} overlays={overlays} pane={pane} mode={barSource === 'tick' ? 'line' : chartMode} symbol={symbol} studies={studies} onRemoveStudy={removeStudy} />
             </div>
           )}
 
@@ -259,6 +282,7 @@ export default function App() {
       <StatusBar state={state} health={health} symbol={symbol} />
 
       {symOpen && <SymbolPicker current={symbol} onSelect={s => engine.setSymbol(s)} onClose={() => setSymOpen(false)} />}
+      {indOpen && <IndicatorPicker existing={studies} onAdd={addStudy} onClose={() => setIndOpen(false)} />}
       {loginOpen && (
         <LoginModal
           onToken={login}
@@ -278,14 +302,26 @@ export default function App() {
           <p style={{ color: 'var(--text-dim)', lineHeight: 1.7 }}>
             Build a strategy on the <b>Strategy</b> tab: nest AND/OR groups, compare any indicator,
             price field or constant with greater/less, cross-over/under, rising/falling. Run a backtest
-            to see how it would have traded the imported history, then <b>Start bot</b> to trade it live.
-            <b>Drag</b> the chart to pan through history, <b>scroll</b> or pinch to zoom,
-            and double-click to snap back to the live edge.
+            to see how it would have traded the imported history, then <b>Start bot</b>.
+          </p>
+          <p style={{ color: 'var(--text-dim)', lineHeight: 1.7 }}>
+            <b>Start bot auto-tunes.</b> It builds a rule template for every indicator in the registry,
+            backtests each one (and a parameter grid around them) over the imported tape on <b>10-tick
+            bars</b>, and trades the best. It only crowns a winner that actually made money over the
+            sample; on a fair tape with no edge it keeps the loaded strategy and says so. The ranked
+            board is shown on the Strategy tab.
+          </p>
+          <p style={{ color: 'var(--text-dim)', lineHeight: 1.7 }}>
+            Add any indicator to the chart with <b>+ Indicator</b>: price-scale studies (moving averages,
+            bands, PSAR) draw over the candles, everything else gets its own pane. Remove one with the
+            <b>×</b> on its legend. <b>Drag</b> the chart to pan through history, <b>scroll</b> or pinch to
+            zoom, and double-click to snap back to the live edge.
           </p>
           <p>
-            The bot evaluates the strategy when a candle of its timeframe closes and places the contract
-            through the same Deriv proposal path as a manual trade. Every stake, profit and balance is
-            shown in Kenyan shillings; the default stake is <b>KES 0.35</b>.
+            The bot evaluates a strategy when a bar of its source closes — a clock candle, or a
+            <b>10-tick</b> bar for auto-tuned strategies — and places the contract through the same Deriv
+            proposal path as a manual trade. Every stake, profit and balance is shown in Kenyan shillings;
+            the default stake is <b>KES 0.35</b>.
           </p>
         </Modal>
       )}

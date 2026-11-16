@@ -231,10 +231,12 @@ input, select { font-family: inherit; font-variant-numeric: tabular-nums; }
 .chart-ohlc b { color: var(--text); font-weight: 600; }
 .chart-legend {
   position: absolute; top: 9px; right: 64px; display: flex; gap: 12px; align-items: center;
-  pointer-events: none; font-family: var(--mono); font-size: 10.5px; color: var(--text-dim);
+  font-family: var(--mono); font-size: 10.5px; color: var(--text-dim); flex-wrap: wrap; justify-content: flex-end; max-width: 60%;
 }
 .legend { display: flex; align-items: center; gap: 5px; }
 .legend__swatch { width: 9px; height: 2px; border-radius: 1px; }
+.legend__x { border: 0; background: transparent; color: var(--text-mute); font-size: 12px; line-height: 1; padding: 0 1px; cursor: pointer; }
+.legend__x:hover { color: var(--down); }
 .chart-note { position: absolute; bottom: 6px; left: 12px; font-size: 10px; color: var(--text-mute); font-family: var(--mono); letter-spacing: .2px; }
 .chart-hint { position: absolute; bottom: 6px; right: 12px; font-size: 10px; color: var(--text-mute); font-family: var(--mono); }
 
@@ -430,6 +432,27 @@ input, select { font-family: inherit; font-variant-numeric: tabular-nums; }
 .sym-row__price { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--text-mute); }
 .sym-group { grid-column: 1 / -1; font-size: 9.5px; text-transform: uppercase; letter-spacing: .8px; color: var(--text-mute); padding: 10px 2px 3px; font-weight: 600; }
 .sym-group:first-child { padding-top: 0; }
+
+/* ── indicator picker ──────────────────────────────────────────────────── */
+.ind-pick { display: flex; flex-direction: column; gap: 3px; margin-top: 12px; }
+.ind-row {
+  display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--radius);
+  border: 1px solid var(--line); background: var(--bg-2); text-align: left; width: 100%;
+}
+.ind-row:hover { background: var(--bg-3); border-color: var(--line-3); }
+.ind-row.is-added { opacity: .5; }
+.ind-row__name { font-weight: 500; }
+.ind-row__meta { font-family: var(--mono); font-size: 10px; color: var(--text-mute); }
+.ind-row__add { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--accent); font-weight: 700; }
+.ind-row.is-added .ind-row__add { color: var(--text-mute); font-weight: 400; }
+
+/* ── auto-tune panel ───────────────────────────────────────────────────── */
+.tune { border: 1px solid var(--line); border-radius: 8px; margin: 10px 12px 0; background: var(--bg-2); }
+.tune__head { display: flex; align-items: baseline; gap: 10px; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+.tune__title { font-size: 10px; text-transform: uppercase; letter-spacing: .9px; color: var(--text-dim); font-weight: 600; }
+.tune__meta { font-size: 11px; color: var(--text-mute); font-family: var(--mono); }
+.tune__tbl { font-size: 11px; }
+.tune__tbl td, .tune__tbl th { padding: 5px 12px; }
 
 /* ── status bar ────────────────────────────────────────────────────────── */
 .statusbar {

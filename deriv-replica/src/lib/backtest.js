@@ -30,7 +30,13 @@ export function runBacktest(strategy, candles, opts = {}) {
   const payoutRatio = opts.payoutRatio ?? 0.95;
   const startEquity = opts.startEquity ?? 1000;
   const risk = { ...strategy.risk };
-  const hold = holdCandles(strategy.timeframe || opts.timeframe || '1m', strategy.action?.duration ?? 5, strategy.action?.durationUnit || 't');
+  // When the tape is a fixed-tick-count series, a tick-unit duration is a
+  // fraction of a bar: hold one bar for every `barTicks` ticks of the contract.
+  const dur = strategy.action?.duration ?? 5;
+  const unit = strategy.action?.durationUnit || 't';
+  const hold = opts.barTicks && unit === 't'
+    ? Math.max(1, Math.round(dur / opts.barTicks))
+    : holdCandles(strategy.timeframe || opts.timeframe || '1m', dur, unit);
 
   const compiled = compileStrategy(strategy, candles);
   const trades = [];

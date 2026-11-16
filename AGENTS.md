@@ -187,6 +187,53 @@ runs inside the backtest exactly as it does live.
 Honest limit: close-to-close is a proxy for a tick contract, not the exchange's
 own settlement — the panel says so.
 
+## Auto-tune and chart studies
+
+Two pieces sit on top of the DSL and the chart.
+
+### Auto-tune (`autoTune.js`)
+
+- **Default trading cadence is 10 ticks.** `DEFAULT_BAR_SIZE = 10`. An
+  auto-tuned strategy carries a `barSize`; the engine's `barsFor()` reads that
+  strategy's candles from the **tick-bar** buffer (`store.tickBars(sym, barSize)`)
+  instead of the clock, so the signal is a statement about 10 completed ticks.
+  `_maybeEvaluate` keys its "seen candle" map on `sym:timeframe:barSize` so a
+  tick-bar run and a clock run never collide.
+- **A rule template per indicator.** `indicatorTemplates(barSize)` builds a
+  long/short rule pair for every registry entry (except `price`, the raw
+  price-field pseudo-entry) from a `KIND` map — moving averages cross price,
+  bands cross their edges, oscillators revert at 30/70, MACD-style series cross
+  zero, ADX/Aroon/Vortex/Alligator/Ichimoku compare their own legs, quant
+  measures (z-score, Hurst, fractal dimension, entropy, skew, kurtosis) gate a
+  directional bias. A `GRID` gives each kind a small parameter sweep.
+- **Scoring and the winner.** `runBacktest(s, bars, { barTicks })` models the
+  hold: on tick-count bars a tick-unit duration is `duration / barTicks` bars.
+  `scoreBacktest` ranks by per-stake expectancy, profit factor and drawdown
+  penalty, and rejects runs with fewer than `minTrades` trades. `autoTune`
+  crowns the top candidate **only if it actually made money** (positive
+  expectancy and score); otherwise `best` is null. Honest limit: on Deriv's
+  fair random-walk indices that is the common case, and the engine says so
+  rather than dressing noise up as edge.
+- **`engine.startBest()`** tunes, adopts the winner (`Auto · <indicator>`), then
+  calls `start()`. The ranked board lands in the snapshot as `state.tune` and is
+  rendered on the Strategy tab.
+
+### Chart studies (`studies.js` + `Chart.jsx`)
+
+- A **study** is `{ name, params, panel }`. `defaultPanel(name)` splits the
+  registry into price-scale overlays (`main`: MAs, bands, PSAR, Ichimoku, …) and
+  everything else (`sub`, its own pane). `studyOutputs` resolves a study's
+  series through the builder's own `operandSeries`, so a line on the chart and a
+  rule in the builder read identical values.
+- `Chart.jsx` draws price-scale studies over the candles and each sub study in
+  its own pane (fixed range for RSI/Stochastic/MFI/Williams %R/ADX/Aroon, auto
+  otherwise). The price plot keeps a floor of 120px, so a tall study stack only
+  draws as many panes as fit. Sub-pane count is bounded by that floor.
+- The `+ Indicator` button opens `IndicatorPicker` (every registry indicator,
+  grouped by panel, one click to add); each legend entry carries an `×` to
+  remove. The chart's pan handler ignores drags that start on `.chart-tools` or
+  `.chart-legend` so those buttons receive the click.
+
 ## Engine
 
 `engine.js` is execution. It holds the `MarketStore`, the selected symbol /

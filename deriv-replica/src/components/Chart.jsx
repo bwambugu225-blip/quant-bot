@@ -4,17 +4,30 @@ import {
   vwapSeries, psarSeries, heikenAshi, williamsRSeries,
 } from '../lib/indicators.js';
 import { DEFAULT_BARS, clamp, visibleWindow, zoomWindow, panWindow } from '../lib/chartView.js';
+import { operandSeries, INDICATORS } from '../lib/strategyBuilder.js';
+import { STUDY_COLORS } from '../lib/studies.js';
 
 // A dependency-free SVG chart: candles, Heiken Ashi or line, with optional
 // EMA/SMA/Bollinger/SuperTrend/VWAP/Parabolic-SAR overlays, a volume histogram
-// and an RSI/MACD/Williams %R sub-pane. It renders from the same candles the
-// engine trades, so what is drawn is what the strategy sees. A crosshair tracks
-// the pointer and reads out the hovered bar.
+// and any number of indicator studies.
+//
+// A "study" is an indicator the user added to the chart. Price-scale studies
+// (moving averages, bands, PSAR) draw over the candles; every other study gets
+// its own pane below, so an oscillator stack is readable at a glance. Study
+// values come from the same `operandSeries` resolver the strategy builder uses,
+// so what is drawn is what a strategy would trade.
 //
 // The view is a horizontal window over the candle buffer: drag to pan, scroll
 // or pinch to zoom. While the window sits at the live edge it follows new
 // candles; once the user pans back it holds its place until they return.
 const OVERLAY_COLORS = { ema9: '#4c86e0', ema21: '#c8a250', sma50: '#8b7fd4', bb: '#3d4756', st: '#2bb673', vwap: '#d99a3a', psar: '#e0524f' };
+
+// Oscillator studies whose range is fixed, so their pane does not jump as the
+// window moves. Everything else auto-scales to the visible series.
+const FIXED_RANGE = {
+  rsi: [0, 100], stoch: [0, 100], stochRsi: [0, 100], mfi: [0, 100],
+  ultimate: [0, 100], aroon: [0, 100], adx: [0, 100], williamsR: [-100, 0],
+};
 
 function useSize(ref) {
   const [size, setSize] = React.useState({ w: 800, h: 420 });
@@ -34,7 +47,9 @@ const fmtT = epoch => {
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 };
 
-export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'], pane = 'rsi', mode = 'candles', symbol }) {
+const isNum = v => v != null && Number.isFinite(v);
+
+export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'], pane = 'rsi', mode = 'candles', symbol, studies = [], onRemoveStudy }) {
   const wrapRef = React.useRef(null);
   const { w, h } = useSize(wrapRef);
   const [hover, setHover] = React.useState(null);
@@ -64,10 +79,43 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
     [haCandles, view, start, end],
   );
 
+  // Price-scale studies overlay the candles; the rest get their own pane. The
+  // series are resolved over the *full* buffer then sliced, so a study's window
+  // matches the candles exactly as the user pans.
+  const mainStudies = React.useMemo(() => studies.filter(s => s.panel === 'main'), [studies]);
+  const subStudies = React.useMemo(() => studies.filter(s => s.panel !== 'main'), [studies]);
+
+  const mainStudySeries = React.useMemo(() => mainStudies.map(study => ({
+    study,
+    outputs: INDICATORS[study.name].outputs.map(output => ({
+      output,
+      full: operandSeries(candles, { kind: 'indicator', name: study.name, params: study.params, output }),
+    })),
+  })), [mainStudies, candles]);
+
+  const subStudySeries = React.useMemo(() => subStudies.map(study => ({
+    study,
+    outputs: INDICATORS[study.name].outputs.map(output => ({
+      output,
+      full: operandSeries(candles, { kind: 'indicator', name: study.name, params: study.params, output }),
+    })),
+  })), [subStudies, candles]);
+
   const geom = React.useMemo(() => {
     const padL = 8, padR = 62, padT = 30, padB = 22;
-    const paneH = pane === 'none' ? 0 : Math.round((h - padT - padB) * 0.22);
-    const mainH = h - padT - padB - paneH - (paneH ? 10 : 0);
+    const totalPlot = h - padT - padB;
+    const gap = 10;
+    // Sub-panes stack below the price plot. The price plot keeps at least 120px,
+    // so when the study stack would crowd it out only the first panes are drawn
+    // (they are ordered as added; removing one frees a slot).
+    const MIN_PANE = 26;
+    const maxPanes = Math.max(1, Math.floor((totalPlot - 120) / (MIN_PANE + gap)));
+    const legacyPane = pane !== 'none';
+    const paneBudget = Math.max(0, maxPanes - (legacyPane ? 1 : 0));
+    const subPanes = subStudySeries.slice(0, paneBudget);
+    const paneCount = subPanes.length + (legacyPane ? 1 : 0);
+    const paneH = paneCount ? clamp(Math.round((totalPlot - 120 - paneCount * gap) / paneCount), MIN_PANE, 90) : 0;
+    const mainH = totalPlot - (paneCount ? paneCount * (paneH + gap) : 0);
     const plotW = Math.max(10, w - padL - padR);
     if (view.length < 2) return null;
 
@@ -80,6 +128,10 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
     if (bb) { bb.upper.forEach(v => { if (v != null) hi = Math.max(hi, v); }); bb.lower.forEach(v => { if (v != null) lo = Math.min(lo, v); }); }
     const psar = overlays.includes('psar') ? psarSeries(view, 0.02, 0.2) : null;
     if (psar) psar.forEach(v => { if (v == null) return; hi = Math.max(hi, v); lo = Math.min(lo, v); });
+    // Price-scale studies widen the range too.
+    mainStudySeries.forEach(s => s.outputs.forEach(o => {
+      for (let i = start; i < end; i++) { const v = o.full[i]; if (isNum(v)) { hi = Math.max(hi, v); lo = Math.min(lo, v); } }
+    }));
     const pad = (hi - lo) * 0.06 || 1;
     hi += pad; lo -= pad;
     const x = i => padL + (i / (view.length - 1)) * plotW;
@@ -96,41 +148,93 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
       series.forEach((v, i) => { if (v == null) return; d += (d ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1); });
       return d;
     };
+    // A study's full series is sliced to the visible window before drawing.
+    const studyPath = (full) => {
+      let d = '';
+      for (let i = start; i < end; i++) {
+        const v = full[i];
+        if (!isNum(v)) continue;
+        d += (d ? 'L' : 'M') + x(i - start).toFixed(1) + ' ' + y(v).toFixed(1);
+      }
+      return d;
+    };
 
     const maxVol = Math.max(1, ...view.map(k => k.volume ?? k.ticks ?? 0));
     const volY = v => padT + mainH - (v / maxVol) * Math.max(18, mainH * 0.14);
 
-    let paneGeom = null;
-    if (paneH) {
-      const top = padT + mainH + 10;
-      const py = v => top + (1 - v / 100) * paneH;
-      const rsi = pane === 'rsi' ? rsiSeries(cl, 14) : null;
-      const macd = pane === 'macd' ? macdSeries(cl) : null;
-      const willr = pane === 'willr' ? williamsRSeries(view, 14) : null;
-      let pPath = '', sPath = '', hist = [], mid = py(50), bandLo = null, bandHi = null;
-      if (rsi) { pPath = pathOf(rsi); bandLo = py(30); bandHi = py(70); }
-      if (willr) {
-        // Williams %R runs -100…0; map that band onto the pane height.
-        const wy = v => top + ((v + 100) / 100) * paneH;
-        willr.forEach((v, i) => { if (v == null) return; pPath += (pPath ? 'L' : 'M') + x(i).toFixed(1) + ' ' + wy(v).toFixed(1); });
-        bandLo = wy(-80); bandHi = wy(-20); mid = wy(-50);
+    // ── sub-panes: the legacy quick pane first, then each study ─────────────
+    const panes = [];
+    const addPane = (spec) => {
+      const top = padT + mainH + gap + panes.length * (paneH + gap);
+      panes.push({ ...spec, top, height: paneH });
+    };
+    if (legacyPane) addPane({ kind: 'legacy', pane });
+    subPanes.forEach(s => addPane({ kind: 'study', study: s.study, outputs: s.outputs }));
+
+    const panePath = (full, p) => {
+      let d = '';
+      for (let i = start; i < end; i++) {
+        const v = full[i];
+        if (!isNum(v)) continue;
+        d += (d ? 'L' : 'M') + x(i - start).toFixed(1) + ' ' + p.y(v).toFixed(1);
       }
-      if (macd) {
-        const vals = [...macd.macd, ...macd.signal].filter(v => v != null);
-        const lo2 = Math.min(...vals), hi2 = Math.max(...vals);
-        const my = v => top + (1 - (v - lo2) / ((hi2 - lo2) || 1)) * paneH;
-        macd.macd.forEach((v, i) => { if (v == null) return; pPath += (pPath ? 'L' : 'M') + x(i).toFixed(1) + ' ' + my(v).toFixed(1); });
-        macd.signal.forEach((v, i) => { if (v == null) return; sPath += (sPath ? 'L' : 'M') + x(i).toFixed(1) + ' ' + my(v).toFixed(1); });
-        hist = macd.hist.map((v, i) => ({ v, i, y: v == null ? null : my(v) }));
-        mid = my(0);
+      return d;
+    };
+
+    panes.forEach(p => {
+      let lo2, hi2;
+      if (p.kind === 'legacy') {
+        if (p.pane === 'rsi') { lo2 = 0; hi2 = 100; }
+        else if (p.pane === 'willr') { lo2 = -100; hi2 = 0; }
+        else { // macd — auto
+          const m = macdSeries(cl);
+          const vals = [...m.macd, ...m.signal].filter(isNum);
+          lo2 = vals.length ? Math.min(...vals) : -1; hi2 = vals.length ? Math.max(...vals) : 1;
+        }
+      } else {
+        const fixed = FIXED_RANGE[p.study.name];
+        if (fixed) { [lo2, hi2] = fixed; }
+        else {
+          let mn = Infinity, mx = -Infinity;
+          p.outputs.forEach(o => { for (let i = start; i < end; i++) { const v = o.full[i]; if (isNum(v)) { mn = Math.min(mn, v); mx = Math.max(mx, v); } } });
+          if (!Number.isFinite(mn)) { mn = -1; mx = 1; }
+          const pad2 = (mx - mn) * 0.08 || 1;
+          lo2 = mn - pad2; hi2 = mx + pad2;
+        }
       }
-      paneGeom = { pPath, sPath, hist, mid, top, height: paneH, bandLo, bandHi };
-    }
+      p.lo = lo2; p.hi = hi2;
+      p.y = v => p.top + (1 - (v - lo2) / ((hi2 - lo2) || 1)) * p.height;
+      p.paths = [];
+      if (p.kind === 'legacy') {
+        if (p.pane === 'rsi') p.paths.push({ color: '#8b7fd4', d: pathOf(rsiSeries(cl, 14)) });
+        else if (p.pane === 'willr') {
+          const wy = v => p.top + ((v + 100) / 100) * p.height;
+          let d = '';
+          williamsRSeries(view, 14).forEach((v, i) => { if (!isNum(v)) return; d += (d ? 'L' : 'M') + x(i).toFixed(1) + ' ' + wy(v).toFixed(1); });
+          p.paths.push({ color: 'var(--gold)', d });
+        } else {
+          const m = macdSeries(cl);
+          p.paths.push({ color: 'var(--accent)', d: pathOf(m.macd) });
+          p.paths.push({ color: 'var(--gold)', d: pathOf(m.signal) });
+          p.hist = m.hist.map((v, i) => ({ v, x: x(i), y: isNum(v) ? p.y(v) : null }));
+          p.mid = p.y(0);
+        }
+        if (p.pane === 'rsi') { p.bandLo = p.y(30); p.bandHi = p.y(70); p.mid = p.y(50); }
+        if (p.pane === 'willr') { p.bandLo = p.y(-80); p.bandHi = p.y(-20); p.mid = p.y(-50); }
+        p.label = p.pane === 'rsi' ? 'RSI 14' : p.pane === 'willr' ? 'Williams %R 14' : 'MACD 12/26/9';
+      } else {
+        p.outputs.forEach((o, oi) => {
+          const d = panePath(o.full, p);
+          if (d) p.paths.push({ color: STUDY_COLORS[oi % STUDY_COLORS.length], d });
+        });
+        p.label = INDICATORS[p.study.name].label;
+      }
+    });
 
     const stLine = st ? st.dir.map((d, i) => (d == null ? null : d === 1 ? st.dn[i] : st.up[i])) : null;
 
-    return { padL, padR, padT, padB, plotW, mainH, lo, hi, x, y, ema9, ema21, sma50, bb, pathOf, paneGeom, volY, st, stLine, vwap, psar };
-  }, [view, drawCandles, w, h, overlays, pane]);
+    return { padL, padR, padT, padB, plotW, mainH, lo, hi, x, y, ema9, ema21, sma50, bb, pathOf, studyPath, volY, st, stLine, vwap, psar, panes, mainStudySeries };
+  }, [view, drawCandles, w, h, overlays, pane, mainStudySeries, subStudySeries, start, end, subStudies.length]);
   geomRef.current = geom;
 
   const last = view[view.length - 1];
@@ -155,9 +259,10 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
 
   const onDown = e => {
     if (!geom || (e.button != null && e.button !== 0)) return;
-    // Ignore drags that start on an overlay control (zoom buttons), otherwise
-    // the pointer capture swallows the click before it reaches the button.
-    if (e.target && e.target.closest && e.target.closest('.chart-tools')) return;
+    // Ignore drags that start on an overlay control (zoom buttons, legend
+    // remove buttons), otherwise the pointer capture swallows the click before
+    // it reaches the button.
+    if (e.target && e.target.closest && e.target.closest('.chart-tools, .chart-legend')) return;
     dragRef.current = { x: e.clientX, end, follow, barWidth };
     if (e.currentTarget.setPointerCapture && e.pointerId != null) {
       try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
@@ -230,6 +335,7 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
   const reset = () => { setBars(DEFAULT_BARS); setFollow(true); setHover(null); };
 
   const hoverX = geom && hover != null ? geom.x(hover) : null;
+  const paneNames = geom ? geom.panes.map(p => p.label).join(' · ') : '';
 
   return (
     <div
@@ -304,23 +410,32 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
             <circle key={`psar${i}`} cx={geom.x(i)} cy={geom.y(v)} r="1.6" fill={OVERLAY_COLORS.psar} />
           )))}
 
+          {geom.mainStudySeries && geom.mainStudySeries.map((s, si) => s.outputs.map((o, oi) => (
+            <path key={`ms${si}-${oi}`} d={geom.studyPath(o.full)} fill="none"
+              stroke={STUDY_COLORS[(si * 2 + oi) % STUDY_COLORS.length]} strokeWidth="1.2" opacity="0.92" />
+          )))}
+
           {priceY != null && <>
             <line x1={geom.padL} x2={w - geom.padR} y1={priceY} y2={priceY} stroke={up ? 'var(--up)' : 'var(--down)'} strokeWidth="1" strokeDasharray="2 3" opacity="0.75" />
             <rect x={w - geom.padR + 2} y={priceY - 8} width={geom.padR - 4} height={16} rx="2" fill={up ? 'var(--up)' : 'var(--down)'} />
             <text x={w - geom.padR + 5} y={priceY + 3.5} fill="#04150d" fontSize="10" fontWeight="700" fontFamily="var(--mono)">{last.close.toFixed(4)}</text>
           </>}
 
-          {geom.paneGeom && <>
-            {geom.paneGeom.bandLo != null && <line x1={geom.padL} x2={w - geom.padR} y1={geom.paneGeom.bandLo} y2={geom.paneGeom.bandLo} stroke="var(--line-2)" strokeWidth="1" strokeDasharray="3 3" />}
-            {geom.paneGeom.bandHi != null && <line x1={geom.padL} x2={w - geom.padR} y1={geom.paneGeom.bandHi} y2={geom.paneGeom.bandHi} stroke="var(--line-2)" strokeWidth="1" strokeDasharray="3 3" />}
-            <line x1={geom.padL} x2={w - geom.padR} y1={geom.paneGeom.mid} y2={geom.paneGeom.mid} stroke="var(--line-2)" strokeWidth="1" strokeDasharray="3 3" />
-            {geom.paneGeom.hist.map((bar, i) => bar.y == null ? null : (
-              <rect key={`h${i}`} x={geom.x(bar.i) - 1} y={Math.min(bar.y, geom.paneGeom.mid)} width="2" height={Math.abs(bar.y - geom.paneGeom.mid)} fill={bar.v >= 0 ? 'var(--up)' : 'var(--down)'} opacity="0.5" />
-            ))}
-            <path d={geom.paneGeom.pPath} fill="none" stroke={pane === 'rsi' ? '#8b7fd4' : pane === 'willr' ? 'var(--gold)' : 'var(--accent)'} strokeWidth="1.2" />
-            {geom.paneGeom.sPath && <path d={geom.paneGeom.sPath} fill="none" stroke="var(--gold)" strokeWidth="1.2" />}
-            <text x={geom.padL + 2} y={geom.paneGeom.top + 10} fill="var(--text-mute)" fontSize="9.5" fontFamily="var(--mono)">{pane === 'rsi' ? 'RSI 14' : pane === 'willr' ? 'Williams %R 14' : 'MACD 12/26/9'}</text>
-          </>}
+          {geom.panes.map((p, pi) => (
+            <g key={`pane${pi}`}>
+              <line x1={geom.padL} x2={w - geom.padR} y1={p.top} y2={p.top} stroke="var(--line)" strokeWidth="1" />
+              {p.bandLo != null && <line x1={geom.padL} x2={w - geom.padR} y1={p.bandLo} y2={p.bandLo} stroke="var(--line-2)" strokeWidth="1" strokeDasharray="3 3" />}
+              {p.bandHi != null && <line x1={geom.padL} x2={w - geom.padR} y1={p.bandHi} y2={p.bandHi} stroke="var(--line-2)" strokeWidth="1" strokeDasharray="3 3" />}
+              {p.mid != null && <line x1={geom.padL} x2={w - geom.padR} y1={p.mid} y2={p.mid} stroke="var(--line-2)" strokeWidth="1" strokeDasharray="3 3" />}
+              {p.hist && p.hist.map((bar, i) => bar.y == null ? null : (
+                <rect key={`h${i}`} x={bar.x - 1} y={Math.min(bar.y, p.mid)} width="2" height={Math.abs(bar.y - p.mid)} fill={bar.v >= 0 ? 'var(--up)' : 'var(--down)'} opacity="0.5" />
+              ))}
+              {p.paths.map((path, i) => <path key={`pp${i}`} d={path.d} fill="none" stroke={path.color} strokeWidth="1.2" />)}
+              <text x={geom.padL + 2} y={p.top + 10} fill="var(--text-mute)" fontSize="9.5" fontFamily="var(--mono)">{p.label}</text>
+              <text x={w - geom.padR + 6} y={p.top + 10} fill="var(--text-mute)" fontSize="9" fontFamily="var(--mono)">{p.hi.toFixed(1)}</text>
+              <text x={w - geom.padR + 6} y={p.top + p.height} fill="var(--text-mute)" fontSize="9" fontFamily="var(--mono)">{p.lo.toFixed(1)}</text>
+            </g>
+          ))}
 
           {hoverX != null && !panning && <>
             <line x1={hoverX} x2={hoverX} y1={geom.padT} y2={h - geom.padB} stroke="var(--text-mute)" strokeWidth="1" strokeDasharray="3 3" />
@@ -350,6 +465,20 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
         {overlays.includes('st') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.st }} />SuperTrend</div>}
         {overlays.includes('vwap') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.vwap }} />VWAP</div>}
         {overlays.includes('psar') && <div className="legend"><span className="legend__swatch" style={{ background: OVERLAY_COLORS.psar }} />PSAR</div>}
+        {mainStudies.map((s, si) => (
+          <div className="legend" key={`lg${si}`} title={JSON.stringify(s.params)}>
+            <span className="legend__swatch" style={{ background: STUDY_COLORS[(si * 2) % STUDY_COLORS.length] }} />
+            {INDICATORS[s.name].label}
+            {onRemoveStudy && <button className="legend__x" onClick={() => onRemoveStudy(s)} type="button" title="Remove from chart">×</button>}
+          </div>
+        ))}
+        {subStudies.map((s, si) => (
+          <div className="legend" key={`lgs${si}`} title={JSON.stringify(s.params)}>
+            <span className="legend__swatch" style={{ background: STUDY_COLORS[si % STUDY_COLORS.length] }} />
+            {INDICATORS[s.name].label} ▾
+            {onRemoveStudy && <button className="legend__x" onClick={() => onRemoveStudy(s)} type="button" title="Remove from chart">×</button>}
+          </div>
+        ))}
         {mode === 'heiken' && <div className="legend"><span className="legend__swatch" style={{ background: 'var(--text-dim)' }} />Heiken Ashi</div>}
       </div>
 
@@ -359,7 +488,7 @@ export default function Chart({ candles, up, overlays = ['ema9', 'ema21', 'bb'],
         <button type="button" title="Reset zoom" aria-label="Reset zoom" onClick={reset}>⟲</button>
       </div>
 
-      <div className="chart-note">{view.length} bars · {follow ? 'live' : 'history'} · {mode === 'heiken' ? 'Heiken Ashi · ' : ''}{pane === 'rsi' ? 'RSI 14' : pane === 'macd' ? 'MACD 12/26/9' : pane === 'willr' ? 'Williams %R 14' : 'no sub-pane'} · vol overlay</div>
+      <div className="chart-note">{view.length} bars · {follow ? 'live' : 'history'} · {mode === 'heiken' ? 'Heiken Ashi · ' : ''}{paneNames || 'no sub-pane'} · vol overlay</div>
       <div className="chart-hint">drag to pan · scroll / pinch to zoom · double-click to reset</div>
     </div>
   );

@@ -121,7 +121,7 @@ function GroupEditor({ group, onChange, onRemove, depth = 0 }) {
 }
 
 // ── main builder ───────────────────────────────────────────────────────────
-export default function StrategyBuilder({ strategy, onChange, onBacktest, onStart, onStop, running, backtest, symbols, onSymbol, currency }) {
+export default function StrategyBuilder({ strategy, onChange, onBacktest, onStart, onStartBest, onStop, running, backtest, symbols, onSymbol, currency, tune }) {
   if (!strategy) return <div className="empty">No strategy loaded</div>;
   const s = strategy;
   const errors = validateStrategy(s);
@@ -148,13 +148,41 @@ export default function StrategyBuilder({ strategy, onChange, onBacktest, onStar
           <option value="3">SuperTrend follow</option>
         </select>
         <button className="btn" onClick={onBacktest} type="button">Run backtest</button>
-        <button className={`btn ${running ? '' : 'btn--primary'}`} onClick={running ? onStop : onStart} type="button">
+        <button className={`btn ${running ? '' : 'btn--primary'}`} onClick={running ? onStop : (onStartBest || onStart)} type="button"
+          title="Auto-tune over every indicator, pick the best, then trade">
           {running ? 'Stop bot' : 'Start bot'}
         </button>
         <span style={{ marginLeft: 'auto', fontSize: 11, color: errors.length ? 'var(--down)' : 'var(--up)' }}>
           {errors.length ? errors[0] : 'Strategy valid'}
         </span>
       </div>
+
+      {tune && (
+        <div className="tune">
+          <div className="tune__head">
+            <span className="tune__title">Auto-tune</span>
+            <span className="tune__meta">{tune.evaluated} candidates · {tune.barSize}-tick bars ·{' '}
+              {tune.best ? `best: ${tune.best.name}` : 'no candidate cleared the bar'}</span>
+          </div>
+          {tune.ranked?.length > 0 && (
+            <table className="tbl tune__tbl">
+              <thead><tr><th>#</th><th>Strategy</th><th>Trades</th><th>Win</th><th>Score</th><th>Edge</th></tr></thead>
+              <tbody>
+                {tune.ranked.map((r, i) => (
+                  <tr key={i}>
+                    <td className="dim">{i + 1}</td>
+                    <td>{r.name}</td>
+                    <td>{r.count}</td>
+                    <td className={r.winRate >= 0.5 ? 'is-up' : 'is-down'}>{(r.winRate * 100).toFixed(0)}%</td>
+                    <td className={r.score > 0 ? 'is-up' : 'is-down'}>{r.score.toFixed(1)}</td>
+                    <td className={r.edge >= 0 ? 'is-up' : 'is-down'}>{(r.edge * 100).toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       <div className="builder__scroll">
         <div className="section-title">Entry — LONG (buy Rise / Call)</div>
