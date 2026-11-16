@@ -61,12 +61,14 @@ src/
   `bucketTicks` aggregates into candles for every timeframe; `onTick` extends
   the live candle and opens a new one on the bucket boundary.
 - The same tape is also folded into **fixed-tick-count bars** (`TICK_BAR_SIZES`
-  = `10 25 50 100 200`): `bucketTicksByCount(times, prices, n)` closes a bar
+  = `10 25 50 100 200`): `bucketTicksByCount(times, prices, n, sym)` closes a bar
   every `n` ticks regardless of the clock, and `tickBars(sym, size)` reads them.
   The Chart header's "Tick bars" control switches the chart to these, with a
   size picker; "Tick chart" draws the raw tape as a line. Comparing a setup on
   time bars against the same setup on tick bars shows whether it is driven by
-  the clock or by how much the tape actually moved.
+  the clock or by how much the tape actually moved. Every bar holds the same
+  number of ticks, so its `volume` is what distinguishes a busy bar from a quiet
+  one — see "Calculated volume" below.
 - The timeframe ladder (`TIMEFRAMES`) is `5s 10s 15s 30s 1m 2m 3m 4m 5m 6m 7m
   8m 9m 10m 11m 12m 13m 14m 15m` — 19 entries. `TF_SEC` maps an id to seconds.
 - `5s` is the default timeframe. A 1000-tick import spans ~33 min on the
@@ -83,6 +85,51 @@ pins each symbol to its authoritative `pip_size` (`R_10`/`R_25` = 3,
 `R_50`/`R_75` = 4, `R_100`/`1HZ*V` = 2, `stpRNG*` = 1) and `digitOf(price, sym)`
 formats with that many decimals before taking the last digit. `decimalsFor(sym)`
 returns the same pip size for display.
+
+### Calculated volume (`volume.js`)
+
+Deriv's synthetic indices publish **no traded volume** — the API sends prices
+and epochs, nothing else. The honest reading of a tick stream is that a tick
+which moves the price carries activity and a tick that repeats the last price
+does not, so `volume.js` derives volume from the tape:
+
+```
+volume(tick) = sqrt(move / unit) × max(1, dt / cadence)
+```
+
+- **`move`** is the absolute price change from the previous tick. **`unit`** is
+  the symbol's typical move — the *median* absolute move of its recent tape
+  (`moveUnit`), so one outsized jump cannot set the scale. Dividing by it makes
+  "big" mean big *for this market*: without that, R_75's raw price differences
+  would read ~30,000× R_100's for the same relative move. **The square root is
+  deliberate** — a move four times the typical size weighs twice as much, so a
+  jump counts for more than an ordinary tick without swamping the window.
+- **Activity** is the elapsed time a tick covers in units of the symbol's normal
+  cadence (`tickSeconds`, 1s or 2s — see below). A tick that took longer to
+  arrive counts proportionally more; a tick faster than the cadence still counts
+  as a full tick, so the weight never falls below 1. A flat tick keeps the
+  activity weight, so a quiet market does not collapse to zero.
+- The scale is **self-calibrating**: `unit` is the tape's own median, so there
+  is no per-symbol constant to tune and the reading adapts when volatility
+  shifts. Verified live: the median tick volume is ≈ 1.0 on *every* symbol
+  regardless of price scale (R_75 at 40,000 and JD100 at 55 read the same),
+  ranging 0 (flat tick) to ~2.2 (a big move).
+- `marketStore` folds calculated volume into `candle.volume` for **every**
+  timeframe and every tick bar; `candle.ticks` stays the raw count, so the two
+  are always separately visible. The live path refreshes `unit` every 250 ticks
+  (`_refreshUnit`) and carries a parallel `activity` field.
+- `volumeActivity(prices, times, sym, window)` is the mean per-tick volume of
+  the last window, measured against the scale of the **whole** tape passed in —
+  normalising on the window alone would make every window read ~1 and hide the
+  change it is meant to measure. The Analytics Microstructure panel shows it as
+  "Tick volume (calc, 50)" plus the live "Move unit".
+
+**Cadence.** `tickSeconds(sym)` reads the catalogue's `ticks` field. Measured
+against the live feed: the classic volatility and bull/bear indices tick every
+**2s**, while the `1HZ*` family, the Step index and **every** `JD*` Jump index
+tick every **1s** (100% one-second gaps). Streaming pairs have no fixed cadence
+and fall back to 1, which makes activity a per-tick measure. The `JD*` and
+`stpRNG` entries were previously mislabelled `2s`; they are `1s`.
 
 ## Indicators
 
@@ -438,7 +485,9 @@ scope. Market data needs no login.
   quantitative family — PSAR, Williams %R zones, z-score, efficiency ratio,
   choppiness, Hurst, fractal dimension, entropy, skew, kurtosis, CUSUM, Kalman),
   `intelligence.test.mjs` (microstructure, market structure, candle intelligence,
-  the AI composites and tick-bar folding), `strategyBuilder.test.mjs`,
+  the AI composites and tick-bar folding), `volume.test.mjs` (the calculated
+  volume model — cadence, symbol normalisation, concavity, bucketing),
+  `strategyBuilder.test.mjs`,
   `backtest.test.mjs`, `studies.test.mjs` (panel split and study→series
   resolution), `digitTrader.test.mjs` (Over/Under and Even/Odd decision logic and
   engine routing), `engine.test.mjs` (incl. a Higher/Lower proposal with a

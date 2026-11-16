@@ -277,14 +277,17 @@ test('bucketTicksByCount groups ticks into fixed-size bars', () => {
   const times = Array.from({ length: 250 }, (_, i) => 1_700_000_000 + i);
   const prices = Array.from({ length: 250 }, (_, i) => 100 + i * 0.01);
   for (const size of TICK_BAR_SIZES) {
-    const bars = bucketTicksByCount(times, prices, size);
+    const bars = bucketTicksByCount(times, prices, size, 'R_100');
     assert.equal(bars.length, Math.ceil(250 / size));
     // Every closed bar holds exactly `size` ticks; the last may be short.
     bars.slice(0, -1).forEach(b => assert.equal(b.ticks, size));
     bars.forEach(b => {
       assert.equal(b.open, prices[(bars.indexOf(b)) * size] ?? b.open);
       assert.ok(b.high >= b.low);
-      assert.equal(b.volume, b.ticks);
+      // Volume is calculated, not the tick count: a bar of `size` ticks carries
+      // the sum of their move weights, which is positive but not the count.
+      assert.ok(b.volume > 0);
+      assert.ok(Number.isFinite(b.volume));
     });
   }
 });
@@ -292,7 +295,7 @@ test('bucketTicksByCount groups ticks into fixed-size bars', () => {
 test('bucketTicksByCount keeps open/close aligned to the tick order', () => {
   const times = [1, 2, 3, 4];
   const prices = [10, 12, 11, 13];
-  const bars = bucketTicksByCount(times, prices, 2);
+  const bars = bucketTicksByCount(times, prices, 2, 'R_100');
   assert.equal(bars.length, 2);
   assert.deepEqual([bars[0].open, bars[0].high, bars[0].low, bars[0].close], [10, 12, 10, 12]);
   assert.deepEqual([bars[1].open, bars[1].high, bars[1].low, bars[1].close], [11, 13, 11, 13]);

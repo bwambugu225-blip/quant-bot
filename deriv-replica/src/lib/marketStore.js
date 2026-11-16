@@ -5,8 +5,8 @@
 // 5s / 10s / 15s / 30s, then 1m through 15m. Live `tick` messages extend the
 // same buffers, so the last candle of each timeframe updates in place and a new
 // one opens on the timeframe boundary.
-import { max, min } from './indicators.js';
-import { SYMBOLS, pipSize, digitOf } from './symbols.js';
+import { SYMBOLS, digitOf, tickSeconds } from './symbols.js';
+import { tickMoves, moveUnit, tickVolume, tickVolumes } from './volume.js';
 
 export { SYMBOLS };
 
@@ -44,27 +44,34 @@ const MAX_TICKS = 5000;
 // ticks, so a bar's width measures market activity rather than elapsed time.
 // Comparing a setup on time bars against the same setup on tick bars shows
 // whether it is driven by the clock or by how much the tape actually moved.
+//
+// Every bar holds the same number of ticks, so its `volume` is the sum of those
+// ticks' calculated volume — it varies with how much the tape moved, which is
+// exactly the difference between a busy and a quiet bar that a tick count alone
+// cannot express.
 export const TICK_BAR_SIZES = [10, 25, 50, 100, 200];
 
-export function bucketTicksByCount(times, prices, size) {
+export function bucketTicksByCount(times, prices, size, sym) {
   const n = Math.min(times.length, prices.length);
   const candles = [];
+  const vols = tickVolumes(prices.slice(0, n), times.slice(0, n), sym);
   let cur = null;
   let count = 0;
   for (let i = 0; i < n; i++) {
     const t = Math.floor(+times[i]);
     const p = +prices[i];
     if (!Number.isFinite(t) || !Number.isFinite(p)) continue;
+    const v = vols[i] ?? 0;
     if (!cur || count === 0) {
       if (cur) candles.push(cur);
-      cur = { epoch: t, open: p, high: p, low: p, close: p, ticks: 1, volume: 1 };
+      cur = { epoch: t, open: p, high: p, low: p, close: p, ticks: 1, volume: v };
       count = size - 1;
     } else {
       cur.high = Math.max(cur.high, p);
       cur.low = Math.min(cur.low, p);
       cur.close = p;
       cur.ticks++;
-      cur.volume = cur.ticks;
+      cur.volume += v;
       count--;
     }
   }
@@ -75,24 +82,31 @@ export function bucketTicksByCount(times, prices, size) {
 // Bucket raw ticks into time-based candles. A tick belongs to the bucket whose
 // start is its epoch floored to the timeframe length; the candle's timestamp is
 // that bucket start, so aggregation is stable regardless of tick density.
-export function bucketTicks(times, prices, sec) {
+//
+// `volume` is calculated volume (see volume.js), not a tick count: a candle's
+// volume is the sum of its ticks' move-weighted activity, so a bar built from
+// small moves carries less than one built from the same number of large moves.
+// `ticks` stays the raw count so the two are always separately visible.
+export function bucketTicks(times, prices, sec, sym) {
   const len = Math.min(times.length, prices.length);
   const candles = [];
+  const vols = tickVolumes(prices.slice(0, len), times.slice(0, len), sym);
   let cur = null;
   for (let i = 0; i < len; i++) {
     const t = Math.floor(+times[i]);
     const p = +prices[i];
     if (!Number.isFinite(t) || !Number.isFinite(p)) continue;
+    const v = vols[i] ?? 0;
     const start = t - (t % sec);
     if (!cur || start !== cur.epoch) {
       if (cur) candles.push(cur);
-      cur = { epoch: start, open: p, high: p, low: p, close: p, ticks: 1, volume: 1 };
+      cur = { epoch: start, open: p, high: p, low: p, close: p, ticks: 1, volume: v };
     } else {
       cur.high = Math.max(cur.high, p);
       cur.low = Math.min(cur.low, p);
       cur.close = p;
       cur.ticks++;
-      cur.volume = cur.ticks;
+      cur.volume += v;
     }
   }
   if (cur) candles.push(cur);
@@ -114,11 +128,31 @@ export class MarketStore {
     if (!this.symbols[sym]) {
       this.symbols[sym] = {
         times: [], prices: [], candles: {}, tickbars: {}, live: [], digits: [], last: null, lastEpoch: null,
+        unit: null, unitAt: 0,
       };
       TIMEFRAMES.forEach(t => { this.symbols[sym].candles[t.id] = []; });
       TICK_BAR_SIZES.forEach(n => { this.symbols[sym].tickbars[n] = []; });
     }
     return this.symbols[sym];
+  }
+
+  // Re-measure the symbol's typical move from its recent tape. Cheap enough to
+  // run on the live path, but not every tick — the median of a few hundred moves
+  // barely changes tick to tick, so it is refreshed on a count and on each
+  // history seed.
+  _refreshUnit(s, sym) {
+    const tail = s.prices.slice(-500);
+    s.unit = moveUnit(tickMoves(tail), sym);
+    s.unitAt = s.prices.length;
+  }
+
+  // Calculated volume for the newest tick, given the previous price and time.
+  _liveVolume(s, sym, p, t) {
+    const cadence = tickSeconds(sym);
+    if (s.last == null || s.unit == null) return { volume: 0, activity: 1 };
+    const dt = s.lastEpoch != null ? t - s.lastEpoch : cadence;
+    const move = Math.abs(p - s.last);
+    return { volume: tickVolume(move, dt, s.unit, cadence), activity: Math.max(1, dt / cadence) };
   }
 
   setTimeframe(tf) {
@@ -142,11 +176,12 @@ export class MarketStore {
     s.last = s.prices[s.prices.length - 1] ?? null;
     s.lastEpoch = s.times[s.times.length - 1] ?? null;
     s.live = s.prices.slice(-200);
+    this._refreshUnit(s, sym);
     TIMEFRAMES.forEach(t => {
-      s.candles[t.id] = bucketTicks(s.times, s.prices, t.sec).slice(-MAX_CANDLES);
+      s.candles[t.id] = bucketTicks(s.times, s.prices, t.sec, sym).slice(-MAX_CANDLES);
     });
     TICK_BAR_SIZES.forEach(n => {
-      s.tickbars[n] = bucketTicksByCount(s.times, s.prices, n).slice(-MAX_CANDLES);
+      s.tickbars[n] = bucketTicksByCount(s.times, s.prices, n, sym).slice(-MAX_CANDLES);
     });
     this.emit('history', sym);
   }
@@ -157,6 +192,10 @@ export class MarketStore {
     const t = Math.floor(+epoch);
     const p = +price;
     if (!Number.isFinite(t) || !Number.isFinite(p)) return null;
+    // Measure the tick before `s.last` moves on. The unit is refreshed
+    // periodically so a shift in volatility is tracked without a median per tick.
+    if (s.unit == null || s.prices.length - s.unitAt >= 250) this._refreshUnit(s, sym);
+    const { volume, activity } = this._liveVolume(s, sym, p, t);
     s.times.push(t);
     s.prices.push(p);
     if (s.times.length > MAX_TICKS) { s.times.shift(); s.prices.shift(); }
@@ -176,9 +215,10 @@ export class MarketStore {
         last.low = Math.min(last.low, p);
         last.close = p;
         last.ticks++;
-        last.volume = last.ticks;
+        last.volume += volume;
+        last.activity += activity;
       } else {
-        arr.push({ epoch: start, open: p, high: p, low: p, close: p, ticks: 1, volume: 1 });
+        arr.push({ epoch: start, open: p, high: p, low: p, close: p, ticks: 1, volume, activity });
         if (arr.length > MAX_CANDLES) arr.shift();
       }
     });
@@ -190,9 +230,10 @@ export class MarketStore {
         last.low = Math.min(last.low, p);
         last.close = p;
         last.ticks++;
-        last.volume = last.ticks;
+        last.volume += volume;
+        last.activity += activity;
       } else {
-        arr.push({ epoch: t, open: p, high: p, low: p, close: p, ticks: 1, volume: 1 });
+        arr.push({ epoch: t, open: p, high: p, low: p, close: p, ticks: 1, volume, activity });
         if (arr.length > MAX_CANDLES) arr.shift();
       }
     });
@@ -251,6 +292,14 @@ export class MarketStore {
   livePrices(sym) {
     const s = this.symbols[sym];
     return s ? s.live.slice() : [];
+  }
+
+  // The symbol's current typical move (the volume model's scale), in price
+  // units. Exposed so the analytics column can show what "one unit of volume"
+  // means for the selected market rather than an unexplained number.
+  moveUnit(sym) {
+    const s = this.symbols[sym];
+    return s ? s.unit : null;
   }
 
   // Number of ticks imported for a symbol — the UI shows this so "1000 ticks"

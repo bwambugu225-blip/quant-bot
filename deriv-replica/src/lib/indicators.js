@@ -700,12 +700,13 @@ export function volumeProfile(c, bins = 12) {
     hist[b] += v;
   });
   const max = Math.max(...hist);
+  const total = hist.reduce((a, v) => a + v, 0);
   let pocIdx = 0;
   hist.forEach((v, i) => { if (v > hist[pocIdx]) pocIdx = i; });
   return {
     bins: hist.map((v, i) => ({ from: lo + i * width, to: lo + (i + 1) * width, volume: v, pct: max ? v / max : 0 })),
     poc: lo + (pocIdx + 0.5) * width,
-    low: lo, high: hi, max,
+    low: lo, high: hi, max, total,
   };
 }
 

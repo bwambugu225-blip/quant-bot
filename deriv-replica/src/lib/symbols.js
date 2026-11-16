@@ -26,14 +26,14 @@ export const SYMBOLS = [
   { sym: '1HZ50V', name: 'Volatility 50 (1s) Index', pip: 2, group: 'synthetic', ticks: '1s' },
   { sym: '1HZ75V', name: 'Volatility 75 (1s) Index', pip: 2, group: 'synthetic', ticks: '1s' },
   { sym: '1HZ100V', name: 'Volatility 100 (1s) Index', pip: 2, group: 'synthetic', ticks: '1s' },
-  { sym: 'stpRNG', name: 'Step Index', pip: 1, group: 'synthetic', ticks: '2s' },
+  { sym: 'stpRNG', name: 'Step Index', pip: 1, group: 'synthetic', ticks: '1s' },
   { sym: 'RDBULL', name: 'Bull Market Index', pip: 4, group: 'synthetic', ticks: '2s' },
   { sym: 'RDBEAR', name: 'Bear Market Index', pip: 4, group: 'synthetic', ticks: '2s' },
-  { sym: 'JD10', name: 'Jump 10 Index', pip: 3, group: 'synthetic', ticks: '2s' },
-  { sym: 'JD25', name: 'Jump 25 Index', pip: 3, group: 'synthetic', ticks: '2s' },
-  { sym: 'JD50', name: 'Jump 50 Index', pip: 4, group: 'synthetic', ticks: '2s' },
-  { sym: 'JD75', name: 'Jump 75 Index', pip: 4, group: 'synthetic', ticks: '2s' },
-  { sym: 'JD100', name: 'Jump 100 Index', pip: 2, group: 'synthetic', ticks: '2s' },
+  { sym: 'JD10', name: 'Jump 10 Index', pip: 3, group: 'synthetic', ticks: '1s' },
+  { sym: 'JD25', name: 'Jump 25 Index', pip: 3, group: 'synthetic', ticks: '1s' },
+  { sym: 'JD50', name: 'Jump 50 Index', pip: 4, group: 'synthetic', ticks: '1s' },
+  { sym: 'JD75', name: 'Jump 75 Index', pip: 4, group: 'synthetic', ticks: '1s' },
+  { sym: 'JD100', name: 'Jump 100 Index', pip: 2, group: 'synthetic', ticks: '1s' },
   // ── Forex ──────────────────────────────────────────────────────────────
   { sym: 'frxEURUSD', name: 'EUR/USD', pip: 5, group: 'forex', ticks: 'stream' },
   { sym: 'frxGBPUSD', name: 'GBP/USD', pip: 5, group: 'forex', ticks: 'stream' },
@@ -79,6 +79,16 @@ export function digitOf(price, sym) {
 // the synthetic indices whose last digit is a meaningful, exchange-priced digit.
 export function isDigitSymbol(sym) {
   return symbolInfo(sym).group === 'synthetic';
+}
+
+// The symbol's normal tick interval in seconds, read from the `ticks` field of
+// the catalogue. The 1s indices tick every second, the classic volatility and
+// jump indices every two, and the real-market pairs stream without a fixed
+// cadence — those fall back to 1, which makes activity a per-tick measure.
+export function tickSeconds(sym) {
+  const raw = symbolInfo(sym).ticks;
+  const m = typeof raw === 'string' && /^(\d+(?:\.\d+)?)s$/.exec(raw);
+  return m ? Number(m[1]) : 1;
 }
 
 export function defaultSymbol() {

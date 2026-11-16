@@ -6,6 +6,7 @@ import { aiRead } from '../lib/aiComposites.js';
 import { structureRead } from '../lib/marketStructure.js';
 import { candleRead } from '../lib/candleIntelligence.js';
 import { tickIntelligence } from '../lib/microstructure.js';
+import { volumeActivity, moveUnit, tickMoves } from '../lib/volume.js';
 
 // Format a reading. `-0` and `-0.00` are normalised to `0` so a rounding
 // artefact never renders as a negative zero.
@@ -77,6 +78,7 @@ function cardsFor(group, s, price) {
   }
   if (group === 'volume') {
     return [
+      { name: 'Calc volume', value: f(s.volumeProfile?.total ?? s.obv, 0), sub: 'move-weighted' },
       { name: 'MFI 14', value: f(s.mfi, 1), sub: 'money flow' },
       { name: 'OBV', value: f(s.obv, 0), sub: 'on-balance vol' },
       { name: 'Chaikin MF', value: f(s.cmf, 3), cls: sign(s.cmf), sub: '20 period' },
@@ -126,6 +128,12 @@ export default function Analytics({ candles, digits, sym, price, prices = [], ti
   const struct = React.useMemo(() => (candles.length > 30 ? structureRead(candles) : null), [candles]);
   const candle = React.useMemo(() => (candles.length ? candleRead(candles) : null), [candles]);
   const micro = React.useMemo(() => (prices.length > 5 ? tickIntelligence(prices, times) : null), [prices, times]);
+  // Calculated volume, from the same tape and the same pure model the store
+  // folds into candles, so the panel and the volume histogram agree.
+  const vol = React.useMemo(
+    () => (prices.length > 51 ? { activity: volumeActivity(prices, times, sym, 50), unit: moveUnit(tickMoves(prices), sym) } : null),
+    [prices, times, sym],
+  );
 
   const cards = snap ? cardsFor(group, snap, price) : [];
 
@@ -173,6 +181,8 @@ export default function Analytics({ candles, digits, sym, price, prices = [], ti
             <Row k="Trend strength" v={micro.trendStrength != null ? `${f(micro.trendStrength * 100, 1)}%` : '—'} />
             <Row k="Reversal rate" v={micro.reversalRate != null ? `${f(micro.reversalRate * 100, 1)}%` : '—'} />
             <Row k="Pressure" v={f(micro.pressure, 3)} cls={sign(micro.pressure)} />
+            <Row k="Tick volume (calc, 50)" v={vol ? f(vol.activity, 2) : '—'} />
+            <Row k="Move unit" v={vol ? f(vol.unit, 6) : '—'} />
           </div>
         </Panel>
       )}
@@ -259,7 +269,7 @@ export default function Analytics({ candles, digits, sym, price, prices = [], ti
             <Row k="Mean candle body" v={f(mstats.body, 4)} />
             <Row k="Up / Down bars" v={`${mstats.upBars} / ${mstats.downBars}`} />
             <Row k="Max run up / down" v={`${mstats.maxRunUp} / ${mstats.maxRunDown}`} />
-            <Row k="Tick volume" v={mstats.volume} />
+            <Row k="Volume (calculated)" v={f(mstats.volume, 1)} />
             <Row k="Trend (linear slope)" v={f(mstats.slope, 6)} cls={sign(mstats.slope)} />
           </div>
         </Panel>
