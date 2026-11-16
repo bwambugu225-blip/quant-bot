@@ -321,6 +321,17 @@ input, select { font-family: inherit; font-variant-numeric: tabular-nums; }
 
 .empty { padding: 44px 20px; text-align: center; color: var(--text-mute); font-size: 12px; }
 
+/* An inline readout block: a decision line or a warning, in the panel flow. */
+.notice {
+  font-size: 12px; line-height: 1.6; color: var(--text-dim);
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 10px 12px;
+}
+.notice b { color: var(--text); font-weight: 600; }
+.notice.is-up { border-color: var(--up); color: var(--up); background: var(--up-soft); }
+.notice.is-up b { color: var(--up); }
+.notice.is-warn { border-color: var(--warn, var(--accent)); color: var(--text-dim); }
+
 /* ── strategy builder ──────────────────────────────────────────────────── */
 .builder { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .builder__scroll { overflow-y: auto; padding: 14px; flex: 1; }

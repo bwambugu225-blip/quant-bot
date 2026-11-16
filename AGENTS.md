@@ -215,6 +215,49 @@ selected market. There is no auto-tune and no auto-scan — `autoTune.js`,
 engine's tick handler evaluates the built strategy on the selected symbol's
 closed bars and nothing else.
 
+The Strategy tab has two mutually exclusive trade modes, switched with the
+segmented control at its top (`engine.setTradeMode('strategy'|'digit')`):
+
+- **Strategy builder** — the compiled indicator tree described below. `start()`
+  runs it and `start()` refuses while digit mode is on.
+- **Digit autotraders** — Over/Under and Even/Odd, which settle on the last
+  digit of the tick price and so read the tape directly instead of candles.
+  `startDigits()` runs them. The two modes never run together; changing mode
+  stops whatever is running.
+
+### Digit autotraders (`digitTrader.js` + `DigitTrader.jsx`)
+
+- **Pure decision logic.** `digitTrader.js` has no I/O. `digitCounts` tallies the
+  last `window` digits; `sideRates` gives each side's empirical win rate, its
+  baseline and a z-score; `digitSignal(config, digits)` returns the trade the
+  trader would place right now, or `null`.
+- **Over/Under baselines follow the barrier.** Over wins digits above the
+  barrier, Under digits below it, and the barrier digit wins neither, so the two
+  baselines need not sum to 1 (`barrier 4` → Over 5/10, Under 4/10). Even/Odd
+  split ten digits five and five, so both baselines are exactly 1/2.
+- **The gate is a z-score, not a percentage.** Deriv prices these contracts
+  against a fair digit stream, so a raw percentage is noise. A side is only
+  taken when its edge clears `minEdge` *and* its z-score clears `minZ` (default
+  2, i.e. two standard errors). `side:'auto'` picks whichever side sits further
+  above its baseline; an explicit side is only taken when it clears the gate
+  itself. On a fair stream the trader stands aside and the panel says so.
+- **Engine routing.** `_maybeDigitTrade` runs from the tick handler, only while
+  `digitMode` is on and no contract is open, and re-measures once per `window`
+  of new ticks rather than per tick — the decision is a statement about a
+  sample. `_executeDigit` builds the proposal through `buildProposal`
+  (`DIGITOVER`/`DIGITUNDER` with the barrier digit, or `DIGITEVEN`/`DIGITODD`)
+  and honours the same risk block, martingale ladder and session caps as the
+  strategy path (`_stakeFor`, `_sessionAllows`). Digit contracts are only
+  offered on the synthetic indices, so the trader refuses a non-synthetic
+  market.
+- **UI.** `DigitTrader.jsx` shows the live digit distribution (bars shaded by
+  whether the digit wins the side the trader would take), both sides' rates
+  against their baselines, the distribution χ², and the decision line. The read
+  is derived in `App.jsx` from the same tape the panel shows, through the same
+  pure function the engine uses, so it never lags a tick. The config (mode,
+  barrier, window, gates, duration) and the shared risk block are persisted in
+  `_saveBot()` alongside the strategy.
+
 ### Contract selection (`contracts.js` + `ContractEditor`)
 
 - **The strategy picks its own contract.** `strategy.action` carries
@@ -397,10 +440,11 @@ scope. Market data needs no login.
   `intelligence.test.mjs` (microstructure, market structure, candle intelligence,
   the AI composites and tick-bar folding), `strategyBuilder.test.mjs`,
   `backtest.test.mjs`, `studies.test.mjs` (panel split and study→series
-  resolution), `engine.test.mjs` (incl. a Higher/Lower proposal with a derived
-  barrier), `resilience.test.mjs` (bot persistence + resume-on-authorise) and
-  `connection.test.mjs` (the reconnect loop, stream health and `close()` against
-  a stub WebSocket).
+  resolution), `digitTrader.test.mjs` (Over/Under and Even/Odd decision logic and
+  engine routing), `engine.test.mjs` (incl. a Higher/Lower proposal with a
+  derived barrier), `resilience.test.mjs` (bot persistence + resume-on-authorise)
+  and `connection.test.mjs` (the reconnect loop, stream health and `close()`
+  against a stub WebSocket).
 - `.github/dependabot.yml` keeps npm deps and workflow actions current.
   Dependabot PRs run with a read-only token, so
   `.github/workflows/dependabot-auto-merge.yml` reacts to the **CI run

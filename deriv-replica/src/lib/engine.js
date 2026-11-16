@@ -10,11 +10,15 @@
 // default, or any directional catalogue product — Higher/Lower, Touch/No Touch,
 // Even/Odd, Over/Under, Matches/Differs, Asians, Resets, High/Low Tick. A
 // strategy may also read fixed-tick-count bars instead of the clock.
+// Digit autotraders: Over/Under and Even/Odd trade the last digit directly.
+// They are a second, independent mode — `startDigits()` runs the digit trader,
+// `start()` runs the strategy builder, and the two never run together.
 // Manual: placeTrade() places any catalogue contract on demand.
 import { MarketStore, IMPORT_TICKS, TF_SEC } from './marketStore.js';
 import { SYMBOLS, isDigitSymbol, decimalsFor, digitOf } from './symbols.js';
 import { buildProposal, findTradeType } from './contracts.js';
 import { evaluateStrategy, validateStrategy, describeStrategy } from './strategyBuilder.js';
+import { digitSignal, defaultDigitConfig, digitMode as digitModeDef } from './digitTrader.js';
 import { runBacktest } from './backtest.js';
 import { atrSeries, lastOf } from './indicators.js';
 import { onTick } from './ticker.js';
@@ -61,6 +65,8 @@ export class Engine {
     this.selectedTf = '5s';
     this.running = false;
     this.strategy = null;
+    this.digitConfig = defaultDigitConfig();
+    this.digitMode = false;
 
     this.activeContracts = new Map();
     this.processed = new Set();
@@ -193,6 +199,24 @@ export class Engine {
     this.emit('state', this.snapshot());
   }
 
+  setDigitConfig(patch) {
+    this.digitConfig = { ...this.digitConfig, ...patch };
+    this._saveBot();
+    this.emit('state', this.snapshot());
+  }
+
+  // Switch between the strategy builder and the digit autotraders. The two are
+  // mutually exclusive, so changing mode stops whatever is running.
+  setTradeMode(mode) {
+    const next = mode === 'digit' ? 'digit' : 'strategy';
+    if (next === (this.digitMode ? 'digit' : 'strategy')) return;
+    if (this.running) this.stop();
+    this.digitMode = next === 'digit';
+    this.log(`[ENGINE] Trade mode → ${next === 'digit' ? 'digit autotraders' : 'strategy builder'}`, 'i');
+    this._saveBot();
+    this.emit('state', this.snapshot());
+  }
+
   // Persist the desk so a reload comes back to the same setup and, if the bot
   // was running, picks the run back up once the session authorises.
   _saveBot() {
@@ -201,6 +225,8 @@ export class Engine {
       symbol: this.selectedSymbol,
       timeframe: this.selectedTf,
       running: this.running,
+      digitMode: this.digitMode,
+      digitConfig: this.digitConfig,
     });
   }
 
@@ -212,6 +238,8 @@ export class Engine {
     if (saved.strategy) this.strategy = saved.strategy;
     if (saved.symbol) this.selectedSymbol = saved.symbol;
     if (saved.timeframe) { this.selectedTf = saved.timeframe; this.store.setTimeframe(saved.timeframe); }
+    if (saved.digitConfig) this.digitConfig = { ...defaultDigitConfig(), ...saved.digitConfig };
+    if (saved.digitMode) this.digitMode = true;
     this._resumePending = !!saved.running;
     this.emit('state', this.snapshot());
     return true;
@@ -250,6 +278,8 @@ export class Engine {
       strategyValid: this.strategy ? validateStrategy(this.strategy).length === 0 : false,
       strategyDesc: this.strategy ? describeStrategy(this.strategy) : '',
       risk: this.strategy?.risk || defaultRisk(),
+      tradeMode: this.digitMode ? 'digit' : 'strategy',
+      digitConfig: this.digitConfig,
       wins: this.wins, losses: this.losses, pnl: this.pnl, trades: this.trades,
       consLoss: this.consLoss,
       bestTrade: this.bestTrade, worstTrade: this.worstTrade,
@@ -314,14 +344,18 @@ export class Engine {
     // the user clicks START once, the import finishes, and trading begins.
     if (this._startPending && this.warmup().ready) {
       this.log('[ENGINE] Warm-up complete — starting', 's');
-      this.start();
+      if (this._startPendingMode === 'digit') this.startDigits();
+      else this.start();
       return;
     }
 
     if (sym === this.selectedSymbol) {
       this._tickAt = Date.now();
     }
-    if (sym === this.selectedSymbol) this._maybeEvaluate(sym);
+    if (sym === this.selectedSymbol) {
+      this._maybeEvaluate(sym);
+      this._maybeDigitTrade(sym);
+    }
   }
 
   // The candle buffer the strategy reads. A strategy that carries a `barSize`
@@ -338,6 +372,7 @@ export class Engine {
   // is a statement about a completed bar.
   _maybeEvaluate(sym) {
     if (!this.running || !this.strategy) return;
+    if (this.digitMode) return;
     if (this.activeContracts.size > 0) return;
     if (!this._sessionAllows()) return;
 
@@ -356,6 +391,64 @@ export class Engine {
     if (!signal) return;
     if (signal.action === 'both') return;
     this._execute(sym, signal);
+  }
+
+  // ── Digit autotraders (Over/Under, Even/Odd) ───────────────────────────
+  // These settle on the last digit of the tick price, so they do not read
+  // candles at all. The trader measures the recent digit distribution and only
+  // enters when a side sits far enough above its baseline. One entry per
+  // `window`-tick re-evaluation, and only while no contract is open, so a run
+  // cannot stack contracts.
+  _maybeDigitTrade(sym) {
+    if (!this.running || !this.digitMode) return;
+    if (this.activeContracts.size > 0) return;
+    if (!this._sessionAllows()) return;
+    if (!isDigitSymbol(sym)) return;
+
+    const digits = this.store.digits(sym);
+    const cfg = this.digitConfig;
+    // Re-evaluate once per window of new ticks rather than on every tick: the
+    // decision is a statement about a sample, not about the latest tick. The
+    // counter advances on every evaluation, so a run that finds no edge simply
+    // waits for the next window instead of re-measuring each tick.
+    const step = Math.max(20, Math.floor(cfg.window) || 200);
+    if (this._digitAt && digits.length - this._digitAt < step) return;
+    this._digitAt = digits.length;
+
+    const signal = digitSignal(cfg, digits);
+    if (!signal) return;
+    this._executeDigit(sym, signal);
+  }
+
+  // Place the digit contract the signal names. Over/Under carries its barrier
+  // as the contract's digit; Even/Odd needs none. Sizing and the risk caps are
+  // the same block the strategy path uses.
+  _executeDigit(sym, signal) {
+    const p = { ...defaultRisk(), ...this.digitRisk() };
+    const stake = this._stakeFor(p);
+    const value = {
+      stake,
+      duration: this.digitConfig.duration ?? 5,
+      unit: 't',
+      digit: signal.barrier ?? 0,
+    };
+    const raw = buildProposal(signal.tradeType, signal.side, value, sym, this.accountCurrency());
+    this.lastSignal = {
+      action: signal.label.toUpperCase(), conf: Math.round(signal.rate * 100),
+      src: 'DIGIT', stake: raw.amount, dur: raw.duration, durUnit: raw.duration_unit,
+      asset: sym, label: raw.contract_type,
+      edge: signal.edge, z: signal.z, mode: signal.mode, side: signal.side,
+    };
+    this.log(`[TRADE] ${raw.contract_type}${signal.barrier != null ? ` >${signal.barrier}` : ''} ${raw.currency} ${raw.amount.toFixed(2)} ${sym} — ${signal.label} ${(signal.rate * 100).toFixed(1)}% vs ${(signal.base * 100).toFixed(1)}% (z ${signal.z.toFixed(2)})`, 't');
+    this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
+    this._sendProposal(raw);
+  }
+
+  // The risk block the digit trader honours. It reuses the strategy's risk so
+  // the caps, martingale ladder and stake are configured in one place, falling
+  // back to the defaults when no strategy is loaded.
+  digitRisk() {
+    return this.strategy?.risk || defaultRisk();
   }
 
   // ── Strategy execution ─────────────────────────────────────────────────
@@ -593,6 +686,7 @@ export class Engine {
   start() {
     if (!this.client?.auth) { this.log('[ERROR] Authorize first', 'e'); return false; }
     if (this.running) return false;
+    if (this.digitMode) { this.toast('Digit mode is on — switch to Strategy to run the builder', 'w'); return false; }
     if (!this.strategy) { this.toast('Build a strategy first', 'w'); return false; }
     const errors = validateStrategy(this.strategy);
     if (errors.length) { this.toast(`Strategy invalid: ${errors[0]}`, 'w'); return false; }
@@ -600,6 +694,7 @@ export class Engine {
     const warm = this.warmup();
     if (!warm.ready) {
       this._startPending = true;
+      this._startPendingMode = 'strategy';
       this.log(`[ENGINE] Warming up — ${warm.have}/${warm.need} ticks before starting`, 'i');
       this.toast(`Warming up — ${warm.have}/${warm.need} ticks`, 'info');
       this.emit('state', this.snapshot());
@@ -613,6 +708,42 @@ export class Engine {
     this._execSamples = [];
     this._lastEvalCandle = {};
     this.log(`[ENGINE] Started — strategy "${this.strategy.name}" on ${this.selectedSymbol} ${this.strategy.barSize ? `${this.strategy.barSize}-tick bars` : this.strategy.timeframe}`, 's');
+    this._ensureWatchdog();
+    this._saveBot();
+    this.emit('state', this.snapshot());
+    return true;
+  }
+
+  // Start a digit autotrader (Over/Under or Even/Odd). It shares the warm-up
+  // gate, the watchdog, the risk block and the session caps with the strategy
+  // path; only the entry rule differs — a digit-distribution read instead of a
+  // compiled indicator tree.
+  startDigits() {
+    if (!this.client?.auth) { this.log('[ERROR] Authorize first', 'e'); return false; }
+    if (this.running) return false;
+    if (!this.digitMode) this.setTradeMode('digit');
+    if (!isDigitSymbol(this.selectedSymbol)) {
+      this.toast('Digit contracts need a synthetic index — pick one', 'w');
+      return false;
+    }
+    const warm = this.warmup();
+    if (!warm.ready) {
+      this._startPending = true;
+      this._startPendingMode = 'digit';
+      this.log(`[ENGINE] Warming up — ${warm.have}/${warm.need} ticks before starting`, 'i');
+      this.toast(`Warming up — ${warm.have}/${warm.need} ticks`, 'info');
+      this.emit('state', this.snapshot());
+      return false;
+    }
+    this._startPending = false;
+    this._resumePending = false;
+    this.running = true;
+    this.sessionStart = Date.now();
+    this._martSteps = 0;
+    this._execSamples = [];
+    this._digitAt = 0;
+    const m = digitModeDef(this.digitConfig.mode);
+    this.log(`[ENGINE] Started — ${m.label} autotrader on ${this.selectedSymbol} (${this.digitConfig.window}-tick window, edge ≥ ${(this.digitConfig.minEdge * 100).toFixed(0)}%, z ≥ ${this.digitConfig.minZ})`, 's');
     this._ensureWatchdog();
     this._saveBot();
     this.emit('state', this.snapshot());

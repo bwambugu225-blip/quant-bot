@@ -3,6 +3,7 @@ import Chart from './components/Chart.jsx';
 import Analytics from './components/Analytics.jsx';
 import Panel from './components/Panel.jsx';
 import StrategyBuilder from './components/StrategyBuilder.jsx';
+import DigitTrader from './components/DigitTrader.jsx';
 import TradeDock from './components/TradeDock.jsx';
 import TickerTape from './components/TickerTape.jsx';
 import StatusBar from './components/StatusBar.jsx';
@@ -10,9 +11,10 @@ import { Positions, Reports, Logs } from './components/Tables.jsx';
 import { SymbolPicker, LoginModal, Modal, IndicatorPicker } from './components/Modals.jsx';
 import { IconChart, IconStrategy, IconPositions, IconReports, IconLog } from './components/icons.jsx';
 import { useEngine } from './lib/useEngine.js';
-import { SYMBOLS, symbolInfo, pipSize } from './lib/symbols.js';
+import { SYMBOLS, symbolInfo, pipSize, isDigitSymbol } from './lib/symbols.js';
 import { TIMEFRAMES, TICK_BAR_SIZES } from './lib/marketStore.js';
 import { defaultStrategy } from './lib/strategyBuilder.js';
+import { digitRead } from './lib/digitTrader.js';
 import { studyKey } from './lib/studies.js';
 import { CURRENCY, money } from './lib/format.js';
 
@@ -83,6 +85,13 @@ export default function App() {
     return engine.store.candles(symbol, tf);
   }, [engine, symbol, tf, tick, barSource, tickSize]);
   const digits = React.useMemo(() => engine.store.digits(symbol), [engine, symbol, tick]);
+  // The digit autotrader read, derived live from the same tape the panel shows
+  // so it never lags a tick. Same pure function the engine's entry path uses.
+  const digitCfg = state?.digitConfig;
+  const digit = React.useMemo(
+    () => (digitCfg && isDigitSymbol(symbol) && digits.length ? digitRead(digitCfg, digits) : null),
+    [digitCfg, symbol, digits],
+  );
   // The raw tick tape, for the microstructure and AI panels.
   const tickData = React.useMemo(() => engine.store.ticks(symbol), [engine, symbol, tick]);
   const price = tick?.sym === symbol ? tick.price : (engine.store.lastPrice(symbol) ?? null);
@@ -102,11 +111,19 @@ export default function App() {
     setBacktest(r ? { ...r, __sym: symbol } : null);
   };
 
-  // Start bot: trade the strategy exactly as built. If the user is not
-  // authorised yet, open the login prompt instead.
+  // Start bot: trade whatever the active mode is — the built strategy, or the
+  // digit autotrader when digit mode is on. If the user is not authorised yet,
+  // open the login prompt instead.
   const startBot = () => {
     if (!state?.loggedIn) { setLoginOpen(true); return; }
-    engine.start();
+    if (state?.tradeMode === 'digit') engine.startDigits();
+    else engine.start();
+  };
+
+  // Start a digit autotrader (Over/Under or Even/Odd) on the selected market.
+  const startDigits = () => {
+    if (!state?.loggedIn) { setLoginOpen(true); return; }
+    engine.startDigits();
   };
 
   const addStudy = study => {
@@ -172,17 +189,47 @@ export default function App() {
         <div className="main">
           {view === 'builder' ? (
             <div className="workspace">
-              <StrategyBuilder
-                strategy={strategy}
-                onChange={s => engine.setStrategy(s)}
-                onBacktest={onBacktest}
-                onStart={startBot}
-                onStop={() => engine.stop()}
-                running={!!state?.running}
-                backtest={backtest}
-                symbols={SYMBOLS}
-                currency={state?.currency}
-              />
+              <div className="builder__bar">
+                <span className="field__lbl" style={{ marginRight: 2 }}>Trade mode</span>
+                <div className="seg">
+                  <button className={(state?.tradeMode || 'strategy') === 'strategy' ? 'is-active' : ''}
+                    onClick={() => engine.setTradeMode('strategy')} type="button">Strategy builder</button>
+                  <button className={state?.tradeMode === 'digit' ? 'is-active' : ''}
+                    onClick={() => engine.setTradeMode('digit')} type="button">Digit autotraders</button>
+                </div>
+                <span style={{ fontSize: 11, color: 'var(--text-mute)' }}>
+                  {(state?.tradeMode || 'strategy') === 'digit'
+                    ? 'Over/Under · Even/Odd — trade the last digit'
+                    : 'Indicators, groups and contracts'}
+                </span>
+              </div>
+              {state?.tradeMode === 'digit' ? (
+                <DigitTrader
+                  config={state?.digitConfig}
+                  read={digit}
+                  onConfig={patch => engine.setDigitConfig(patch)}
+                  onStart={startDigits}
+                  onStop={() => engine.stop()}
+                  running={!!state?.running}
+                  risk={state?.risk}
+                  onRisk={patch => engine.setRisk(patch)}
+                  currency={state?.currency}
+                  symbol={symbol}
+                  digitSymbol={isDigitSymbol(symbol)}
+                />
+              ) : (
+                <StrategyBuilder
+                  strategy={strategy}
+                  onChange={s => engine.setStrategy(s)}
+                  onBacktest={onBacktest}
+                  onStart={startBot}
+                  onStop={() => engine.stop()}
+                  running={!!state?.running}
+                  backtest={backtest}
+                  symbols={SYMBOLS}
+                  currency={state?.currency}
+                />
+              )}
             </div>
           ) : view === 'positions' || view === 'reports' || view === 'logs' ? (
             <div className="workspace" style={{ overflow: 'auto' }}>
