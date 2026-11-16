@@ -3,6 +3,7 @@ import {
   INDICATORS, OPERATORS, defaultParamsFor, describeStrategy, validateStrategy, STRATEGY_TEMPLATES,
 } from '../lib/strategyBuilder.js';
 import { TIMEFRAMES } from '../lib/marketStore.js';
+import { CURRENCY, stakeLabel, stakeInKes, stakeFromKes, minStakeKes, money } from '../lib/format.js';
 
 const uid = () => Math.random().toString(36).slice(2, 9);
 
@@ -120,7 +121,7 @@ function GroupEditor({ group, onChange, onRemove, depth = 0 }) {
 }
 
 // ── main builder ───────────────────────────────────────────────────────────
-export default function StrategyBuilder({ strategy, onChange, onBacktest, onStart, onStop, running, backtest, symbols, onSymbol }) {
+export default function StrategyBuilder({ strategy, onChange, onBacktest, onStart, onStop, running, backtest, symbols, onSymbol, currency }) {
   if (!strategy) return <div className="empty">No strategy loaded</div>;
   const s = strategy;
   const errors = validateStrategy(s);
@@ -177,7 +178,7 @@ export default function StrategyBuilder({ strategy, onChange, onBacktest, onStar
         </div>
 
         <div className="section-title">Risk &amp; money management</div>
-        <RiskEditor risk={s.risk} onChange={risk => set({ risk })} />
+        <RiskEditor risk={s.risk} onChange={risk => set({ risk })} currency={currency} />
 
         <div className="section-title">Preview</div>
         <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6, padding: 10, background: 'var(--bg-2)', borderRadius: 8, border: '1px solid var(--line)' }}>
@@ -187,7 +188,7 @@ export default function StrategyBuilder({ strategy, onChange, onBacktest, onStar
         {backtest && (
           <>
             <div className="section-title">Backtest — {symbols?.find(x => x.sym === s.__sym)?.name || 'current market'}</div>
-            {backtest.error ? <div className="empty">{backtest.error}</div> : <BacktestResult r={backtest} />}
+            {backtest.error ? <div className="empty">{backtest.error}</div> : <BacktestResult r={backtest} currency={currency} />}
           </>
         )}
       </div>
@@ -195,15 +196,20 @@ export default function StrategyBuilder({ strategy, onChange, onBacktest, onStar
   );
 }
 
-function RiskEditor({ risk, onChange }) {
+function RiskEditor({ risk, onChange, currency }) {
   const set = patch => onChange({ ...risk, ...patch });
+  // The stake is stored in the account's own currency but shown and edited in
+  // shillings, matching the trade dock.
+  const stakeKes = stakeInKes(risk.stake, currency);
+  const minKes = minStakeKes(currency);
   return (
     <div className="risk-grid">
-      <label className="field"><span className="field__lbl">Stake (USD)</span>
-        <input type="number" min="0.35" step="0.01" value={risk.stake} onChange={e => set({ stake: +e.target.value })} /></label>
-      <label className="field"><span className="field__lbl">Take profit</span>
+      <label className="field"><span className="field__lbl">{stakeLabel()}</span>
+        <input type="number" min={minKes} step="0.01" value={stakeKes}
+          onChange={e => set({ stake: stakeFromKes(+e.target.value, currency) })} /></label>
+      <label className="field"><span className="field__lbl">Take profit ({CURRENCY})</span>
         <input type="number" min="0" value={risk.takeProfit} onChange={e => set({ takeProfit: +e.target.value })} /></label>
-      <label className="field"><span className="field__lbl">Stop loss</span>
+      <label className="field"><span className="field__lbl">Stop loss ({CURRENCY})</span>
         <input type="number" min="0" value={risk.stopLoss} onChange={e => set({ stopLoss: +e.target.value })} /></label>
       <label className="field"><span className="field__lbl">Max trades (0 = ∞)</span>
         <input type="number" min="0" value={risk.maxTrades} onChange={e => set({ maxTrades: +e.target.value })} /></label>
@@ -221,16 +227,17 @@ function RiskEditor({ risk, onChange }) {
   );
 }
 
-function BacktestResult({ r }) {
+function BacktestResult({ r, currency }) {
+  const c = v => money(v, currency);
   const stats = [
     ['Trades', r.count, ''],
     ['Win rate', `${(r.winRate * 100).toFixed(1)}%`, r.winRate >= 0.5 ? 'is-up' : 'is-down'],
-    ['Net P&L', `${r.pnl >= 0 ? '+' : ''}${r.pnl}`, r.pnl >= 0 ? 'is-up' : 'is-down'],
+    ['Net P&L', `${r.pnl >= 0 ? '+' : ''}${c(r.pnl)}`, r.pnl >= 0 ? 'is-up' : 'is-down'],
     ['Profit factor', r.profitFactor === Infinity ? '∞' : r.profitFactor, r.profitFactor >= 1 ? 'is-up' : 'is-down'],
-    ['Expectancy', r.expectancy, r.expectancy >= 0 ? 'is-up' : 'is-down'],
-    ['Max drawdown', r.maxDrawdown, 'is-down'],
+    ['Expectancy', c(r.expectancy), r.expectancy >= 0 ? 'is-up' : 'is-down'],
+    ['Max drawdown', c(r.maxDrawdown), 'is-down'],
     ['Sharpe (est.)', r.sharpe, r.sharpe >= 0 ? 'is-up' : 'is-down'],
-    ['End equity', r.equity, r.equity >= r.startEquity ? 'is-up' : 'is-down'],
+    ['End equity', c(r.equity), r.equity >= r.startEquity ? 'is-up' : 'is-down'],
   ];
   return (
     <>
@@ -253,7 +260,7 @@ function BacktestResult({ r }) {
                   <td className={t.side === 'up' ? 'is-up' : 'is-down'}>{t.side.toUpperCase()}</td>
                   <td>{t.entry.toFixed(4)}</td>
                   <td>{t.exit.toFixed(4)}</td>
-                  <td className={t.profit >= 0 ? 'is-up' : 'is-down'}>{t.profit >= 0 ? '+' : ''}{t.profit.toFixed(2)}</td>
+                  <td className={t.profit >= 0 ? 'is-up' : 'is-down'}>{t.profit >= 0 ? '+' : ''}{c(t.profit)}</td>
                 </tr>
               ))}
             </tbody>

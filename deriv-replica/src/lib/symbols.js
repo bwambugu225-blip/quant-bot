@@ -82,5 +82,5 @@ export function isDigitSymbol(sym) {
 }
 
 export function defaultSymbol() {
-  return 'R_100';
+  return 'R_75';
 }

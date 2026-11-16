@@ -12,8 +12,9 @@ import { SYMBOLS, isDigitSymbol, decimalsFor, digitOf } from './symbols.js';
 import { buildProposal } from './contracts.js';
 import { evaluateStrategy, validateStrategy, describeStrategy } from './strategyBuilder.js';
 import { runBacktest } from './backtest.js';
+import { CURRENCY, DEFAULT_STAKE } from './format.js';
 
-const MIN_STAKE = 0.35;
+const MIN_STAKE = DEFAULT_STAKE;
 const MAX_STAKE = 200;
 const PROPOSAL_TIMEOUT = 6000;
 const WARMUP_TICKS = 100;
@@ -25,7 +26,7 @@ const SPEC_TTL_MS = 60000;
 
 function defaultRisk() {
   return {
-    stake: 1, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0,
+    stake: DEFAULT_STAKE, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0,
     martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed',
   };
 }
@@ -35,7 +36,7 @@ export class Engine {
     this.store = new MarketStore();
     this.client = null;
 
-    this.selectedSymbol = 'R_100';
+    this.selectedSymbol = 'R_75';
     this.selectedTf = '5s';
     this.running = false;
     this.strategy = null;
@@ -164,6 +165,15 @@ export class Engine {
     this.emit('state', this.snapshot());
   }
 
+  // The currency to denominate a trade in: the live account's own currency when
+  // authenticated, otherwise the terminal default. A real buy must match the
+  // account currency or Deriv rejects the proposal.
+  accountCurrency() {
+    const id = this.client?.accountId;
+    const acct = id ? (this.accounts || []).find(a => a.account === id) : null;
+    return acct?.currency || this.client?.currency || CURRENCY;
+  }
+
   // ── Snapshot for React ─────────────────────────────────────────────────
   snapshot() {
     return {
@@ -172,6 +182,7 @@ export class Engine {
       accountId: this.client?.accountId || null,
       accountType: this.client?.accountType || 'demo',
       balance: this.client?.balance || 0,
+      currency: this.accountCurrency(),
       accounts: this.accounts || [],
       selectedSymbol: this.selectedSymbol,
       selectedTf: this.selectedTf,
@@ -290,14 +301,14 @@ export class Engine {
       unit: s.action?.durationUnit || 't',
       stake,
     };
-    const raw = buildProposal('rise_fall', side, value, sym);
+    const raw = buildProposal('rise_fall', side, value, sym, this.accountCurrency());
     this.lastSignal = {
       action: side === 'up' ? 'RISE' : 'FALL',
       label: `${side === 'up' ? 'CALL' : 'PUT'} ${value.duration}${value.unit}`,
       stake, asset: sym, at: signal.at,
       rationale: `strategy "${s.name}"`,
     };
-    this.log(`[TRADE] ${raw.contract_type} $${stake.toFixed(2)} ${sym}`
+    this.log(`[TRADE] ${raw.contract_type} ${CURRENCY} ${stake.toFixed(2)} ${sym}`
       + ` ${value.duration}${value.unit} (${s.name})`, 't');
     this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
     this._ensureSpecs(sym, () => this._sendProposal(raw));
@@ -361,12 +372,12 @@ export class Engine {
     if (!this.client?.auth) { this.log('[TRADE] Authorize first', 'e'); return false; }
     if (this.activeContracts.size >= 1) { this.toast('Contract active — wait', 'w'); return false; }
     const sym = this.selectedSymbol;
-    const raw = buildProposal(type, side, value, sym);
+    const raw = buildProposal(type, side, value, sym, this.accountCurrency());
     this.lastSignal = {
       action: side === 'down' ? 'FALL' : 'RISE', conf: 100, src: 'MANUAL',
       stake: raw.amount, dur: raw.duration, durUnit: raw.duration_unit, asset: sym, label: raw.contract_type,
     };
-    this.log(`[TRADE] ${raw.contract_type} $${raw.amount.toFixed(2)} ${sym} via MANUAL`, 't');
+    this.log(`[TRADE] ${raw.contract_type} ${raw.currency} ${raw.amount.toFixed(2)} ${sym} via MANUAL`, 't');
     this.activeContracts.set('sending', { id: null, price: null, time: Date.now() });
     this._sendProposal(raw);
     return true;
@@ -404,7 +415,7 @@ export class Engine {
         decimals: decimalsFor(sym), openedAt: Date.now(),
       }, ...this.positions];
       this.client.balance -= b.buy_price;
-      this.log(`[BUY] #${b.contract_id} $${b.buy_price.toFixed(2)}`, 's');
+      this.log(`[BUY] #${b.contract_id} ${this.accountCurrency()} ${b.buy_price.toFixed(2)}`, 's');
       this.emit('state', this.snapshot());
     } else if (msg.error) {
       this.log(`[BUY] ${msg.error.message}`, 'e');
@@ -420,8 +431,9 @@ export class Engine {
     if (this.processed.size > 500) this.processed = new Set([...this.processed].slice(-200));
 
     const won = c.status === 'won' || (c.is_sold === 1 && c.profit > 0);
-    this.toast(`${won ? 'WIN' : 'LOSS'} ${c.profit >= 0 ? '+' : ''}${c.profit.toFixed(2)}`, won ? 'win' : 'loss');
-    this.log(`[${won ? 'WIN' : 'LOSS'}] ${c.profit >= 0 ? '+' : ''}${c.profit.toFixed(2)}`, won ? 's' : 'e');
+    const cur = this.accountCurrency();
+    this.toast(`${won ? 'WIN' : 'LOSS'} ${c.profit >= 0 ? '+' : ''}${c.profit.toFixed(2)} ${cur}`, won ? 'win' : 'loss');
+    this.log(`[${won ? 'WIN' : 'LOSS'}] ${c.profit >= 0 ? '+' : ''}${c.profit.toFixed(2)} ${cur}`, won ? 's' : 'e');
 
     const p = this.activeContracts.get(c.contract_id)?.params || { ...defaultRisk(), ...(this.strategy?.risk || {}) };
     if (won) { this.wins++; this.consLoss = 0; this._martSteps = 0; }

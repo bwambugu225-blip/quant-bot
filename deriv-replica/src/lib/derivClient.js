@@ -13,6 +13,11 @@
 // The legacy ws.derivws.com/websockets/v3 endpoint is kept only as a fallback.
 const PUBLIC_WS = 'wss://api.derivws.com/trading/v1/options/ws/public';
 const WS_BASE = 'wss://ws.derivws.com/websockets/v3';
+
+// The terminal prices every trade in KES. Deriv's public proposal gateway
+// requires a currency, and the trade dock's payout quote must match the
+// currency the trade is placed in, so the public requests use the same one.
+const CURRENCY = 'KES';
 const REST_ACCOUNTS = 'https://api.derivws.com/trading/v1/options/accounts';
 const DEFAULT_APP_ID = '33JFxN3sbe2usdFigbMb8';
 
@@ -248,7 +253,7 @@ export class DerivClient {
     this.accountType = isDemo(account) ? 'demo' : 'real';
     this.balance = account.balance || 0;
     this.emit('accounts', accounts);
-    this.emit('log', { t: `[AUTH] Selected ${account.account} (${this.accountType}) $${this.balance}`, k: 's' });
+    this.emit('log', { t: `[AUTH] Selected ${account.account} (${this.accountType}) ${this.balance} ${account.currency || 'USD'}`, k: 's' });
 
     try {
       const otpResp = await fetch(`${REST_ACCOUNTS}/${account.account}/otp`, {
@@ -320,7 +325,7 @@ export class DerivClient {
     this._oauthAccounts = accounts;
     this.emit('accounts', accounts);
     this.emit('authorized', { accountId: this.accountId, accountType: this.accountType, balance });
-    this.emit('log', { t: `[AUTH] Demo top-up → $${balance}`, k: 's' });
+    this.emit('log', { t: `[AUTH] Demo top-up → ${balance} ${this.currency || 'USD'}`, k: 's' });
     return balance;
   }
 
@@ -504,7 +509,7 @@ export class DerivClient {
     this._payoutCbs = this._payoutCbs || {};
     this._payoutCbs[id] = cb;
     this._sendOn(socket, {
-      proposal: 1, amount: 1, basis: 'stake', currency: 'USD', ...fields, req_id: id,
+      proposal: 1, amount: 1, basis: 'stake', currency: CURRENCY, ...fields, req_id: id,
     });
     return id;
   }

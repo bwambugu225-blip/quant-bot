@@ -2,6 +2,10 @@ import React from 'react';
 import Panel from './Panel.jsx';
 import { indicatorSnapshot } from '../lib/indicators.js';
 import { digitStats, marketStats, marketReadout } from '../lib/analytics.js';
+import { aiRead } from '../lib/aiComposites.js';
+import { structureRead } from '../lib/marketStructure.js';
+import { candleRead } from '../lib/candleIntelligence.js';
+import { tickIntelligence } from '../lib/microstructure.js';
 
 // Format a reading. `-0` and `-0.00` are normalised to `0` so a rounding
 // artefact never renders as a negative zero.
@@ -21,6 +25,7 @@ const GROUPS = [
   { id: 'volatility', label: 'Volatility' },
   { id: 'volume', label: 'Volume' },
   { id: 'levels', label: 'Levels' },
+  { id: 'quant', label: 'Quant' },
 ];
 
 function cardsFor(group, s, price) {
@@ -34,9 +39,11 @@ function cardsFor(group, s, price) {
       { name: 'DEMA', value: f(s.dema, 4), cls: above(s.dema), sub: 'double' },
       { name: 'TEMA', value: f(s.tema, 4), cls: above(s.tema), sub: 'triple' },
       { name: 'SuperTrend', value: s.superTrend?.dir === 1 ? 'BULL' : 'BEAR', cls: s.superTrend?.dir === 1 ? 'is-up' : 'is-down', sub: f(s.superTrend?.value, 4) },
+      { name: 'Parabolic SAR', value: f(s.psar, 4), cls: price != null && s.psar != null ? (price >= s.psar ? 'is-up' : 'is-down') : '', sub: price != null && s.psar != null ? (price >= s.psar ? 'long' : 'short') : 'stop & reverse' },
       { name: 'Vortex', value: f(s.vortex?.plus, 3), cls: s.vortex?.plus > s.vortex?.minus ? 'is-up' : 'is-down', sub: `VI− ${f(s.vortex?.minus, 3)}` },
       { name: 'Aroon', value: f(s.aroon?.up, 0), cls: s.aroon?.up > s.aroon?.down ? 'is-up' : 'is-down', sub: `Down ${f(s.aroon?.down, 0)}` },
       { name: 'Alligator', value: f(s.alligator?.lips, 4), cls: s.alligator?.lips > s.alligator?.jaw ? 'is-up' : 'is-down', sub: `Jaw ${f(s.alligator?.jaw, 4)}` },
+      { name: 'Kalman', value: f(s.kalman, 4), cls: above(s.kalman), sub: 'adaptive trend' },
     ];
   }
   if (group === 'momentum') {
@@ -46,7 +53,7 @@ function cardsFor(group, s, price) {
       { name: 'Stoch %K', value: f(s.stoch?.k, 1), cls: s.stoch?.k > 80 ? 'is-down' : s.stoch?.k < 20 ? 'is-up' : '', sub: `D ${f(s.stoch?.d, 1)}` },
       { name: 'Stoch RSI', value: f(s.stochRsi, 1), sub: '14 / 3' },
       { name: 'CCI 20', value: f(s.cci, 1), cls: s.cci > 100 ? 'is-down' : s.cci < -100 ? 'is-up' : '', sub: 'commodity' },
-      { name: 'Williams %R', value: f(s.williamsR, 1), cls: s.williamsR > -20 ? 'is-down' : s.williamsR < -80 ? 'is-up' : '', sub: 'momentum' },
+      { name: 'Williams %R', value: f(s.williamsR, 1), cls: s.williamsRanges?.state === 'overbought' ? 'is-down' : s.williamsRanges?.state === 'oversold' ? 'is-up' : '', sub: s.williamsRanges?.state || 'momentum' },
       { name: 'ROC 12', value: `${f(s.roc, 3)}%`, cls: sign(s.roc), sub: 'rate of change' },
       { name: 'Fisher', value: f(s.fisher, 3), cls: sign(s.fisher), sub: 'turn' },
       { name: 'Awesome Osc', value: f(s.awesome, 4), cls: sign(s.awesome), sub: '5 / 34' },
@@ -64,6 +71,8 @@ function cardsFor(group, s, price) {
       { name: 'Bandwidth', value: s.bb?.mid ? `${f(((s.bb.upper - s.bb.lower) / s.bb.mid) * 100, 3)}%` : '—', sub: 'BB width' },
       { name: 'Keltner', value: f(s.keltner?.mid, 4), sub: `${f(s.keltner?.lower, 2)}–${f(s.keltner?.upper, 2)}` },
       { name: 'Donchian', value: f(s.donchian?.mid, 4), sub: `${f(s.donchian?.lower, 2)}–${f(s.donchian?.upper, 2)}` },
+      { name: 'Choppiness', value: f(s.choppiness, 1), cls: s.choppiness > 61.8 ? 'is-down' : s.choppiness < 38.2 ? 'is-up' : '', sub: s.choppiness > 61.8 ? 'ranging' : s.choppiness < 38.2 ? 'trending' : 'mixed' },
+      { name: 'Volatility σ', value: f(s.atr ? s.atr / (price || 1) : null, 5), sub: 'normalised' },
     ];
   }
   if (group === 'volume') {
@@ -74,6 +83,20 @@ function cardsFor(group, s, price) {
       { name: 'Klinger', value: f(s.klinger?.kvo, 0), cls: sign(s.klinger?.kvo), sub: `signal ${f(s.klinger?.signal, 0)}` },
       { name: 'Force Index', value: f(s.forceIndex, 1), cls: sign(s.forceIndex), sub: '13 period' },
       { name: 'Ease of Move', value: f(s.eom, 3), cls: sign(s.eom), sub: '14 period' },
+      { name: 'Volume POC', value: f(s.volumeProfile?.poc, 4), sub: 'point of control' },
+    ];
+  }
+  if (group === 'quant') {
+    return [
+      { name: 'Z-Score 20', value: f(s.zscore, 2), cls: s.zscore > 2 ? 'is-down' : s.zscore < -2 ? 'is-up' : '', sub: 'stretch' },
+      { name: 'Efficiency', value: f(s.efficiencyRatio, 3), cls: s.efficiencyRatio > 0.5 ? 'is-up' : '', sub: 'net / path' },
+      { name: 'Hurst', value: f(s.hurst, 3), cls: s.hurst > 0.55 ? 'is-up' : s.hurst < 0.45 ? 'is-down' : '', sub: s.hurst > 0.55 ? 'persistent' : s.hurst < 0.45 ? 'mean-revert' : 'random' },
+      { name: 'Fractal Dim', value: f(s.fractalDimension, 3), sub: 'path complexity' },
+      { name: 'Entropy', value: f(s.entropy, 3), sub: 'order 0–1' },
+      { name: 'Skew', value: f(s.skew, 3), cls: sign(s.skew), sub: 'tail lean' },
+      { name: 'Kurtosis', value: f(s.kurtosis, 3), sub: 'tail weight' },
+      { name: 'CUSUM', value: f(s.cusum, 2), cls: sign(s.cusum), sub: 'regime shift' },
+      { name: 'Choppiness', value: f(s.choppiness, 1), sub: '14 period' },
     ];
   }
   // levels
@@ -83,19 +106,26 @@ function cardsFor(group, s, price) {
     { name: 'Resistance R1', value: f(s.pivots?.r1, 4), cls: 'is-down', sub: `R2 ${f(s.pivots?.r2, 2)}` },
     { name: 'Support S1', value: f(s.pivots?.s1, 4), cls: 'is-up', sub: `S2 ${f(s.pivots?.s2, 2)}` },
     { name: 'Ichimoku', value: f(s.ichimoku?.tenkan, 4), cls: price != null && s.ichimoku?.tenkan != null ? (price >= s.ichimoku.tenkan ? 'is-up' : 'is-down') : '', sub: `Kijun ${f(s.ichimoku?.kijun, 4)}` },
-    { name: 'Volume POC', value: f(s.volumeProfile?.poc, 4), sub: 'point of control' },
+    { name: 'PSAR', value: f(s.psar, 4), cls: price != null && s.psar != null ? (price >= s.psar ? 'is-up' : 'is-down') : '', sub: 'trailing stop' },
   ];
 }
 
 // The analytics column: a compact signal readout, a grouped indicator matrix
 // over the selected timeframe, a digit distribution for the synthetic indices,
 // and market-structure stats. Every number is derived from the imported tape.
-export default function Analytics({ candles, digits, sym, price }) {
+export default function Analytics({ candles, digits, sym, price, prices = [], times = [] }) {
   const [group, setGroup] = React.useState('trend');
   const snap = React.useMemo(() => (candles.length > 30 ? indicatorSnapshot(candles) : null), [candles]);
   const read = React.useMemo(() => marketReadout(snap, price), [snap, price]);
   const dstats = React.useMemo(() => (digits.length > 30 ? digitStats(digits) : null), [digits]);
   const mstats = React.useMemo(() => (candles.length > 30 ? marketStats(candles) : null), [candles]);
+  const ai = React.useMemo(
+    () => (candles.length > 30 ? aiRead({ candles, prices, times }) : null),
+    [candles, prices, times],
+  );
+  const struct = React.useMemo(() => (candles.length > 30 ? structureRead(candles) : null), [candles]);
+  const candle = React.useMemo(() => (candles.length ? candleRead(candles) : null), [candles]);
+  const micro = React.useMemo(() => (prices.length > 5 ? tickIntelligence(prices, times) : null), [prices, times]);
 
   const cards = snap ? cardsFor(group, snap, price) : [];
 
@@ -105,7 +135,86 @@ export default function Analytics({ candles, digits, sym, price }) {
         {!read ? <div className="empty">Importing history…</div> : <SignalHeader read={read} />}
       </Panel>
 
-      <Panel title="Indicators" count={snap ? '40+' : '—'} defaultOpen>
+      {ai && (
+        <Panel title="AI Confluence" count={ai.confluence.verdict} defaultOpen>
+          <div className={`ai-verdict ${ai.confluence.direction === 'up' ? 'is-up' : ai.confluence.direction === 'down' ? 'is-down' : ''}`}>
+            <span className="ai-verdict__score">{f(ai.confluence.score, 0)}</span>
+            <span className="ai-verdict__label">{ai.confluence.verdict}</span>
+            <span className="ai-verdict__meta">{ai.confluence.regime} · {Math.round((ai.confluence.agreement || 0) * 100)}% agreement</span>
+          </div>
+          <div className="ind-grid">
+            <Card name="01 Velocity Pulse" value={f(ai.velocityPulse.score, 0)} cls={ai.velocityPulse.direction === 'up' ? 'is-up' : ai.velocityPulse.direction === 'down' ? 'is-down' : ''} sub={ai.velocityPulse.direction || 'flat'} />
+            <Card name="02 Exhaustion Radar" value={f(ai.exhaustionRadar.score, 0)} cls={ai.exhaustionRadar.score > 60 ? 'is-down' : ''} sub={ai.exhaustionRadar.direction || 'stable'} />
+            <Card name="03 Liquidity Trap" value={f(ai.liquidityTrap.score, 0)} cls={ai.liquidityTrap.score > 60 ? 'is-down' : ''} sub={ai.liquidityTrap.direction ? `trap ${ai.liquidityTrap.direction}` : 'clean'} />
+            <Card name="04 Micro Pressure" value={f(ai.microstructurePressure.score, 0)} cls={ai.microstructurePressure.direction === 'up' ? 'is-up' : ai.microstructurePressure.direction === 'down' ? 'is-down' : ''} sub={ai.microstructurePressure.direction || 'balanced'} />
+            <Card name="05 Volatility Storm" value={f(ai.volatilityStorm.score, 0)} sub={ai.volatilityStorm.score > 65 ? 'storm' : 'calm'} />
+            <Card name="06 Reversal Model" value={f(ai.reversalProbability.score, 0)} cls={ai.reversalProbability.direction === 'up' ? 'is-up' : ai.reversalProbability.direction === 'down' ? 'is-down' : ''} sub={ai.reversalProbability.direction || 'no signal'} />
+            <Card name="07 Breakout Quality" value={f(ai.breakoutQuality.score, 0)} cls={ai.breakoutQuality.direction === 'up' ? 'is-up' : 'is-down'} sub={ai.breakoutQuality.direction || '—'} />
+            <Card name="08 Trend Persistence" value={f(ai.trendPersistence.score, 0)} cls={ai.trendPersistence.direction === 'up' ? 'is-up' : 'is-down'} sub={ai.trendPersistence.direction || '—'} />
+            <Card name="09 Regime" value={ai.regimeClassifier.regime} sub={`ADX ${f(ai.regimeClassifier.evidence.adx, 0)}`} />
+            <Card name="10 Confluence" value={f(ai.confluence.score, 0)} cls={ai.confluence.direction === 'up' ? 'is-up' : ai.confluence.direction === 'down' ? 'is-down' : ''} sub={ai.confluence.verdict} />
+          </div>
+        </Panel>
+      )}
+
+      {micro && (
+        <Panel title="Microstructure" count="tick-level" defaultOpen={false}>
+          <div className="rows">
+            <Row k="Velocity (px/s)" v={f(micro.velocity, 5)} cls={sign(micro.velocity)} />
+            <Row k="Acceleration" v={f(micro.acceleration, 5)} cls={sign(micro.acceleration)} />
+            <Row k="Tick frequency" v={micro.frequency != null ? `${f(micro.frequency, 2)}/s` : '—'} />
+            <Row k="Direction ratio" v={micro.directionRatio != null ? `${f(micro.directionRatio * 100, 1)}% up` : '—'} />
+            <Row k="Streak" v={micro.streak ? `${micro.streak > 0 ? '+' : ''}${micro.streak}` : '0'} cls={sign(micro.streak)} />
+            <Row k="Displacement" v={f(micro.displacement, 3)} cls={sign(micro.displacement)} />
+            <Row k="Efficiency" v={f(micro.efficiency, 3)} />
+            <Row k="Tick volatility" v={f(micro.volatility, 5)} />
+            <Row k="Realised vol" v={f(micro.realized, 5)} />
+            <Row k="Vol burst (20/100)" v={f(micro.burst, 2)} cls={micro.burst > 1.5 ? 'is-down' : ''} />
+            <Row k="Trend strength" v={micro.trendStrength != null ? `${f(micro.trendStrength * 100, 1)}%` : '—'} />
+            <Row k="Reversal rate" v={micro.reversalRate != null ? `${f(micro.reversalRate * 100, 1)}%` : '—'} />
+            <Row k="Pressure" v={f(micro.pressure, 3)} cls={sign(micro.pressure)} />
+          </div>
+        </Panel>
+      )}
+
+      {struct?.structure && (
+        <Panel title="Market Structure" count={struct.structure.bias} defaultOpen={false}>
+          <div className="rows">
+            <Row k="Bias" v={struct.structure.bias} cls={struct.structure.bias === 'bullish' ? 'is-up' : struct.structure.bias === 'bearish' ? 'is-down' : ''} />
+            <Row k="Trend" v={struct.structure.trend || 'undecided'} />
+            <Row k="Last event" v={struct.structure.event ? `${struct.structure.event.kind} ${struct.structure.event.direction}` : '—'} />
+            <Row k="Swing high" v={f(struct.structure.lastHigh?.price, 4)} cls="is-down" />
+            <Row k="Swing low" v={f(struct.structure.lastLow?.price, 4)} cls="is-up" />
+            <Row k="HH / LL count" v={`${struct.structure.higherHighs} / ${struct.structure.lowerLows}`} />
+            <Row k="Dealing range" v={struct.range?.zone || '—'} cls={struct.range?.zone === 'premium' ? 'is-down' : struct.range?.zone === 'discount' ? 'is-up' : ''} />
+            <Row k="Range position" v={struct.range?.position != null ? `${f(struct.range.position * 100, 1)}%` : '—'} />
+            <Row k="Fair value gaps" v={struct.fvg.length} />
+            <Row k="Order blocks" v={struct.blocks.length} />
+            <Row k="Liquidity sweeps" v={struct.sweeps.length} />
+            <Row k="Equal highs / lows" v={struct.equals.length} />
+          </div>
+        </Panel>
+      )}
+
+      {candle && (
+        <Panel title="Candle Intelligence" count="latest bar" defaultOpen={false}>
+          <div className="rows">
+            <Row k="Body / range" v={`${f(candle.body * 100, 1)}%`} />
+            <Row k="Upper wick" v={`${f(candle.wick.upper * 100, 1)}%`} cls="is-down" />
+            <Row k="Lower wick" v={`${f(candle.wick.lower * 100, 1)}%`} cls="is-up" />
+            <Row k="Displacement" v={f(candle.displacement, 2)} cls={candle.displacement > 1.5 ? 'is-up' : ''} />
+            <Row k="Streak" v={candle.streak ? `${candle.streak > 0 ? '+' : ''}${candle.streak}` : '0'} cls={sign(candle.streak)} />
+            <Row k="Rejection" v={candle.rejection || '—'} cls={candle.rejection === 'bullish' ? 'is-up' : candle.rejection === 'bearish' ? 'is-down' : ''} />
+            <Row k="Engulfing" v={candle.engulfing || '—'} cls={candle.engulfing === 'bullish' ? 'is-up' : candle.engulfing === 'bearish' ? 'is-down' : ''} />
+            <Row k="Inside / outside" v={`${candle.inside ? 'inside' : '—'} / ${candle.outside ? 'outside' : '—'}`} />
+            <Row k="3-candle reversal" v={candle.reversal || '—'} cls={candle.reversal === 'bullish' ? 'is-up' : candle.reversal === 'bearish' ? 'is-down' : ''} />
+            <Row k="Imbalance" v={f(candle.imbalance, 3)} cls={sign(candle.imbalance)} />
+            <Row k="Effort / result" v={f(candle.effort, 0)} />
+          </div>
+        </Panel>
+      )}
+
+      <Panel title="Indicators" count={snap ? '50+' : '—'} defaultOpen>
         {!snap ? <div className="empty">Importing history…</div> : (
           <>
             <div className="segbar">

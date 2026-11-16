@@ -1,5 +1,5 @@
 import React from 'react';
-import { addComma } from '../lib/format.js';
+import { addComma, money } from '../lib/format.js';
 
 // Bottom status bar — the desk's own instrumentation. It reports the health of
 // the live stream (state, tick rate, freshness, reconnect count), the execution
@@ -70,7 +70,7 @@ export default function StatusBar({ state, health, symbol }) {
       <div className="statusbar__item">
         <span className="statusbar__k">SESSION P&L</span>
         <b className={pnl > 0 ? 'is-up' : pnl < 0 ? 'is-down' : ''}>
-          {pnl >= 0 ? '+' : ''}{addComma(pnl)}
+          {pnl >= 0 ? '+' : ''}{money(pnl, state?.currency)}
         </b>
       </div>
 

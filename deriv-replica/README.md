@@ -21,26 +21,43 @@ shows is computed from the tape it imported; nothing is pre-baked.
   Ichimoku, SuperTrend, VWAP, OBV, MFI, Volume, TRIX, Williams Alligator,
   Awesome Oscillator, Chaikin Money Flow, Klinger Oscillator, Fisher Transform,
   Vortex, Detrended Price Oscillator, Ease of Movement, Elder's Force Index,
-  Ultimate Oscillator, classic pivot points, a volume profile (point of
-  control), plus raw price fields (open/high/low/close/hl2/hlc3/ohlc4).
+  Ultimate Oscillator, Parabolic SAR, classic pivot points, a volume profile
+  (point of control), the quantitative family (z-score, efficiency ratio,
+  choppiness, Hurst exponent, fractal dimension, entropy, skew, kurtosis, CUSUM,
+  Kalman filter), plus raw price fields (open/high/low/close/hl2/hlc3/ohlc4).
   The Analytics panel groups them into Trend / Momentum / Volatility / Volume /
-  Levels so the column stays scannable, and leads with a one-line **Signal**
-  read: the blended trend bias, its agreement, the ADX regime, the volatility
-  state and the momentum read.
+  Levels / Quant so the column stays scannable, and leads with a one-line
+  **Signal** read: the blended trend bias, its agreement, the ADX regime, the
+  volatility state and the momentum read.
+- **Intelligence layers**: tick **microstructure** (velocity, acceleration,
+  frequency, direction ratio, streak, displacement, efficiency, volatility
+  burst, trend strength, reversal rate, exhaustion), **market structure**
+  (swing labelling, BOS/CHoCH, fair-value gaps, order blocks, liquidity sweeps,
+  equal highs/lows, premium/discount), **candle intelligence** (body/wick
+  anatomy, displacement, rejection, engulfing, inside/outside, three-candle
+  reversals, imbalance, effort vs result) and ten **AI composites** with a
+  Confluence verdict (Velocity Pulse, Exhaustion Radar, Liquidity Trap,
+  Microstructure Pressure, Volatility Storm, Reversal Probability, Breakout
+  Quality, Trend Persistence, Regime Classifier, Confluence).
 - **Strategy builder**: a visual DSL — nested AND/OR groups of comparisons over
   indicators, price and constants, with operators `>`, `≥`, `<`, `≤`,
   `crosses above`, `crosses below`, `is rising`, `is falling`, `is within % of`.
   Separate long/short entry trees, a contract + duration, and a risk block
   (stake, take-profit, stop-loss, max trades, max consecutive losses,
-  martingale multiplier/steps). Save/load strategies to `localStorage`.
+  martingale multiplier/steps). Save/load strategies to `localStorage`. The
+  stake defaults to `KES 0.35` and every money figure is shown in Kenyan
+  shillings.
 - **Backtest engine**: close-to-close simulation over the imported candles with
   win rate, net P&L, profit factor, expectancy, max drawdown, an estimated
   Sharpe and end equity, plus the full trade list.
 - **Live chart**: the last candle updates in place on every tick and a new one
   opens on the timeframe boundary — the store hands out a fresh, cloned array
   each read so React re-renders the forming bar instead of a frozen snapshot.
-  Overlays (EMA 9/21, Bollinger, SuperTrend, VWAP), a volume histogram and an
-  RSI/MACD sub-pane sit over SVG candles/line with a crosshair readout.
+  Overlays (EMA 9/21, Bollinger, SuperTrend, VWAP, Parabolic SAR), a volume
+  histogram and an RSI/MACD/Williams-%R sub-pane sit over SVG candles, Heiken
+  Ashi or a line, with a crosshair readout. The header switches the bar source
+  between the timeframe candles, **fixed-tick-count bars** (10/25/50/100/200
+  ticks) and the raw tick line.
 - **Live analytics**: digit distribution with χ² bias test, entropy, hot/cold
   digits, even/odd split, current streak, and a market-structure panel (trend,
   ATR, volatility, swings).
@@ -75,8 +92,12 @@ src/
     derivClient.js      Deriv API client (public market WS + authed trading WS + reconnect/health)
     oauth.js            OAuth 2.0 PKCE (authorize URL, token exchange, refresh)
     symbols.js          symbol catalogue + per-symbol pip size
-    marketStore.js      1000-tick import, candle aggregation for all timeframes
-    indicators.js       the indicator library (series-returning)
+    marketStore.js      1000-tick import, candle aggregation for all timeframes + tick bars
+    indicators.js       the indicator library (classic TA + the quantitative family)
+    microstructure.js   tick-level reads (velocity, frequency, volatility burst, pressure)
+    marketStructure.js  swings, BOS/CHoCH, FVGs, order blocks, sweeps, premium/discount
+    candleIntelligence.js  per-bar anatomy (body/wick, engulfing, imbalance, effort)
+    aiComposites.js     ten named composites + the Confluence verdict
     strategyBuilder.js  indicator registry, operators, DSL eval, compiler
     backtest.js         close-to-close backtester
     contracts.js        trade-type catalogue + proposal builder

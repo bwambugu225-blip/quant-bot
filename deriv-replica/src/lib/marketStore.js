@@ -40,6 +40,38 @@ export const IMPORT_TICKS = 1000;
 const MAX_CANDLES = 600;
 const MAX_TICKS = 5000;
 
+// Fixed-tick-count bars. Instead of a clock, the bucket closes after `size`
+// ticks, so a bar's width measures market activity rather than elapsed time.
+// Comparing a setup on time bars against the same setup on tick bars shows
+// whether it is driven by the clock or by how much the tape actually moved.
+export const TICK_BAR_SIZES = [10, 25, 50, 100, 200];
+
+export function bucketTicksByCount(times, prices, size) {
+  const n = Math.min(times.length, prices.length);
+  const candles = [];
+  let cur = null;
+  let count = 0;
+  for (let i = 0; i < n; i++) {
+    const t = Math.floor(+times[i]);
+    const p = +prices[i];
+    if (!Number.isFinite(t) || !Number.isFinite(p)) continue;
+    if (!cur || count === 0) {
+      if (cur) candles.push(cur);
+      cur = { epoch: t, open: p, high: p, low: p, close: p, ticks: 1, volume: 1 };
+      count = size - 1;
+    } else {
+      cur.high = Math.max(cur.high, p);
+      cur.low = Math.min(cur.low, p);
+      cur.close = p;
+      cur.ticks++;
+      cur.volume = cur.ticks;
+      count--;
+    }
+  }
+  if (cur) candles.push(cur);
+  return candles;
+}
+
 // Bucket raw ticks into time-based candles. A tick belongs to the bucket whose
 // start is its epoch floored to the timeframe length; the candle's timestamp is
 // that bucket start, so aggregation is stable regardless of tick density.
@@ -81,9 +113,10 @@ export class MarketStore {
   _sym(sym) {
     if (!this.symbols[sym]) {
       this.symbols[sym] = {
-        times: [], prices: [], candles: {}, live: [], digits: [], last: null, lastEpoch: null,
+        times: [], prices: [], candles: {}, tickbars: {}, live: [], digits: [], last: null, lastEpoch: null,
       };
       TIMEFRAMES.forEach(t => { this.symbols[sym].candles[t.id] = []; });
+      TICK_BAR_SIZES.forEach(n => { this.symbols[sym].tickbars[n] = []; });
     }
     return this.symbols[sym];
   }
@@ -111,6 +144,9 @@ export class MarketStore {
     s.live = s.prices.slice(-200);
     TIMEFRAMES.forEach(t => {
       s.candles[t.id] = bucketTicks(s.times, s.prices, t.sec).slice(-MAX_CANDLES);
+    });
+    TICK_BAR_SIZES.forEach(n => {
+      s.tickbars[n] = bucketTicksByCount(s.times, s.prices, n).slice(-MAX_CANDLES);
     });
     this.emit('history', sym);
   }
@@ -146,6 +182,20 @@ export class MarketStore {
         if (arr.length > MAX_CANDLES) arr.shift();
       }
     });
+    TICK_BAR_SIZES.forEach(n => {
+      const arr = s.tickbars[n];
+      const last = arr[arr.length - 1];
+      if (last && last.ticks < n) {
+        last.high = Math.max(last.high, p);
+        last.low = Math.min(last.low, p);
+        last.close = p;
+        last.ticks++;
+        last.volume = last.ticks;
+      } else {
+        arr.push({ epoch: t, open: p, high: p, low: p, close: p, ticks: 1, volume: 1 });
+        if (arr.length > MAX_CANDLES) arr.shift();
+      }
+    });
     return p;
   }
 
@@ -157,6 +207,16 @@ export class MarketStore {
     const s = this.symbols[sym];
     if (!s) return [];
     const arr = s.candles[tf || this.selectedTf] || [];
+    const out = arr.slice();
+    if (out.length) out[out.length - 1] = { ...out[out.length - 1] };
+    return out;
+  }
+
+  // Fixed-tick-count bars for a symbol, cloned like `candles`.
+  tickBars(sym, size) {
+    const s = this.symbols[sym];
+    if (!s) return [];
+    const arr = s.tickbars[size] || [];
     const out = arr.slice();
     if (out.length) out[out.length - 1] = { ...out[out.length - 1] };
     return out;

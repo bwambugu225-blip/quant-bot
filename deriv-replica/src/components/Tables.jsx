@@ -1,7 +1,7 @@
 import React from 'react';
-import { addComma } from '../lib/format.js';
+import { money } from '../lib/format.js';
 
-export function Positions({ positions }) {
+export function Positions({ positions, currency = 'KES' }) {
   if (!positions.length) return <div className="empty">No open positions</div>;
   return (
     <table className="tbl">
@@ -13,7 +13,7 @@ export function Positions({ positions }) {
           <tr key={p.id}>
             <td className="dim">{p.contractType}</td>
             <td>{p.symbol}</td>
-            <td>{addComma(p.stake)}</td>
+            <td>{money(p.stake, currency)}</td>
             <td>{p.entry != null ? p.entry.toFixed(p.decimals ?? 4) : '—'}</td>
             <td><span className="pill">open</span></td>
           </tr>
@@ -23,7 +23,7 @@ export function Positions({ positions }) {
   );
 }
 
-export function Reports({ reports, onReset }) {
+export function Reports({ reports, onReset, currency = 'KES' }) {
   const wins = reports.filter(r => r.won).length;
   const pnl = reports.reduce((a, r) => a + r.profit, 0);
   return (
@@ -31,7 +31,7 @@ export function Reports({ reports, onReset }) {
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
         <Stat k="Trades" v={reports.length} />
         <Stat k="Win rate" v={reports.length ? `${((wins / reports.length) * 100).toFixed(1)}%` : '—'} />
-        <Stat k="Net P&L" v={`${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}`} cls={pnl >= 0 ? 'is-up' : 'is-down'} />
+        <Stat k="Net P&L" v={`${pnl >= 0 ? '+' : ''}${money(pnl, currency)}`} cls={pnl >= 0 ? 'is-up' : 'is-down'} />
         <button className="btn" style={{ marginLeft: 'auto' }} onClick={onReset} type="button">Reset session</button>
       </div>
       {!reports.length ? <div className="empty">No closed trades yet</div> : (
@@ -46,9 +46,9 @@ export function Reports({ reports, onReset }) {
                 <td>{r.symbol}</td>
                 <td className="dim">{r.action}</td>
                 <td className="dim">{r.strategy}</td>
-                <td>{addComma(r.stake)}</td>
-                <td className={r.profit >= 0 ? 'is-up' : 'is-down'}>{r.profit >= 0 ? '+' : ''}{r.profit.toFixed(2)}</td>
-                <td>{addComma(r.balance)}</td>
+                <td>{money(r.stake, currency)}</td>
+                <td className={r.profit >= 0 ? 'is-up' : 'is-down'}>{r.profit >= 0 ? '+' : ''}{money(r.profit, currency)}</td>
+                <td>{money(r.balance, currency)}</td>
               </tr>
             ))}
           </tbody>
