@@ -279,6 +279,15 @@ export function validateStrategy(s) {
 }
 
 // ── starter templates ──────────────────────────────────────────────────────
+// Every built-in starts from the same risk block: the venue-minimum stake, no
+// caps, no martingale. A template is a complete, tradeable desk on its own.
+function baseRisk() {
+  return {
+    stake: DEFAULT_STAKE, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0,
+    martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed',
+  };
+}
+
 export function defaultStrategy() {
   return {
     id: 'ema-cross',
@@ -300,10 +309,7 @@ export function defaultStrategy() {
         { left: { kind: 'indicator', name: 'rsi', params: { period: 14 } }, op: 'lt', right: { kind: 'const', value: 50 } },
       ],
     },
-    risk: {
-      stake: DEFAULT_STAKE, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0,
-      martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed',
-    },
+    risk: baseRisk(),
     action: { type: 'rise_fall', contract: 'CALL', duration: 10, durationUnit: 't' },
   };
 }
@@ -313,14 +319,14 @@ export const STRATEGY_TEMPLATES = [
   () => ({
     id: 'rsi-reversal', name: 'RSI reversal', timeframe: '5s',
     long: { logic: 'AND', conditions: [
-      { left: { kind: 'indicator', name: 'rsi', params: { period: 14 } }, op: 'lt', right: { kind: 'const', value: 30 } },
-      { left: { kind: 'price' }, op: 'gt', right: { kind: 'indicator', name: 'sma', params: { period: 20 } } },
+      { left: { kind: 'indicator', name: 'rsi', params: { period: 14 } }, op: 'crossOver', right: { kind: 'const', value: 35 } },
+      { left: { kind: 'indicator', name: 'adx', output: 'adx', params: { period: 14 } }, op: 'gt', right: { kind: 'const', value: 20 } },
     ] },
     short: { logic: 'AND', conditions: [
-      { left: { kind: 'indicator', name: 'rsi', params: { period: 14 } }, op: 'gt', right: { kind: 'const', value: 70 } },
-      { left: { kind: 'price' }, op: 'lt', right: { kind: 'indicator', name: 'sma', params: { period: 20 } } },
+      { left: { kind: 'indicator', name: 'rsi', params: { period: 14 } }, op: 'crossUnder', right: { kind: 'const', value: 65 } },
+      { left: { kind: 'indicator', name: 'adx', output: 'adx', params: { period: 14 } }, op: 'gt', right: { kind: 'const', value: 20 } },
     ] },
-    risk: { stake: DEFAULT_STAKE, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0, martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed' },
+    risk: baseRisk(),
     action: { type: 'rise_fall', contract: 'CALL', duration: 10, durationUnit: 't' },
   }),
   () => ({
@@ -333,20 +339,187 @@ export const STRATEGY_TEMPLATES = [
       { left: { kind: 'price' }, op: 'crossUnder', right: { kind: 'indicator', name: 'bb', output: 'lower', params: { period: 20, mult: 2 } } },
       { left: { kind: 'indicator', name: 'adx', output: 'adx', params: { period: 14 } }, op: 'gt', right: { kind: 'const', value: 20 } },
     ] },
-    risk: { stake: DEFAULT_STAKE, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0, martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed' },
+    risk: baseRisk(),
     action: { type: 'rise_fall', contract: 'CALL', duration: 10, durationUnit: 't' },
   }),
   () => ({
     id: 'supertrend', name: 'SuperTrend follow', timeframe: '5s',
     long: { logic: 'AND', conditions: [
-      { left: { kind: 'indicator', name: 'superTrend', output: 'dir', params: { period: 10, mult: 3 } }, op: 'gt', right: { kind: 'const', value: 0 } },
-      { left: { kind: 'indicator', name: 'ema', params: { period: 50 } }, op: 'rising' },
+      { left: { kind: 'indicator', name: 'superTrend', output: 'dir', params: { period: 10, mult: 3 } }, op: 'crossOver', right: { kind: 'const', value: 0 } },
+      { left: { kind: 'indicator', name: 'adx', output: 'adx', params: { period: 14 } }, op: 'gt', right: { kind: 'const', value: 20 } },
     ] },
     short: { logic: 'AND', conditions: [
-      { left: { kind: 'indicator', name: 'superTrend', output: 'dir', params: { period: 10, mult: 3 } }, op: 'lt', right: { kind: 'const', value: 0 } },
-      { left: { kind: 'indicator', name: 'ema', params: { period: 50 } }, op: 'falling' },
+      { left: { kind: 'indicator', name: 'superTrend', output: 'dir', params: { period: 10, mult: 3 } }, op: 'crossUnder', right: { kind: 'const', value: 0 } },
+      { left: { kind: 'indicator', name: 'adx', output: 'adx', params: { period: 14 } }, op: 'gt', right: { kind: 'const', value: 20 } },
     ] },
-    risk: { stake: DEFAULT_STAKE, takeProfit: 0, stopLoss: 0, maxTrades: 0, maxLosses: 0, martingale: false, martMult: 2, martSteps: 3, sizing: 'fixed' },
+    risk: baseRisk(),
     action: { type: 'rise_fall', contract: 'CALL', duration: 10, durationUnit: 't' },
   }),
 ];
+
+// ── one complete setup per indicator ───────────────────────────────────────
+// Every indicator in the registry ships as a ready-to-trade strategy: a trigger
+// leg that fires the entry and a nested confirmation group that filters it, with
+// the indicator's canonical parameters already set. Nothing needs editing — load
+// one and press Start. The trigger/confirmation split is deliberate: a single
+// leg fires far too often on a fair tape, so each setup requires the indicator's
+// own event *and* a second, independent reading to agree.
+const ind = (name, params, output) => ({
+  kind: 'indicator', name, params: params || defaultParamsFor(name), ...(output ? { output } : {}),
+});
+// A lagged indicator read: the value as of `offset` bars ago. Needed where a
+// channel's current value already contains the bar being tested (a close can
+// never exceed the current bar's own high, so a Donchian breakout must compare
+// against the *prior* channel).
+const lag = (operand, offset) => ({ ...operand, offset });
+const price = (field = 'close') => ({ kind: 'price', field });
+const konst = value => ({ kind: 'const', value });
+const cond = (left, op, right) => (right == null ? { left, op } : { left, op, right });
+const AND = (...conditions) => ({ logic: 'AND', conditions });
+// A regime gate: only trade the oscillator when the tape is actually trending,
+// not chopping. ADX > 20 is the conventional "a trend exists" line and it cuts
+// the entry count on a random walk to a handful per session.
+const trending = cond(ind('adx', null, 'adx'), 'gt', konst(20));
+// The shared trend trigger the "character" measures gate: price crossing its own
+// 21-EMA is the entry, the measure decides whether the regime favours it.
+const MA_CROSS_LONG = cond(price(), 'crossOver', ind('ema', { period: 21 }));
+const MA_CROSS_SHORT = cond(price(), 'crossUnder', ind('ema', { period: 21 }));
+
+// name → { long, short }. The rule shape follows the indicator's nature: a
+// moving average is crossed by price, a band is broken, an oscillator reverts
+// from its extreme, a zero-line series crosses zero, a "character" measure
+// (Hurst, entropy, skew) gates a directional trigger rather than giving one
+// itself. Thresholds are set from each series' own distribution so a setup fires
+// a handful of times per session — not never, and not on every bar.
+const SETUPS = {
+  sma: { long: cond(price(), 'crossOver', ind('sma')), short: cond(price(), 'crossUnder', ind('sma')) },
+  ema: { long: cond(price(), 'crossOver', ind('ema')), short: cond(price(), 'crossUnder', ind('ema')) },
+  wma: { long: cond(price(), 'crossOver', ind('wma')), short: cond(price(), 'crossUnder', ind('wma')) },
+  dema: { long: cond(price(), 'crossOver', ind('dema')), short: cond(price(), 'crossUnder', ind('dema')) },
+  tema: { long: cond(price(), 'crossOver', ind('tema')), short: cond(price(), 'crossUnder', ind('tema')) },
+  hma: { long: cond(price(), 'crossOver', ind('hma')), short: cond(price(), 'crossUnder', ind('hma')) },
+  vwap: { long: cond(price(), 'crossOver', ind('vwap')), short: cond(price(), 'crossUnder', ind('vwap')) },
+  kalman: { long: cond(price(), 'crossOver', ind('kalman')), short: cond(price(), 'crossUnder', ind('kalman')) },
+
+  bb: {
+    long: AND(cond(price(), 'crossOver', ind('bb', null, 'upper')), trending),
+    short: AND(cond(price(), 'crossUnder', ind('bb', null, 'lower')), trending),
+  },
+  keltner: {
+    long: AND(cond(price(), 'crossOver', ind('keltner', null, 'upper')), trending),
+    short: AND(cond(price(), 'crossUnder', ind('keltner', null, 'lower')), trending),
+  },
+  // A close can never exceed the current bar's own high, so a Donchian breakout
+  // must compare against the *prior* channel (offset 1), not the current one.
+  donchian: {
+    long: AND(cond(price(), 'crossOver', lag(ind('donchian', null, 'upper'), 1)), trending),
+    short: AND(cond(price(), 'crossUnder', lag(ind('donchian', null, 'lower'), 1)), trending),
+  },
+  superTrend: {
+    long: cond(ind('superTrend', null, 'dir'), 'crossOver', konst(0)),
+    short: cond(ind('superTrend', null, 'dir'), 'crossUnder', konst(0)),
+  },
+  psar: { long: cond(price(), 'crossOver', ind('psar')), short: cond(price(), 'crossUnder', ind('psar')) },
+  ichimoku: {
+    long: cond(ind('ichimoku', null, 'tenkan'), 'crossOver', ind('ichimoku', null, 'kijun')),
+    short: cond(ind('ichimoku', null, 'tenkan'), 'crossUnder', ind('ichimoku', null, 'kijun')),
+  },
+  alligator: {
+    long: AND(cond(ind('alligator', null, 'lips'), 'crossOver', ind('alligator', null, 'teeth')), cond(ind('alligator', null, 'teeth'), 'gt', ind('alligator', null, 'jaw'))),
+    short: AND(cond(ind('alligator', null, 'lips'), 'crossUnder', ind('alligator', null, 'teeth')), cond(ind('alligator', null, 'teeth'), 'lt', ind('alligator', null, 'jaw'))),
+  },
+  adx: {
+    long: AND(cond(ind('adx', null, 'pdi'), 'crossOver', ind('adx', null, 'ndi')), trending),
+    short: AND(cond(ind('adx', null, 'ndi'), 'crossOver', ind('adx', null, 'pdi')), trending),
+  },
+  aroon: {
+    long: cond(ind('aroon', null, 'up'), 'crossOver', ind('aroon', null, 'down')),
+    short: cond(ind('aroon', null, 'down'), 'crossOver', ind('aroon', null, 'up')),
+  },
+  vortex: {
+    long: cond(ind('vortex', null, 'plus'), 'crossOver', ind('vortex', null, 'minus')),
+    short: cond(ind('vortex', null, 'minus'), 'crossOver', ind('vortex', null, 'plus')),
+  },
+  atr: {
+    long: AND(cond(ind('atr'), 'rising'), MA_CROSS_LONG),
+    short: AND(cond(ind('atr'), 'rising'), MA_CROSS_SHORT),
+  },
+
+  // Oscillators: the entry is the recovery cross out of the extreme, gated by an
+  // actual trend. (Sitting at the extreme plus a rising EMA can never both be
+  // true — an oversold reading *is* the down leg — so the trigger is the turn.)
+  rsi: { long: AND(cond(ind('rsi'), 'crossOver', konst(35)), trending), short: AND(cond(ind('rsi'), 'crossUnder', konst(65)), trending) },
+  stoch: { long: AND(cond(ind('stoch', null, 'k'), 'crossOver', konst(25)), trending), short: AND(cond(ind('stoch', null, 'k'), 'crossUnder', konst(75)), trending) },
+  stochRsi: { long: AND(cond(ind('stochRsi'), 'crossOver', konst(25)), trending), short: AND(cond(ind('stochRsi'), 'crossUnder', konst(75)), trending) },
+  williamsR: { long: AND(cond(ind('williamsR'), 'crossOver', konst(-75)), trending), short: AND(cond(ind('williamsR'), 'crossUnder', konst(-25)), trending) },
+  cci: { long: AND(cond(ind('cci'), 'crossOver', konst(-90)), trending), short: AND(cond(ind('cci'), 'crossUnder', konst(90)), trending) },
+  mfi: { long: AND(cond(ind('mfi'), 'crossOver', konst(35)), trending), short: AND(cond(ind('mfi'), 'crossUnder', konst(60)), trending) },
+  fisher: { long: AND(cond(ind('fisher'), 'crossOver', konst(-0.75)), trending), short: AND(cond(ind('fisher'), 'crossUnder', konst(0.75)), trending) },
+  ultimate: { long: AND(cond(ind('ultimate'), 'crossOver', konst(40)), trending), short: AND(cond(ind('ultimate'), 'crossUnder', konst(60)), trending) },
+
+  macd: { long: cond(ind('macd', null, 'macd'), 'crossOver', ind('macd', null, 'signal')), short: cond(ind('macd', null, 'macd'), 'crossUnder', ind('macd', null, 'signal')) },
+  trix: { long: cond(ind('trix'), 'crossOver', konst(0)), short: cond(ind('trix'), 'crossUnder', konst(0)) },
+  roc: { long: cond(ind('roc'), 'crossOver', konst(0)), short: cond(ind('roc'), 'crossUnder', konst(0)) },
+  momentum: { long: cond(ind('momentum'), 'crossOver', konst(0)), short: cond(ind('momentum'), 'crossUnder', konst(0)) },
+  dpo: { long: cond(ind('dpo'), 'crossOver', konst(0)), short: cond(ind('dpo'), 'crossUnder', konst(0)) },
+  awesome: { long: cond(ind('awesome'), 'crossOver', konst(0)), short: cond(ind('awesome'), 'crossUnder', konst(0)) },
+  cmf: { long: cond(ind('cmf'), 'crossOver', konst(0)), short: cond(ind('cmf'), 'crossUnder', konst(0)) },
+  klinger: { long: cond(ind('klinger', null, 'kvo'), 'crossOver', ind('klinger', null, 'signal')), short: cond(ind('klinger', null, 'kvo'), 'crossUnder', ind('klinger', null, 'signal')) },
+  forceIndex: { long: cond(ind('forceIndex'), 'crossOver', konst(0)), short: cond(ind('forceIndex'), 'crossUnder', konst(0)) },
+  eom: { long: cond(ind('eom'), 'crossOver', konst(0)), short: cond(ind('eom'), 'crossUnder', konst(0)) },
+  cusum: { long: cond(ind('cusum'), 'crossOver', konst(0)), short: cond(ind('cusum'), 'crossUnder', konst(0)) },
+
+  obv: { long: AND(MA_CROSS_LONG, cond(ind('obv'), 'rising')), short: AND(MA_CROSS_SHORT, cond(ind('obv'), 'falling')) },
+  volume: { long: AND(cond(ind('volume'), 'rising'), MA_CROSS_LONG), short: AND(cond(ind('volume'), 'rising'), MA_CROSS_SHORT) },
+
+  // "Character" measures: the indicator says the tape is in the regime the
+  // trigger wants, so the trigger is the entry and the measure is the gate.
+  zscore: { long: AND(cond(ind('zscore'), 'crossOver', konst(-1.5)), trending), short: AND(cond(ind('zscore'), 'crossUnder', konst(1.5)), trending) },
+  efficiencyRatio: { long: AND(cond(ind('efficiencyRatio'), 'gt', konst(0.25)), MA_CROSS_LONG), short: AND(cond(ind('efficiencyRatio'), 'gt', konst(0.25)), MA_CROSS_SHORT) },
+  choppiness: { long: AND(cond(ind('choppiness'), 'lt', konst(45)), MA_CROSS_LONG), short: AND(cond(ind('choppiness'), 'lt', konst(45)), MA_CROSS_SHORT) },
+  hurst: { long: AND(cond(ind('hurst'), 'gt', konst(0.55)), MA_CROSS_LONG), short: AND(cond(ind('hurst'), 'gt', konst(0.55)), MA_CROSS_SHORT) },
+  fractalDimension: { long: AND(cond(ind('fractalDimension'), 'lt', konst(1.4)), MA_CROSS_LONG), short: AND(cond(ind('fractalDimension'), 'lt', konst(1.4)), MA_CROSS_SHORT) },
+  entropy: { long: AND(cond(ind('entropy'), 'lt', konst(0.95)), MA_CROSS_LONG), short: AND(cond(ind('entropy'), 'lt', konst(0.95)), MA_CROSS_SHORT) },
+  skew: { long: AND(cond(ind('skew'), 'gt', konst(0)), MA_CROSS_LONG), short: AND(cond(ind('skew'), 'lt', konst(0)), MA_CROSS_SHORT) },
+  kurtosis: { long: AND(cond(ind('kurtosis'), 'gt', konst(0)), MA_CROSS_LONG), short: AND(cond(ind('kurtosis'), 'gt', konst(0)), MA_CROSS_SHORT) },
+};
+
+// Build one complete strategy for an indicator id. A setup leg is either a bare
+// condition or an AND group; both are normalised to a group so the builder tree
+// is uniform. Returns null for the raw price pseudo-entry (no rule of its own).
+export function indicatorStrategy(name) {
+  const setup = SETUPS[name];
+  const def = INDICATORS[name];
+  if (!setup || !def) return null;
+  const asGroup = node => (Array.isArray(node?.conditions) ? node : { logic: 'AND', conditions: [node] });
+  return {
+    id: `setup:${name}`,
+    name: `${def.label} setup`,
+    timeframe: '5s',
+    long: asGroup(setup.long),
+    short: asGroup(setup.short),
+    risk: baseRisk(),
+    action: { type: 'rise_fall', contract: 'CALL', duration: 10, durationUnit: 't' },
+  };
+}
+
+// One factory per indicator, in registry order (price excluded). Factories, not
+// objects, so every load hands the builder a fresh tree it can freely mutate.
+export const INDICATOR_TEMPLATES = Object.keys(INDICATORS)
+  .filter(name => name !== 'price')
+  .map(name => () => indicatorStrategy(name));
+
+// The builder's template menu, flat, each entry carrying its group and label so
+// the dropdown renders grouped options with a stable index.
+const STARTER_LABELS = ['EMA cross + trend filter', 'RSI reversal', 'Bollinger breakout', 'SuperTrend follow'];
+export const TEMPLATE_MENU = [
+  ...STRATEGY_TEMPLATES.map((make, i) => ({ group: 'Starters', label: STARTER_LABELS[i], make })),
+  ...Object.keys(INDICATORS).filter(n => n !== 'price').map(name => ({
+    group: 'Indicator setups', label: `${INDICATORS[name].label} setup`, make: () => indicatorStrategy(name),
+  })),
+];
+
+// Every template as a flat factory list — the starters, then the indicator
+// setups. Used by the tests and by any caller that wants them all.
+export const ALL_TEMPLATES = TEMPLATE_MENU.map(e => e.make);
+

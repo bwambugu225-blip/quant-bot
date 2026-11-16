@@ -164,8 +164,24 @@ reading is reproducible.
 when the long/short tree matches on the latest closed candle, else `null`.
 `validateStrategy` returns a list of human-readable errors (used to gate the
 Start button). `describeStrategy` renders the expression for the Preview line.
-`STRATEGY_TEMPLATES` are the starter strategies; `defaultStrategy()` is the
-default (EMA 9/21 cross + RSI filter, 5s).
+`defaultStrategy()` is the default (EMA 9/21 cross + RSI filter, 5s). The
+builder's template menu is `TEMPLATE_MENU` — four hand-written starters
+(`STRATEGY_TEMPLATES`) plus **one complete setup for every indicator** in the
+registry (`INDICATOR_TEMPLATES`, built by `indicatorStrategy(name)`). `ALL_TEMPLATES`
+is the flat factory list. A setup needs no editing: it ships a trigger leg and a
+nested confirmation leg at the indicator's canonical parameters, and the entries
+are normalised to AND groups so the tree is uniform.
+
+The setups are calibrated, not arbitrary: a moving average is crossed by price, a
+band is broken (with an ADX trend gate), a Donchian breakout compares against the
+*prior* channel (offset 1 — a close can never exceed the current bar's own high),
+an oscillator fires on its recovery cross out of the extreme gated by ADX > 20
+(sitting at the extreme and trending up can never both be true, so the trigger is
+the turn), a zero-line series crosses zero, and a "character" measure (Hurst,
+entropy, skew, fractal dimension) gates a price/21-EMA cross. Thresholds are set
+from each series' own measured distribution so every setup fires a handful of
+times per session — `tests/strategyBuilder.test.mjs` asserts none never fires and
+none fires on almost every bar.
 
 The strategy's `action` is the trade it places — `{ type, contract, duration,
 durationUnit, barrier?, allowEquals? }` — chosen in the builder's ContractEditor

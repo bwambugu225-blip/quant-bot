@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
   INDICATORS, OPERATORS, operandSeries, evalGroupAt, compileStrategy,
   evaluateStrategy, validateStrategy, describeStrategy, describeGroup,
-  defaultStrategy, defaultParamsFor, STRATEGY_TEMPLATES,
+  defaultStrategy, defaultParamsFor, STRATEGY_TEMPLATES, TEMPLATE_MENU, ALL_TEMPLATES,
+  indicatorStrategy,
 } from '../src/lib/strategyBuilder.js';
 import { candles } from './helpers.mjs';
 
@@ -112,6 +113,61 @@ test('every template is valid and compiles', () => {
       const r = compiled.at(i);
       assert.equal(typeof r.long, 'boolean');
     }
+  }
+});
+
+test('every indicator ships a complete, valid, ready-to-trade setup', () => {
+  const names = Object.keys(INDICATORS).filter(n => n !== 'price');
+  for (const name of names) {
+    const s = indicatorStrategy(name);
+    assert.ok(s, `${name} has no setup`);
+    assert.deepEqual(validateStrategy(s), [], `${s.name} invalid`);
+    assert.ok(s.long.conditions.length && s.short.conditions.length, `${s.name} needs both sides`);
+    assert.equal(s.risk.stake, defaultStrategy().risk.stake, `${s.name} stake`);
+    assert.ok(s.action?.contract, `${s.name} has no contract`);
+  }
+});
+
+test('the template menu covers every indicator plus the starters', () => {
+  const setups = TEMPLATE_MENU.filter(e => e.group === 'Indicator setups');
+  assert.equal(setups.length, Object.keys(INDICATORS).length - 1, 'one setup per indicator');
+  assert.equal(ALL_TEMPLATES.length, TEMPLATE_MENU.length);
+  // Every menu entry builds a distinct, valid strategy with its own fresh tree.
+  const seen = new Set();
+  for (const e of TEMPLATE_MENU) {
+    const s = e.make();
+    assert.deepEqual(validateStrategy(s), [], `${e.label} invalid`);
+    assert.ok(!seen.has(s.name), `${s.name} duplicated`);
+    seen.add(s.name);
+  }
+});
+
+test('every indicator setup fires on a realistic tape (not never, not always)', () => {
+  // A tape with real per-bar volume and tick counts, so volume/OBV setups have
+  // something to read, and enough bars to warm up the 64-period windows.
+  const bars = [];
+  let px = 1000, seed = 12345;
+  const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+  for (let i = 0; i < 1200; i++) {
+    px += (rnd() - 0.5) * 2 * 0.0011 * px;
+    const open = px, close = px + (rnd() - 0.5) * 0.0011 * px;
+    bars.push({
+      epoch: 1_700_000_000 + i * 60, open, high: Math.max(open, close) * 1.0002,
+      low: Math.min(open, close) * 0.9998, close, volume: Math.round(3 + rnd() * 12), ticks: Math.round(2 + rnd() * 8),
+    });
+  }
+  const flat = candles(1200, 3, 0);
+  for (const name of Object.keys(INDICATORS).filter(n => n !== 'price')) {
+    const s = indicatorStrategy(name);
+    let fires = 0;
+    for (const tape of [bars, flat]) {
+      const c = compileStrategy(s, tape);
+      let n = 0;
+      for (let i = 80; i < tape.length; i++) { const x = c.at(i); if (x.long || x.short) n++; }
+      fires = Math.max(fires, n);
+    }
+    assert.ok(fires > 0, `${s.name} never fires`);
+    assert.ok(fires < bars.length * 0.6, `${s.name} fires on almost every bar (${fires})`);
   }
 });
 

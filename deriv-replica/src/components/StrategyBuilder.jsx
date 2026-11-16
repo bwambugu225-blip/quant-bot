@@ -1,6 +1,7 @@
 import React from 'react';
 import {
-  INDICATORS, OPERATORS, defaultParamsFor, describeStrategy, validateStrategy, STRATEGY_TEMPLATES,
+  INDICATORS, OPERATORS, defaultParamsFor, describeStrategy, validateStrategy,
+  TEMPLATE_MENU, ALL_TEMPLATES,
 } from '../lib/strategyBuilder.js';
 import { TIMEFRAMES, TICK_BAR_SIZES } from '../lib/marketStore.js';
 import { TRADE_TYPES, findTradeType } from '../lib/contracts.js';
@@ -129,7 +130,7 @@ export default function StrategyBuilder({ strategy, onChange, onBacktest, onStar
   const set = patch => onChange({ ...s, ...patch });
 
   const loadTemplate = i => {
-    const t = STRATEGY_TEMPLATES[i]();
+    const t = ALL_TEMPLATES[i]();
     t.id = uid();
     onChange(t);
   };
@@ -158,10 +159,13 @@ export default function StrategyBuilder({ strategy, onChange, onBacktest, onStar
         )}
         <select className="sel" value="" onChange={e => { if (e.target.value !== '') loadTemplate(+e.target.value); }}>
           <option value="">Load template…</option>
-          <option value="0">EMA cross + trend filter</option>
-          <option value="1">RSI reversal</option>
-          <option value="2">Bollinger breakout</option>
-          <option value="3">SuperTrend follow</option>
+          {['Starters', 'Indicator setups'].map(group => (
+            <optgroup key={group} label={group}>
+              {TEMPLATE_MENU.map((it, idx) => (it.group === group
+                ? <option key={it.label} value={idx}>{it.label}</option>
+                : null))}
+            </optgroup>
+          ))}
         </select>
         <button className="btn" onClick={onBacktest} type="button">Run backtest</button>
         <button className={`btn ${running ? '' : 'btn--primary'}`} onClick={running ? onStop : onStart} type="button"
