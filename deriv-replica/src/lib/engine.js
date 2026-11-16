@@ -13,6 +13,7 @@ import { buildProposal } from './contracts.js';
 import { evaluateStrategy, validateStrategy, describeStrategy } from './strategyBuilder.js';
 import { runBacktest } from './backtest.js';
 import { autoTune, DEFAULT_BAR_SIZE } from './autoTune.js';
+import { scanMarkets, SCAN_INTERVAL_MS } from './marketScanner.js';
 import { CURRENCY, DEFAULT_STAKE } from './format.js';
 
 const MIN_STAKE = DEFAULT_STAKE;
@@ -52,6 +53,17 @@ export class Engine {
     this._subscribed = new Set();
     this._marketOnTrading = false;
     this._lastEvalCandle = {};
+
+    // Multi-market auto-scan. When on, the engine ranks every market for the
+    // running strategy and trades whichever one fires the entry first, choosing
+    // the strongest when several fire together.
+    this.autoScan = false;
+    this.scanBoard = [];
+    this._scanScore = new Map();
+    this._pendingSignals = new Map();
+    this._lastScanAt = 0;
+    this._tickSeq = 0;
+    this._lastFireSeq = -1;
 
     this.wins = 0; this.losses = 0; this.consLoss = 0;
     this.pnl = 0; this.trades = 0;
@@ -169,6 +181,44 @@ export class Engine {
     this.emit('state', this.snapshot());
   }
 
+  // Toggle the multi-market auto-scan. Turning it on clears any queued signals
+  // and forces a fresh ranking; turning it off drops the queue. The ranking
+  // itself needs no login — only the entry does — so the board fills as soon as
+  // it is enabled.
+  setAutoScan(on) {
+    this.autoScan = !!on;
+    this._pendingSignals.clear();
+    this._lastScanAt = 0;
+    this.log(`[SCAN] Auto-scan ${this.autoScan ? 'enabled — ranking every market' : 'disabled'}`, 'i');
+    if (this.autoScan) {
+      this._ensureWatchdog();
+      this._runScan();
+    } else if (!this.running) {
+      this._stopWatchdog();
+    }
+    this.emit('state', this.snapshot());
+  }
+
+  // Every market with a warm tape — the pool the scanner ranks.
+  scanUniverse() {
+    return SYMBOLS.map(s => s.sym).filter(sym => this.store.tickCount(sym) >= WARMUP_TICKS);
+  }
+
+  // Rank the universe for the running strategy. A background job on its own
+  // cadence: it never runs inside the tick handler, so the entry path stays
+  // cheap. The board is what the Automate panel renders.
+  _runScan() {
+    if (!this.strategy) return;
+    const syms = this.scanUniverse();
+    if (!syms.length) return;
+    const board = scanMarkets(this.strategy, syms, sym => this.barsFor(sym));
+    this.scanBoard = board.slice(0, 12);
+    this._scanScore = new Map(board.map(m => [m.sym, m.score]));
+    this._lastScanAt = Date.now();
+    this.emit('scan', this.scanBoard);
+    this.emit('state', this.snapshot());
+  }
+
   // The currency to denominate a trade in: the live account's own currency when
   // authenticated, otherwise the terminal default. A real buy must match the
   // account currency or Deriv rejects the proposal.
@@ -218,6 +268,9 @@ export class Engine {
       lastSignal: this.lastSignal,
       warmup: this.warmup(),
       exec: this.execStats(),
+      autoScan: this.autoScan,
+      scanBoard: this.scanBoard,
+      autoMarket: this.autoMarket || null,
       market: this.client?.marketHealth ? this.client.marketHealth() : null,
       sessionStart: this.sessionStart,
       ticks: this.store.tickCount(this.selectedSymbol),
@@ -267,6 +320,7 @@ export class Engine {
     if (!sym || !Number.isFinite(price) || !Number.isFinite(epoch)) return;
 
     this.store.onTick(sym, price, epoch);
+    this._tickSeq++;
     this.emit('tick', { sym, price, epoch, digit: digitOf(price, sym) });
 
     // A pending start engages itself the moment the selected market is warm —
@@ -279,6 +333,13 @@ export class Engine {
 
     if (sym === this.selectedSymbol) {
       this._tickAt = Date.now();
+    }
+    // In auto-scan mode the entry is a decision over the whole universe, so
+    // every market's closed bar is checked; otherwise only the selected market.
+    if (this.autoScan) {
+      this._maybeEvaluate(sym);
+      this._resolvePendingSignals();
+    } else if (sym === this.selectedSymbol) {
       this._maybeEvaluate(sym);
     }
   }
@@ -314,7 +375,34 @@ export class Engine {
     const signal = evaluateStrategy(this.strategy, bars.slice(0, closedIdx + 1));
     if (!signal) return;
     if (signal.action === 'both') return;
+    // Auto-scan: a fire on any market joins the queue for this tick; the best
+    // queued market is chosen a tick later, so near-simultaneous fires on other
+    // markets get compared instead of the first one winning by accident.
+    if (this.autoScan) {
+      this._pendingSignals.set(sym, {
+        sym, signal, seq: this._tickSeq, score: this._scanScore.get(sym) ?? -Infinity,
+      });
+      this._lastFireSeq = this._tickSeq;
+      return;
+    }
     this._execute(sym, signal);
+  }
+
+  // Choose one entry from the markets that fired together. The decision waits a
+  // tick after the most recent fire, so markets that fire near-simultaneously
+  // are compared in the same window instead of whichever ticked first winning by
+  // accident; within the window the highest-scoring market is preferred.
+  _resolvePendingSignals() {
+    if (!this.running || !this.autoScan) return;
+    if (this.activeContracts.size > 0) { this._pendingSignals.clear(); return; }
+    if (!this._pendingSignals.size) return;
+    if (this._tickSeq - this._lastFireSeq < 1) return;
+    if (!this._sessionAllows()) { this._pendingSignals.clear(); return; }
+    const ready = [...this._pendingSignals.values()];
+    ready.sort((a, b) => (b.score - a.score) || (a.seq - b.seq));
+    const pick = ready[0];
+    this._pendingSignals.clear();
+    this._execute(pick.sym, pick.signal);
   }
 
   // ── Strategy execution ─────────────────────────────────────────────────
@@ -329,6 +417,7 @@ export class Engine {
       stake,
     };
     const raw = buildProposal('rise_fall', side, value, sym, this.accountCurrency());
+    if (this.autoScan) this.autoMarket = sym;
     this.lastSignal = {
       action: side === 'up' ? 'RISE' : 'FALL',
       label: `${side === 'up' ? 'CALL' : 'PUT'} ${value.duration}${value.unit}`,
@@ -527,13 +616,25 @@ export class Engine {
     this._martSteps = 0;
     this._execSamples = [];
     this._lastEvalCandle = {};
+    this._pendingSignals.clear();
+    this._lastFireSeq = -1;
+    this._lastScanAt = 0;
     this.log(`[ENGINE] Started — strategy "${this.strategy.name}" on ${this.selectedSymbol} ${this.strategy.timeframe}`, 's');
-    if (!this._watchdog) {
-      this._watchdog = setInterval(() => this._watch(), 1000);
-      this._watchdog.unref?.();
-    }
+    this._ensureWatchdog();
     this.emit('state', this.snapshot());
     return true;
+  }
+
+  // The 1s watchdog drives the scan cadence and releases stale contracts. It is
+  // needed whenever the engine is running or the scanner is ranking.
+  _ensureWatchdog() {
+    if (this._watchdog) return;
+    this._watchdog = setInterval(() => this._watch(), 1000);
+    this._watchdog.unref?.();
+  }
+
+  _stopWatchdog() {
+    if (this._watchdog) { clearInterval(this._watchdog); this._watchdog = null; }
   }
 
   warmup() {
@@ -546,7 +647,8 @@ export class Engine {
   stop() {
     this.running = false;
     this._startPending = false;
-    if (this._watchdog) { clearInterval(this._watchdog); this._watchdog = null; }
+    this._pendingSignals.clear();
+    if (!this.autoScan) this._stopWatchdog();
     this.log('[ENGINE] Stopped', 'w');
     this.emit('state', this.snapshot());
   }
@@ -578,6 +680,11 @@ export class Engine {
 
   _watch() {
     const now = Date.now();
+    // The market ranking runs on its own cadence, off the tick path, whenever
+    // auto-scan is on — the ranking itself needs no login.
+    if (this.autoScan && (now - this._lastScanAt) >= SCAN_INTERVAL_MS) {
+      this._runScan();
+    }
     for (const [k, v] of this.activeContracts.entries()) {
       if (!v || typeof v.time !== 'number') continue;
       const age = now - v.time;

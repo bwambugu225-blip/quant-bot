@@ -6,6 +6,7 @@ import StrategyBuilder from './components/StrategyBuilder.jsx';
 import TradeDock from './components/TradeDock.jsx';
 import TickerTape from './components/TickerTape.jsx';
 import StatusBar from './components/StatusBar.jsx';
+import ScanBoard from './components/ScanBoard.jsx';
 import { Positions, Reports, Logs } from './components/Tables.jsx';
 import { SymbolPicker, LoginModal, Modal, IndicatorPicker } from './components/Modals.jsx';
 import { IconChart, IconStrategy, IconPositions, IconReports, IconLog } from './components/icons.jsx';
@@ -245,6 +246,16 @@ export default function App() {
 
                 <button className="btn btn--ghost btn--sm" onClick={() => setIndOpen(true)} type="button" title="Add an indicator to the chart">+ Indicator</button>
 
+                <button
+                  className={`chip-toggle${state?.autoScan ? ' is-on' : ''}`}
+                  onClick={() => engine.setAutoScan(!state?.autoScan)}
+                  type="button"
+                  title="Rank every market for the running strategy and trade the first one that fires, picking the strongest when several fire together"
+                >
+                  <span className={`dot ${state?.autoScan ? 'is-live is-pulse' : ''}`} />
+                  Auto-scan
+                </button>
+
                 <div className="topbar__spacer" />
                 {state?.running && (
                   <span className="pill is-up">BOT · {strategy?.name} · {state.warmup?.have} warm</span>
@@ -261,6 +272,11 @@ export default function App() {
           {view === 'trade' && (
             <aside className="dock">
               <Analytics candles={candles} digits={digits} sym={symbol} price={price} prices={tickData.prices} times={tickData.times} />
+              {state?.autoScan && (
+                <Panel title="Auto-scan" count={state?.scanBoard?.length ? `top ${state.scanBoard.length}` : 'idle'} defaultOpen>
+                  <ScanBoard board={state?.scanBoard ?? []} autoMarket={state?.autoMarket} active={symbol} />
+                </Panel>
+              )}
               <Panel title="Trade" count={state?.auth ? 'ready' : 'login'} defaultOpen>
                 <TradeDock
                   auth={!!state?.auth}
@@ -318,6 +334,14 @@ export default function App() {
             bars</b>, and trades the best. It only crowns a winner that actually made money over the
             sample; on a fair tape with no edge it keeps the loaded strategy and says so. The ranked
             board is shown on the Strategy tab.
+          </p>
+          <p style={{ color: 'var(--text-dim)', lineHeight: 1.7 }}>
+            <b>Auto-scan</b> widens the search from one market to all of them. While it is on, the engine
+            ranks every market for the running strategy on its own cadence and places the entry on the
+            first market whose closed bar fires the rule — picking the highest-scoring one when several
+            fire together. The <b>Auto-scan</b> leaderboard in the right column shows the live ranking and
+            which market the next entry prefers. It never fabricates a trade to keep a beat: a quiet tape
+            produces no entries, and the strategy's own rule still decides what fires.
           </p>
           <p style={{ color: 'var(--text-dim)', lineHeight: 1.7 }}>
             Add any indicator to the chart with <b>+ Indicator</b>: price-scale studies (moving averages,

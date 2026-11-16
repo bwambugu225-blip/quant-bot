@@ -210,6 +210,28 @@ input, select { font-family: inherit; font-variant-numeric: tabular-nums; }
 }
 .chip-toggle:hover { color: var(--text); border-color: var(--line-3); }
 .chip-toggle.is-on { color: var(--accent); border-color: var(--accent); }
+.chip-toggle .dot { width: 6px; height: 6px; }
+
+/* ── auto-scan leaderboard ─────────────────────────────────────────────── */
+.scanboard { display: flex; flex-direction: column; }
+.scanrow {
+  display: grid; grid-template-columns: 16px 1fr 42px 42px auto; align-items: center; gap: 8px;
+  padding: 4px 2px; border-bottom: 1px solid var(--line);
+}
+.scanrow:last-of-type { border-bottom: 0; }
+.scanrow.is-active { background: var(--bg-2); }
+.scanrow.is-pick { box-shadow: inset 2px 0 0 var(--accent); }
+.scanrow__rank { font-family: var(--mono); font-size: 10px; color: var(--text-mute); text-align: right; }
+.scanrow__sym { display: flex; flex-direction: column; min-width: 0; }
+.scanrow__sym b { font-family: var(--mono); font-size: 11px; }
+.scanrow__name { font-size: 9.5px; color: var(--text-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scanrow__bar { height: 4px; background: var(--bg-3); border-radius: 2px; overflow: hidden; }
+.scanrow__fill { display: block; height: 100%; }
+.scanrow__fill.is-up { background: var(--up); }
+.scanrow__fill.is-down { background: var(--down); }
+.scanrow__score { font-family: var(--mono); font-size: 10.5px; text-align: right; }
+.scanrow__meta { font-family: var(--mono); font-size: 9.5px; color: var(--text-mute); text-align: right; white-space: nowrap; }
+.scanboard__note { margin-top: 6px; font-size: 10px; color: var(--text-mute); line-height: 1.5; }
 
 /* ── chart ─────────────────────────────────────────────────────────────── */
 .chartwrap { position: relative; flex: 1; min-height: 0; background: var(--bg-0); cursor: crosshair; touch-action: none; }

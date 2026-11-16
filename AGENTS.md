@@ -218,6 +218,35 @@ Two pieces sit on top of the DSL and the chart.
   calls `start()`. The ranked board lands in the snapshot as `state.tune` and is
   rendered on the Strategy tab.
 
+### Auto-scan (`marketScanner.js`)
+
+- **One toggle widens the search from one market to all of them.** The
+  **Auto-scan** chip in the chart toolbar (`engine.setAutoScan(true)`) ranks
+  every market with a warm tape (`scanUniverse()`, ≥ `WARMUP_TICKS` ticks) for
+  the *running* strategy and trades the first market whose closed bar fires the
+  rule — picking the highest-scoring one when several fire together. The ranking
+  needs no login; only the entry does, so the board fills the moment the toggle
+  is on.
+- **The score is the auto-tuner's own figure.** `scoreMarket` runs
+  `runBacktest` then `scoreBacktest` on each market's bars (`barsFor(sym)` —
+  tick bars for a `barSize` strategy, clock candles otherwise), so "best market"
+  and "best strategy" are measured the same way. `scanMarkets` orders the board.
+- **Off the hot path.** The scan runs from the 1s watchdog on its own
+  `SCAN_INTERVAL_MS` (900ms) cadence, never inside the tick handler. A full
+  29-market scan measures ~17ms.
+- **The entry is a decision over the universe, not a race.** In auto-scan mode
+  every market's closed bar is evaluated; a fire is queued (`_pendingSignals`)
+  and the choice waits one tick after the most recent fire
+  (`_resolvePendingSignals`), so markets that fire near-simultaneously are
+  compared in the same window instead of whichever ticked first winning by
+  accident. The winner is mirrored into `state.autoMarket` (and its symbol into
+  `lastSignal.asset`), and the Auto-scan leaderboard in the right column shows
+  the live ranking with the pick highlighted.
+- **Honest limit.** On Deriv's fair random-walk indices no market carries a real
+  edge, so a high score is a statement about the recent sample on that market.
+  The scanner orders candidates; the strategy's own rule still decides whether
+  anything fires, so a quiet tape correctly produces no entries.
+
 ### Chart studies (`studies.js` + `Chart.jsx`)
 
 - A **study** is `{ name, params, panel }`. `defaultPanel(name)` splits the
